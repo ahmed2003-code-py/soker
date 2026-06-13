@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
+import { PartyType } from "@prisma/client";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
+import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, type اتجاه } from "@/lib/integration";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مخطط_حركة_خزنة } from "@/lib/schemas/treasury";
@@ -57,12 +59,38 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
   const ب = t.data;
   const حالي = await prisma.treasuryTxn.findUnique({
     where: { id },
-    include: { ledgerEntry: true },
+    include: { ledgerEntry: true, party: true },
   });
   if (!حالي) return فشل("الحركة غير موجودة");
-  if (حالي.ledgerEntry)
-    return فشل("هذه الحركة مرتبطة بحساب طرف — تُعدّل من شاشة التكامل (المرحلة 9)");
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+
+  // عملية مرتبطة بطرف → عكس وإعادة تطبيق (الجانبان متّسقان)
+  if (حالي.ledgerEntry && حالي.party) {
+    const الاتجاه: اتجاه = حالي.party.type === PartyType.CUSTOMER ? "تحصيل" : "صرف";
+    await prisma.$transaction(async (tx) => {
+      await اعكس_عملية_مرتبطة(tx, id);
+      const r = await أنشئ_عملية_مرتبطة(tx, {
+        الاتجاه,
+        معرف_الطرف: حالي.party!.id,
+        اسم_الطرف: حالي.party!.name,
+        المبلغ: ب.المبلغ!,
+        التاريخ: تاريخ,
+        معرف_الحساب: ب.معرف_الحساب,
+        طريقة_الدفع: ب.طريقة_الدفع ?? null,
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "حركة_الخزنة",
+        معرف_الكيان: r.معرف_حركة_الخزنة,
+        التفاصيل: { عملية_مرتبطة: true, عكس_وإعادة_تطبيق: true, المبلغ: ب.المبلغ },
+      });
+    });
+    revalidatePath("/treasury");
+    revalidatePath(`/${حالي.party.type === "CUSTOMER" ? "customers" : "suppliers"}/${حالي.party.id}`);
+    return نجح(undefined, "تم تعديل العملية المرتبطة (عكس وإعادة تطبيق)");
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.treasuryTxn.update({
@@ -102,11 +130,27 @@ export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> 
   تحقق_الصلاحية(فاعل.role, "حذف");
   const حالي = await prisma.treasuryTxn.findUnique({
     where: { id },
-    include: { ledgerEntry: true },
+    include: { ledgerEntry: true, party: true },
   });
   if (!حالي) return فشل("الحركة غير موجودة");
-  if (حالي.ledgerEntry)
-    return فشل("هذه الحركة مرتبطة بحساب طرف — تُحذف من شاشة التكامل (المرحلة 9)");
+
+  // عملية مرتبطة بطرف → عكس كامل للجانبين
+  if (حالي.ledgerEntry) {
+    await prisma.$transaction(async (tx) => {
+      await اعكس_عملية_مرتبطة(tx, id);
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "DELETE",
+        نوع_الكيان: "حركة_الخزنة",
+        معرف_الكيان: id,
+        التفاصيل: { عملية_مرتبطة: true, عكس_كامل: true, المبلغ: حالي.amount },
+      });
+    });
+    revalidatePath("/treasury");
+    if (حالي.party)
+      revalidatePath(`/${حالي.party.type === "CUSTOMER" ? "customers" : "suppliers"}/${حالي.party.id}`);
+    return نجح(undefined, "تم حذف العملية المرتبطة وعكس الجانبين");
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.treasuryTxn.delete({ where: { id } });

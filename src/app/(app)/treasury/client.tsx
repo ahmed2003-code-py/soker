@@ -28,6 +28,7 @@ import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { نص_مبلغ } from "@/components/money-text";
 import { نص_تاريخ } from "@/components/date-text";
 import { شارة_حالة } from "@/components/status-badge";
+import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
 import { تسمية_نوع_الحركة } from "@/lib/enums";
@@ -204,20 +205,17 @@ export function شاشة_الخزنة({
         البيانات={حركات_مصفّاة}
         مفتاح_الصف={(ص) => ص.id}
         رسالة_فراغ="لا توجد حركات"
-        إجراءات_الصف={(ص) =>
-          ص.مرتبط ? (
-            <span className="text-xs text-muted-foreground">مرتبطة بطرف</span>
-          ) : (
-            <div className="flex justify-end gap-1">
-              <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
-                <Pencil className="size-4" />
-              </الزر>
-              <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
-                <Trash2 className="size-4 text-danger" />
-              </الزر>
-            </div>
-          )
-        }
+        إجراءات_الصف={(ص) => (
+          <div className="flex items-center justify-end gap-1">
+            {ص.مرتبط && <الشارة variant="navy">مرتبطة</الشارة>}
+            <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
+              <Pencil className="size-4" />
+            </الزر>
+            <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
+              <Trash2 className="size-4 text-danger" />
+            </الزر>
+          </div>
+        )}
       />
 
       {نموذج && (
