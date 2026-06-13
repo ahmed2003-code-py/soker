@@ -32,7 +32,7 @@ export function هيكل_التطبيق({
       {/* الشريط الجانبي — سطح المكتب (يمين في RTL) */}
       <aside
         className={cn(
-          "hidden shrink-0 border-l border-border bg-white transition-all lg:block",
+          "no-print hidden shrink-0 border-l border-border bg-white transition-all lg:block",
           مطوي ? "w-[76px]" : "w-64"
         )}
       >
@@ -43,7 +43,7 @@ export function هيكل_التطبيق({
 
       {/* درج الموبايل */}
       {درج && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="no-print fixed inset-0 z-40 lg:hidden">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => تعيين_درج(false)}
@@ -61,16 +61,18 @@ export function هيكل_التطبيق({
 
       {/* المحتوى */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <الشريط_العلوي
-          المستخدم={المستخدم}
-          مطوي={مطوي}
-          عند_طي_الجانبي={() => تعيين_مطوي((v) => !v)}
-          عند_فتح_الدرج={() => تعيين_درج(true)}
-        />
+        <div className="no-print">
+          <الشريط_العلوي
+            المستخدم={المستخدم}
+            مطوي={مطوي}
+            عند_طي_الجانبي={() => تعيين_مطوي((v) => !v)}
+            عند_فتح_الدرج={() => تعيين_درج(true)}
+          />
+        </div>
         <main className="flex-1 p-4 pb-24 sm:p-6 lg:pb-6">{children}</main>
 
         {/* شريط سفلي للموبايل */}
-        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-white lg:hidden">
+        <nav className="no-print fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-white lg:hidden">
           {الشريط_السفلي.map((ع) => {
             const نشط = مسار === ع.المسار || مسار.startsWith(ع.المسار + "/");
             const Icon = ع.الأيقونة;

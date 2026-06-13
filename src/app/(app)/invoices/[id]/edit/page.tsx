@@ -1,0 +1,45 @@
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { ترويسة_الصفحة } from "@/components/page-header";
+import { نموذج_فاتورة } from "../../form";
+
+export const metadata = { title: "تعديل فاتورة — سُكر" };
+
+export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
+  const id = Number(params.id);
+  const [فاتورة, عملاء, تصنيفات] = await Promise.all([
+    prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
+    prisma.party.findMany({
+      where: { type: "CUSTOMER" },
+      select: { id: true, name: true, phone: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.invoiceLine.findMany({ distinct: ["category"], select: { category: true }, take: 100 }),
+  ]);
+  if (!فاتورة) notFound();
+
+  return (
+    <div>
+      <ترويسة_الصفحة العنوان={`تعديل الفاتورة ${String(فاتورة.number).padStart(7, "0")}`} />
+      <نموذج_فاتورة
+        العملاء={عملاء}
+        التصنيفات={تصنيفات.map((c) => c.category)}
+        فاتورة={{
+          id: فاتورة.id,
+          معرف_العميل: فاتورة.customerId,
+          الهاتف: فاتورة.phone,
+          التاريخ: فاتورة.date.toISOString(),
+          ملاحظات: فاتورة.notes,
+          البنود: فاتورة.lines.map((l) => ({
+            اللون: l.color,
+            الكمية: String(Number(l.qty)),
+            الوزن: String(Number(l.weight)),
+            التصنيف: l.category,
+            السعر: l.price != null ? String(Number(l.price)) : "",
+            ملاحظات: l.notes ?? "",
+          })),
+        }}
+      />
+    </div>
+  );
+}
