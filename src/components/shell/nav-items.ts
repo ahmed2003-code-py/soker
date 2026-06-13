@@ -8,6 +8,7 @@ import {
   BarChart3,
   UserCog,
   ScrollText,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@prisma/client";
@@ -30,6 +31,7 @@ export const عناصر_التنقل: عنصر_تنقل[] = [
   { العنوان: "التقارير", المسار: "/reports", الأيقونة: BarChart3 },
   { العنوان: "المستخدمون", المسار: "/users", الأيقونة: UserCog, مديرون_فقط: true },
   { العنوان: "سجل العمليات", المسار: "/activity-log", الأيقونة: ScrollText, مديرون_فقط: true },
+  { العنوان: "الإعدادات", المسار: "/settings", الأيقونة: Settings, مديرون_فقط: true },
 ];
 
 export function عناصر_مرئية(الدور: Role): عنصر_تنقل[] {
