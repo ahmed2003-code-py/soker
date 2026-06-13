@@ -9,7 +9,8 @@
       "Glob",
       "Grep",
       "WebFetch",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npx prisma *)"
     ]
   }
 }

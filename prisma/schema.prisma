@@ -1,6 +1,10 @@
-// مخطط مبدئي للمرحلة 0 (إثبات الاتصال). يُستبدل بالكامل في المرحلة 1.
-// ملاحظة: لغة مخطط Prisma تقبل معرّفات ASCII فقط، لذلك أسماء النماذج/الحقول
-// بالإنجليزية مع @map، وبقية الكود بالعربية (انظر docs/glossary.md).
+// ============================================================
+// مخطط Soker ERP — المرحلة 1
+// ملاحظة: PSL يقبل ASCII فقط؛ الأسماء إنجليزية مع @map/@@map،
+// والمقابل العربي في docs/glossary.md ودوال التحويل في src/lib.
+// كل المبالغ/الكميات/الأوزان Decimal(18,4). الطوابع: createdBy/updatedBy + timestamps.
+// ============================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,11 +14,287 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// نموذج مؤقت لإثبات اتصال قاعدة البيانات في المرحلة 0
-model HealthCheck {
-  id        Int      @id @default(autoincrement())
-  note      String   @map("note")
-  createdAt DateTime @default(now()) @map("created_at")
+// ==================== Enums ====================
+enum Role {
+  ADMIN // مدير
+  ACCOUNTANT // محاسب
+  READONLY // قراءة_فقط
+}
 
-  @@map("health_check")
+enum PartyType {
+  CUSTOMER // عميل
+  SUPPLIER // مورد
+}
+
+enum TreasuryAccountType {
+  INSTAPAY // إنستا باي
+  CASH // نقدي
+  BANK // بنك
+  VODAFONE // فودافون كاش
+}
+
+enum TxnKind {
+  INCOME // إيراد
+  EXPENSE // مصروف
+}
+
+enum ChequeStatus {
+  PENDING // منتظر
+  COLLECTED // محصّل
+  BOUNCED // مرتجع
+}
+
+enum ActivityAction {
+  CREATE // إضافة
+  UPDATE // تعديل
+  DELETE // حذف
+}
+
+// ==================== User (المستخدم) ====================
+model User {
+  id                 Int      @id @default(autoincrement())
+  name               String   @map("name")
+  username           String   @unique @map("username")
+  passwordHash       String   @map("password_hash")
+  role               Role     @default(ACCOUNTANT) @map("role")
+  active             Boolean  @default(true) @map("active")
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // سجل العمليات التي قام بها
+  activities ActivityLog[] @relation("ActivityActor")
+
+  // علاقات الطوابع (أنشئ/عُدّل بواسطة)
+  partiesCreated      Party[]           @relation("PartyCreatedBy")
+  partiesUpdated      Party[]           @relation("PartyUpdatedBy")
+  invoicesCreated     Invoice[]         @relation("InvoiceCreatedBy")
+  invoicesUpdated     Invoice[]         @relation("InvoiceUpdatedBy")
+  invoiceLinesCreated InvoiceLine[]     @relation("InvoiceLineCreatedBy")
+  invoiceLinesUpdated InvoiceLine[]     @relation("InvoiceLineUpdatedBy")
+  ledgerCreated       LedgerEntry[]     @relation("LedgerCreatedBy")
+  ledgerUpdated       LedgerEntry[]     @relation("LedgerUpdatedBy")
+  treasuryCreated     TreasuryTxn[]     @relation("TreasuryCreatedBy")
+  treasuryUpdated     TreasuryTxn[]     @relation("TreasuryUpdatedBy")
+  chequesCreated      Cheque[]          @relation("ChequeCreatedBy")
+  chequesUpdated      Cheque[]          @relation("ChequeUpdatedBy")
+  settingsUpdated     Setting[]         @relation("SettingUpdatedBy")
+
+  @@map("users")
+}
+
+// ==================== Party (الطرف: عميل/مورد) ====================
+model Party {
+  id          Int       @id @default(autoincrement())
+  name        String    @map("name")
+  phone       String?   @map("phone")
+  address     String?   @map("address")
+  type        PartyType @map("type")
+  creditLimit Decimal?  @map("credit_limit") @db.Decimal(18, 4)
+  balance     Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
+  notes       String?   @map("notes")
+  active      Boolean   @default(true) @map("active")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("PartyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("PartyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  invoices      Invoice[]
+  ledgerEntries LedgerEntry[]
+  treasuryTxns  TreasuryTxn[]
+
+  @@index([type])
+  @@index([name])
+  @@map("parties")
+}
+
+// ==================== Invoice (الفاتورة) ====================
+model Invoice {
+  id          Int      @id @default(autoincrement())
+  number      Int      @unique @map("number") // تسلسلي فريد
+  customerId  Int      @map("customer_id")
+  customer    Party    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  phone       String?  @map("phone")
+  date        DateTime @map("date") @db.Date
+  totalQty    Decimal  @default(0) @map("total_qty") @db.Decimal(18, 4)
+  totalWeight Decimal  @default(0) @map("total_weight") @db.Decimal(18, 4)
+  totalAmount Decimal  @default(0) @map("total_amount") @db.Decimal(18, 4)
+  notes       String?  @map("notes")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("InvoiceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  lines         InvoiceLine[]
+  ledgerEntries LedgerEntry[]
+  treasuryTxns  TreasuryTxn[]
+
+  @@index([date])
+  @@index([customerId])
+  @@map("invoices")
+}
+
+// ==================== InvoiceLine (بند الفاتورة) ====================
+model InvoiceLine {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int      @map("invoice_id")
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  color     String   @map("color")
+  qty       Decimal  @default(0) @map("qty") @db.Decimal(18, 4)
+  weight    Decimal  @default(0) @map("weight") @db.Decimal(18, 4)
+  category  String   @map("category")
+  price     Decimal? @map("price") @db.Decimal(18, 4)
+  lineTotal Decimal  @default(0) @map("line_total") @db.Decimal(18, 4) // السعر × الوزن
+  notes     String?  @map("notes")
+
+  createdById Int?     @map("created_by_id")
+  createdBy   User?    @relation("InvoiceLineCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("InvoiceLineUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([invoiceId])
+  @@index([category])
+  @@map("invoice_lines")
+}
+
+// ==================== LedgerEntry (حركة الحساب — دفتر الأستاذ) ====================
+model LedgerEntry {
+  id           Int      @id @default(autoincrement())
+  partyId      Int      @map("party_id")
+  party        Party    @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  date         DateTime @map("date")
+  docNumber    String?  @map("doc_number")
+  description  String   @map("description")
+  category     String?  @map("category")
+  qty          Decimal? @map("qty") @db.Decimal(18, 4)
+  price        Decimal? @map("price") @db.Decimal(18, 4)
+  debit        Decimal  @default(0) @map("debit") @db.Decimal(18, 4) // مدين
+  credit       Decimal  @default(0) @map("credit") @db.Decimal(18, 4) // دائن
+  balanceAfter Decimal  @default(0) @map("balance_after") @db.Decimal(18, 4)
+
+  invoiceId     Int?         @map("invoice_id")
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  treasuryTxnId Int?         @unique @map("treasury_txn_id")
+  treasuryTxn   TreasuryTxn? @relation(fields: [treasuryTxnId], references: [id], onDelete: SetNull)
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("LedgerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("LedgerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([partyId, date])
+  @@index([invoiceId])
+  @@map("ledger_entries")
+}
+
+// ==================== TreasuryAccount (حساب الخزنة) ====================
+model TreasuryAccount {
+  id           Int                 @id @default(autoincrement())
+  type         TreasuryAccountType @unique @map("type")
+  balance      Decimal             @default(0) @map("balance") @db.Decimal(18, 4)
+  minThreshold Decimal?            @map("min_threshold") @db.Decimal(18, 4)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  txns TreasuryTxn[]
+
+  @@map("treasury_accounts")
+}
+
+// ==================== TreasuryTxn (حركة الخزنة) ====================
+model TreasuryTxn {
+  id           Int             @id @default(autoincrement())
+  date         DateTime        @map("date")
+  kind         TxnKind         @map("kind")
+  amount       Decimal         @map("amount") @db.Decimal(18, 4)
+  accountId    Int             @map("account_id")
+  account      TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  description  String          @map("description")
+  partyId      Int?            @map("party_id")
+  party        Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  invoiceId    Int?            @map("invoice_id")
+  invoice      Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  method       String?         @map("method")
+  balanceAfter Decimal         @default(0) @map("balance_after") @db.Decimal(18, 4)
+
+  // الجهة المقابلة في دفتر الأستاذ (تحصيل/صرف)
+  ledgerEntry LedgerEntry? @relation
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("TreasuryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("TreasuryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([accountId, date])
+  @@index([kind])
+  @@map("treasury_txns")
+}
+
+// ==================== Cheque (الشيك) ====================
+model Cheque {
+  id              Int          @id @default(autoincrement())
+  drawerName      String       @map("drawer_name")
+  amount          Decimal      @map("amount") @db.Decimal(18, 4)
+  beneficiary     String?      @map("beneficiary")
+  transferredFrom String?      @map("transferred_from")
+  bankName        String?      @map("bank_name")
+  dueDate         DateTime     @map("due_date") @db.Date
+  chequeNumber    String?      @map("cheque_number")
+  status          ChequeStatus @default(PENDING) @map("status")
+  notes           String?      @map("notes")
+  imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
+  imageMime       String?      @map("image_mime")
+  ocrText         String?      @map("ocr_text")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("ChequeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("ChequeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([dueDate])
+  @@index([status])
+  @@map("cheques")
+}
+
+// ==================== ActivityLog (سجل العمليات) ====================
+model ActivityLog {
+  id         Int            @id @default(autoincrement())
+  userId     Int            @map("user_id")
+  user       User           @relation("ActivityActor", fields: [userId], references: [id], onDelete: Restrict)
+  action     ActivityAction @map("action")
+  entityType String         @map("entity_type")
+  entityId   Int?           @map("entity_id")
+  details    Json           @map("details")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@map("activity_log")
+}
+
+// ==================== Setting (الإعدادات) ====================
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @map("key")
+  value     String   @map("value")
+  updatedById Int?   @map("updated_by_id")
+  updatedBy User?    @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
 }
