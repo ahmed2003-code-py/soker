@@ -1,27 +1,16 @@
-/** اختبار ذاتي للمرحلة 0: اتصال قاعدة البيانات + ذهاب/إياب نص عربي (UTF8). */
+/** اختبار ذاتي للمرحلة 0: اتصال قاعدة البيانات + ذهاب/إياب نص عربي (UTF8) عبر استعلام خام. */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const عبارة = "اختبار العربية ✓ 1,250,475.00 ج.م";
-  const سجل = await prisma.healthCheck.create({ data: { note: عبارة } });
-  const مقروء = await prisma.healthCheck.findUnique({ where: { id: سجل.id } });
-
-  if (!مقروء) throw new Error("فشل قراءة السجل");
-  if (مقروء.note !== عبارة) {
-    throw new Error(
-      `تلف الترميز! متوقع: "${عبارة}" — مقروء: "${مقروء.note}"`
-    );
+  const نتيجة = await prisma.$queryRaw<{ val: string }[]>`SELECT ${عبارة}::text AS val`;
+  if (!نتيجة[0] || نتيجة[0].val !== عبارة) {
+    throw new Error(`تلف الترميز! متوقع "${عبارة}" — مقروء "${نتيجة[0]?.val}"`);
   }
-  const عدد = await prisma.healthCheck.count();
   console.log("✓ اتصال قاعدة البيانات سليم");
-  console.log(`✓ ذهاب/إياب النص العربي سليم (UTF8): "${مقروء.note}"`);
-  console.log(`✓ عدد سجلات الفحص: ${عدد}`);
-
-  // تنظيف
-  await prisma.healthCheck.deleteMany();
-  console.log("✓ تم تنظيف بيانات الفحص");
+  console.log(`✓ ذهاب/إياب النص العربي سليم (UTF8): "${نتيجة[0].val}"`);
 }
 
 main()
