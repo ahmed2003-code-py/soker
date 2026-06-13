@@ -13,7 +13,7 @@ import { الزر } from "@/components/ui/button";
 import { نص_تاريخ } from "@/components/date-text";
 import { شارة_حالة } from "@/components/status-badge";
 import { تسمية_العملية } from "@/lib/enums";
-import { جلب_سجل_الكيان } from "@/app/activity-log/actions";
+import { جلب_سجل_الكيان } from "@/app/(app)/activity-log/actions";
 import type { نوع_الكيان } from "@/lib/activity";
 import type { ActivityAction } from "@prisma/client";
 

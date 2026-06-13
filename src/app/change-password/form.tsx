@@ -5,7 +5,7 @@ import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { useإشعار } from "@/components/ui/toast";
-import { تغيير_كلمتي } from "@/app/users/actions";
+import { تغيير_كلمتي } from "@/app/(app)/users/actions";
 
 export function نموذج_تغيير_كلمة() {
   const إشعار = useإشعار();
