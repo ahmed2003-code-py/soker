@@ -24,7 +24,8 @@ export default withAuth(
 
 // حماية كل المسارات الداخلية، مع استثناء صفحة الدخول والأصول الثابتة وواجهة المصادقة
 export const config = {
+  // نستثني كل /api (كل مسار يتحقق من الجلسة بنفسه ويعيد 401)، وصفحة الدخول والأصول الثابتة
   matcher: [
-    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
+    "/((?!login|api|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
   ],
 };
