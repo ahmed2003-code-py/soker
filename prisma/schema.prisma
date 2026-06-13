@@ -1,0 +1,20 @@
+// مخطط مبدئي للمرحلة 0 (إثبات الاتصال). يُستبدل بالكامل في المرحلة 1.
+// ملاحظة: لغة مخطط Prisma تقبل معرّفات ASCII فقط، لذلك أسماء النماذج/الحقول
+// بالإنجليزية مع @map، وبقية الكود بالعربية (انظر docs/glossary.md).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// نموذج مؤقت لإثبات اتصال قاعدة البيانات في المرحلة 0
+model HealthCheck {
+  id        Int      @id @default(autoincrement())
+  note      String   @map("note")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("health_check")
+}
