@@ -51,7 +51,7 @@ function يقبل_فلتر_عميل(ن: نوع_تقرير | ""): boolean {
 export function شاشة_التقارير(props: الخصائص) {
   const { النوع, القيم, العملاء, الموردون, حسابات_الخزنة, البيانات } = props;
   const router = useRouter();
-  const { t } = استخدام_اللغة();
+  const { t, لغة } = استخدام_اللغة();
   const [نوع, تعيين_نوع] = React.useState<نوع_تقرير | "">(النوع);
   const [من, تعيين_من] = React.useState(القيم.من);
   const [إلى, تعيين_إلى] = React.useState(القيم.إلى);
@@ -95,6 +95,31 @@ export function شاشة_التقارير(props: الخصائص) {
     if (نوع) p.set("نوع", نوع);
     router.push(`/reports?${p.toString()}`);
   }
+
+  // تطبيق فترة جاهزة مباشرةً (يحفظ الطرف/الحساب المختار)
+  const يوم = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function طبّق_فترة(بداية: Date, نهاية: Date) {
+    const م = يوم(بداية), ن = يوم(نهاية);
+    تعيين_من(م); تعيين_إلى(ن);
+    const p = new URLSearchParams();
+    if (نوع) p.set("نوع", نوع);
+    p.set("من", م); p.set("إلى", ن);
+    if (طرف) p.set("طرف", طرف);
+    if (حساب) p.set("حساب", حساب);
+    router.push(`/reports?${p.toString()}`);
+  }
+  const الفترات = (() => {
+    const n = new Date();
+    const y = n.getFullYear(), m = n.getMonth();
+    return [
+      { م: لغة === "ar" ? "هذا الشهر" : "This month", ب: new Date(y, m, 1), هـ: new Date(y, m + 1, 0) },
+      { م: لغة === "ar" ? "الشهر الماضي" : "Last month", ب: new Date(y, m - 1, 1), هـ: new Date(y, m, 0) },
+      { م: لغة === "ar" ? "آخر 3 شهور" : "Last 3 months", ب: new Date(y, m - 2, 1), هـ: new Date(y, m + 1, 0) },
+      { م: لغة === "ar" ? "هذه السنة" : "This year", ب: new Date(y, 0, 1), هـ: new Date(y, 11, 31) },
+      { م: لغة === "ar" ? "السنة الماضية" : "Last year", ب: new Date(y - 1, 0, 1), هـ: new Date(y - 1, 11, 31) },
+    ];
+  })();
 
   const مجموعات = React.useMemo(() => {
     const م = new Map<string, typeof قائمة_التقارير>();
@@ -204,6 +229,38 @@ export function شاشة_التقارير(props: الخصائص) {
               {t("rep.clear")}
             </الزر>
           </div>
+
+          {يحتاج_تاريخ(نوع) && (
+            <div className="col-span-full flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <span className="text-xs font-medium text-muted-foreground">
+                {لغة === "ar" ? "فترات سريعة:" : "Quick periods:"}
+              </span>
+              {الفترات.map((f) => (
+                <button
+                  key={f.م}
+                  type="button"
+                  onClick={() => طبّق_فترة(f.ب, f.هـ)}
+                  className="rounded-full border border-border bg-card px-3 py-1 text-xs transition hover:border-primary-blue/40 hover:bg-appgray active:scale-95"
+                >
+                  {f.م}
+                </button>
+              ))}
+              <span className="mx-1 h-4 w-px bg-border" />
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {لغة === "ar" ? "شهر:" : "Month:"}
+                <input
+                  type="month"
+                  className="rounded-lg border border-input bg-card px-2 py-1 text-xs"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const [yy, mm] = v.split("-").map(Number);
+                    طبّق_فترة(new Date(yy, mm - 1, 1), new Date(yy, mm, 0));
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
       )}
 
@@ -919,20 +976,52 @@ function جدول_بسيط({
   الأعمدة: { العنوان: string; رقم?: boolean }[];
   children: React.ReactNode;
 }) {
+  const { لغة } = استخدام_اللغة();
+  // الصفوف ممرّرة كعناصر؛ آخر عنصر دائماً صف الإجمالي. نعرض نافذة فقط لتفادي
+  // ترهّل/تعطّل المتصفح مع آلاف الصفوف، مع إبقاء صف الإجمالي ظاهراً دائماً.
+  const الكل = React.Children.toArray(children);
+  const الإجمالي_صف = الكل.length ? الكل[الكل.length - 1] : null;
+  const صفوف = الكل.slice(0, -1);
+  const [حد, تعيين_حد] = React.useState(150);
+  const مقصوص = صفوف.length > حد;
+  const مرئية = مقصوص ? صفوف.slice(0, حد) : صفوف;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-appgray text-muted-foreground">
-          <tr>
-            {أعمدة.map((ع, i) => (
-              <th key={i} className={`px-3 py-2 text-start font-medium ${ع.رقم ? "text-end" : ""}`}>
-                {ع.العنوان}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+    <div className="overflow-hidden rounded-xl border border-border">
+      <div className="max-h-[70vh] overflow-auto print:max-h-none print:overflow-visible">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-appgray text-muted-foreground shadow-sm print:static">
+            <tr>
+              {أعمدة.map((ع, i) => (
+                <th key={i} className={`px-3 py-2.5 text-start font-semibold ${ع.رقم ? "text-end" : ""}`}>
+                  {ع.العنوان}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="[&>tr:nth-child(even)]:bg-appgray/30">
+            {مرئية}
+            {الإجمالي_صف}
+          </tbody>
+        </table>
+      </div>
+      {مقصوص && (
+        <div className="flex items-center justify-between gap-3 border-t border-border bg-appgray/40 px-3 py-2 text-xs text-muted-foreground no-print">
+          <span className="ltr-nums">
+            {لغة === "ar"
+              ? `عرض ${مرئية.length} من ${صفوف.length} — للكل استخدم تصدير Excel`
+              : `Showing ${مرئية.length} of ${صفوف.length} — use Excel export for all`}
+          </span>
+          <div className="flex gap-1">
+            <الزر size="sm" variant="outline" onClick={() => تعيين_حد((h) => h + 300)}>
+              {لغة === "ar" ? "عرض المزيد" : "Show more"}
+            </الزر>
+            <الزر size="sm" variant="ghost" onClick={() => تعيين_حد(صفوف.length)}>
+              {لغة === "ar" ? "عرض الكل" : "Show all"}
+            </الزر>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

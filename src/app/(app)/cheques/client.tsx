@@ -70,6 +70,33 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
   const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
   const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
+  const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
+  const [من, تعيين_من] = React.useState("");
+  const [إلى, تعيين_إلى] = React.useState("");
+
+  function طبّق_الفلاتر(صفوف: شيك[]): شيك[] {
+    return صفوف.filter((ش) => {
+      if (حالة_فلتر === "متأخر") { if (!ش.متأخر) return false; }
+      else if (حالة_فلتر) { if (ش.الحالة !== حالة_فلتر) return false; }
+      const d = ش.تاريخ_الاستحقاق.slice(0, 10);
+      if (من && d < من) return false;
+      if (إلى && d > إلى) return false;
+      return true;
+    });
+  }
+  const فلاتر_نشطة = !!(حالة_فلتر || من || إلى);
+  const يوم = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function فترة(بداية: Date, نهاية: Date) { تعيين_من(يوم(بداية)); تعيين_إلى(يوم(نهاية)); }
+  const الفترات = (() => {
+    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
+    return [
+      { م: لغة === "ar" ? "هذا الشهر" : "This month", ب: new Date(y, m, 1), هـ: new Date(y, m + 1, 0) },
+      { م: لغة === "ar" ? "الشهر الماضي" : "Last month", ب: new Date(y, m - 1, 1), هـ: new Date(y, m, 0) },
+      { م: لغة === "ar" ? "آخر 3 شهور" : "Last 3 months", ب: new Date(y, m - 2, 1), هـ: new Date(y, m + 1, 0) },
+      { م: لغة === "ar" ? "هذه السنة" : "This year", ب: new Date(y, 0, 1), هـ: new Date(y, 11, 31) },
+    ];
+  })();
 
   const الأشهر = React.useMemo(() => {
     const م = new Map<string, { عدد: number; إجمالي: number }>();
@@ -161,12 +188,70 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
     />
   );
 
+  const حالات_الفلتر = [
+    { ق: "", ت: t("common.all") },
+    ...حالات_الشيك.map((s) => ({ ق: s, ت: t(`cheque.status.${s}` as const) })),
+    { ق: "متأخر", ت: t("cheque.status.overdue") },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <الزر onClick={() => تعيين_نموذج({})}>
           <Plus className="size-4" /> {t("cheque.add")}
         </الزر>
+      </div>
+
+      {/* فلاتر: الحالة + الفترة */}
+      <div className="card-soft flex flex-wrap items-end gap-x-4 gap-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {حالات_الفلتر.map((h) => (
+            <button
+              key={h.ق || "all"}
+              type="button"
+              onClick={() => تعيين_حالة_فلتر(h.ق)}
+              className={`rounded-full border px-3 py-1 text-xs transition active:scale-95 ${
+                حالة_فلتر === h.ق
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card hover:bg-appgray"
+              }`}
+            >
+              {h.ت}
+            </button>
+          ))}
+        </div>
+        <span className="hidden h-6 w-px bg-border sm:block" />
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <العنوان>{t("rep.from")}</العنوان>
+            <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} className="h-9" />
+          </div>
+          <div className="space-y-1">
+            <العنوان>{t("rep.to")}</العنوان>
+            <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} className="h-9" />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {الفترات.map((f) => (
+            <button
+              key={f.م}
+              type="button"
+              onClick={() => فترة(f.ب, f.هـ)}
+              className="rounded-full border border-border bg-card px-3 py-1 text-xs transition hover:border-primary-blue/40 hover:bg-appgray active:scale-95"
+            >
+              {f.م}
+            </button>
+          ))}
+          {فلاتر_نشطة && (
+            <button
+              type="button"
+              onClick={() => { تعيين_حالة_فلتر(""); تعيين_من(""); تعيين_إلى(""); }}
+              className="rounded-full border border-danger/40 px-3 py-1 text-xs text-danger transition hover:bg-danger-soft active:scale-95"
+            >
+              {لغة === "ar" ? "مسح الفلاتر" : "Clear filters"}
+            </button>
+          )}
+        </div>
       </div>
 
       <التبويبات defaultValue="الكل">
@@ -179,10 +264,10 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
             </زر_تبويب>
           ))}
         </قائمة_التبويبات>
-        <محتوى_تبويب value="الكل">{جدول(البيانات)}</محتوى_تبويب>
+        <محتوى_تبويب value="الكل">{جدول(طبّق_الفلاتر(البيانات))}</محتوى_تبويب>
         {الأشهر.map(([ك]) => (
           <محتوى_تبويب key={ك} value={ك}>
-            {جدول(البيانات.filter((ش) => مفتاح_شهر(ش.تاريخ_الاستحقاق) === ك))}
+            {جدول(طبّق_الفلاتر(البيانات.filter((ش) => مفتاح_شهر(ش.تاريخ_الاستحقاق) === ك)))}
           </محتوى_تبويب>
         ))}
       </التبويبات>
