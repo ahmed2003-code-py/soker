@@ -9,6 +9,7 @@ import { نص_تاريخ } from "@/components/date-text";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حذف_فاتورة } from "./actions";
 
 type صف = {
@@ -25,34 +26,35 @@ const رقم_مصفّر = (n: number) => String(n).padStart(7, "0");
 export function قائمة_الفواتير({ البيانات }: { البيانات: صف[] }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [حذف, تعيين_حذف] = React.useState<صف | null>(null);
 
   const أعمدة: عمود<صف>[] = [
     {
       المفتاح: "الرقم",
-      العنوان: "رقم الفاتورة",
+      العنوان: t("inv.col.number"),
       قابل_للفرز: true,
       قيمة: (ص) => ص.الرقم,
       خلية: (ص) => <span className="ltr-nums font-medium">{رقم_مصفّر(ص.الرقم)}</span>,
     },
-    { المفتاح: "العميل", العنوان: "العميل", قابل_للفرز: true },
+    { المفتاح: "العميل", العنوان: t("inv.col.customer"), قابل_للفرز: true },
     {
       المفتاح: "التاريخ",
-      العنوان: "التاريخ",
+      العنوان: t("inv.col.date"),
       خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} />,
       قيمة: (ص) => ص.التاريخ,
       قابل_للفرز: true,
     },
     {
       المفتاح: "إجمالي_الوزن",
-      العنوان: "إجمالي الوزن",
+      العنوان: t("inv.col.total_weight"),
       محاذاة: "end",
-      خلية: (ص) => <span className="ltr-nums">{ص.إجمالي_الوزن} كجم</span>,
+      خلية: (ص) => <span className="ltr-nums">{ص.إجمالي_الوزن} {t("inv.kg")}</span>,
       مخفي_موبايل: true,
     },
     {
       المفتاح: "الإجمالي",
-      العنوان: "الإجمالي",
+      العنوان: t("inv.col.total"),
       محاذاة: "end",
       قابل_للفرز: true,
       قيمة: (ص) => ص.الإجمالي,
@@ -66,9 +68,9 @@ export function قائمة_الفواتير({ البيانات }: { البيان
         الأعمدة={أعمدة}
         البيانات={البيانات}
         مفتاح_الصف={(ص) => ص.id}
-        نص_البحث="ابحث برقم الفاتورة أو العميل…"
+        نص_البحث={t("inv.search")}
         عند_النقر={(ص) => router.push(`/invoices/${ص.id}`)}
-        رسالة_فراغ="لا توجد فواتير بعد"
+        رسالة_فراغ={t("inv.empty")}
         إجراءات_الصف={(ص) => (
           <div className="flex justify-end gap-1">
             <الزر size="sm" variant="ghost" onClick={() => router.push(`/invoices/${ص.id}`)}>
@@ -88,8 +90,8 @@ export function قائمة_الفواتير({ البيانات }: { البيان
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={`حذف الفاتورة ${رقم_مصفّر(حذف.الرقم)}`}
-          الوصف="سيتم عكس قيد العميل المرتبط بهذه الفاتورة."
+          العنوان={t("inv.delete_title", { number: رقم_مصفّر(حذف.الرقم) })}
+          الوصف={t("inv.delete_desc")}
           عند_التأكيد={async () => {
             const r = await حذف_فاتورة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);

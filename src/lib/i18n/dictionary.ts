@@ -40,6 +40,33 @@ export const القاموس = {
     "common.loading": "جارٍ التحميل…",
     "common.required": "مطلوب",
     "common.search": "بحث",
+    "common.view": "عرض",
+    "common.edit": "تعديل",
+    "common.delete": "حذف",
+    "common.history": "السجل",
+
+    /* ─── الجدول ─── */
+    "dt.search": "ابحث…",
+    "dt.empty": "لا توجد سجلات",
+    "dt.actions": "إجراءات",
+    "dt.records_page": "{count} سجل — صفحة {current} من {total}",
+    "dt.prev": "السابق",
+    "dt.next": "التالي",
+
+    /* ─── الفواتير ─── */
+    "inv.title": "الفواتير",
+    "inv.subtitle": "إنشاء وإدارة الفواتير",
+    "inv.new": "فاتورة جديدة",
+    "inv.col.number": "رقم الفاتورة",
+    "inv.col.customer": "العميل",
+    "inv.col.date": "التاريخ",
+    "inv.col.total_weight": "إجمالي الوزن",
+    "inv.col.total": "الإجمالي",
+    "inv.kg": "كجم",
+    "inv.search": "ابحث برقم الفاتورة أو العميل…",
+    "inv.empty": "لا توجد فواتير بعد",
+    "inv.delete_title": "حذف الفاتورة {number}",
+    "inv.delete_desc": "سيتم عكس قيد العميل المرتبط بهذه الفاتورة.",
 
     /* ─── تسجيل الدخول ─── */
     "login.title": "تسجيل الدخول",
@@ -61,7 +88,36 @@ export const القاموس = {
 
     /* ─── الداشبورد ─── */
     "dash.title": "لوحة التحكم",
-    "dash.subtitle": "نظرة عامة على الأعمال",
+    "dash.subtitle": "ملخّص حيّ لكامل النشاط",
+    "dash.kpi.treasury_total": "إجمالي الخزنة",
+    "dash.kpi.customer_debt": "مديونية العملاء",
+    "dash.kpi.supplier_payable": "مستحقات الموردين",
+    "dash.kpi.month_sales": "مبيعات هذا الشهر",
+    "dash.customers_count": "{count} عميل مدين",
+    "dash.suppliers_count": "{count} مورد",
+    "dash.invoices_count_month": "{count} فاتورة",
+    "dash.under_threshold": "تحت الحد الأدنى",
+    "dash.alerts": "مركز التنبيهات",
+    "dash.cheque_overdue": "{count} شيك متأخر",
+    "dash.cheque_due7": "{count} شيك يستحق خلال 7 أيام",
+    "dash.account_under": "حساب {name} تحت الحد الأدنى",
+    "dash.credit_over": "العميل {name} تجاوز حد الائتمان",
+    "dash.invoices_today": "فواتير اليوم",
+    "dash.sales_label": "مبيعات: {amount}",
+    "dash.cheques_due_month": "شيكات تستحق هذا الشهر",
+    "dash.cheques_overdue": "شيكات متأخرة",
+    "dash.cheques_total_due": "إجمالي الشيكات المستحقة",
+    "dash.top_customers": "أعلى 10 عملاء مديونية",
+    "dash.top_suppliers": "أعلى 10 موردين مستحقات",
+    "dash.none": "لا يوجد.",
+
+    /* ─── الرسوم البيانية ─── */
+    "chart.monthly_sales": "المبيعات الشهرية (آخر 12 شهراً)",
+    "chart.monthly_collections": "التحصيلات الشهرية",
+    "chart.monthly_expenses": "المصروفات الشهرية",
+    "chart.income_vs_expense": "الإيرادات مقابل المصروفات",
+    "chart.income": "إيرادات",
+    "chart.expenses": "مصروفات",
   },
   en: {
     /* ─── brand ─── */
@@ -99,6 +155,33 @@ export const القاموس = {
     "common.loading": "Loading…",
     "common.required": "required",
     "common.search": "Search",
+    "common.view": "View",
+    "common.edit": "Edit",
+    "common.delete": "Delete",
+    "common.history": "History",
+
+    /* ─── data table ─── */
+    "dt.search": "Search…",
+    "dt.empty": "No records",
+    "dt.actions": "Actions",
+    "dt.records_page": "{count} records — page {current} of {total}",
+    "dt.prev": "Previous",
+    "dt.next": "Next",
+
+    /* ─── invoices ─── */
+    "inv.title": "Invoices",
+    "inv.subtitle": "Create and manage invoices",
+    "inv.new": "New invoice",
+    "inv.col.number": "Invoice #",
+    "inv.col.customer": "Customer",
+    "inv.col.date": "Date",
+    "inv.col.total_weight": "Total weight",
+    "inv.col.total": "Total",
+    "inv.kg": "kg",
+    "inv.search": "Search by invoice # or customer…",
+    "inv.empty": "No invoices yet",
+    "inv.delete_title": "Delete invoice {number}",
+    "inv.delete_desc": "The linked customer ledger entry will be reversed.",
 
     /* ─── login ─── */
     "login.title": "Sign in",
@@ -120,7 +203,36 @@ export const القاموس = {
 
     /* ─── dashboard ─── */
     "dash.title": "Dashboard",
-    "dash.subtitle": "Business overview",
+    "dash.subtitle": "Live overview of all activity",
+    "dash.kpi.treasury_total": "Total treasury",
+    "dash.kpi.customer_debt": "Customer receivables",
+    "dash.kpi.supplier_payable": "Supplier payables",
+    "dash.kpi.month_sales": "This month's sales",
+    "dash.customers_count": "{count} customers in debt",
+    "dash.suppliers_count": "{count} suppliers",
+    "dash.invoices_count_month": "{count} invoices",
+    "dash.under_threshold": "Below minimum",
+    "dash.alerts": "Alerts center",
+    "dash.cheque_overdue": "{count} overdue cheques",
+    "dash.cheque_due7": "{count} cheques due within 7 days",
+    "dash.account_under": "Account {name} is below minimum",
+    "dash.credit_over": "Customer {name} exceeded credit limit",
+    "dash.invoices_today": "Today's invoices",
+    "dash.sales_label": "Sales: {amount}",
+    "dash.cheques_due_month": "Cheques due this month",
+    "dash.cheques_overdue": "Overdue cheques",
+    "dash.cheques_total_due": "Total cheques due",
+    "dash.top_customers": "Top 10 customers by debt",
+    "dash.top_suppliers": "Top 10 suppliers by payable",
+    "dash.none": "None.",
+
+    /* ─── charts ─── */
+    "chart.monthly_sales": "Monthly sales (last 12 months)",
+    "chart.monthly_collections": "Monthly collections",
+    "chart.monthly_expenses": "Monthly expenses",
+    "chart.income_vs_expense": "Income vs expenses",
+    "chart.income": "Income",
+    "chart.expenses": "Expenses",
   },
 } as const;
 

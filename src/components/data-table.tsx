@@ -6,6 +6,7 @@ import { الحقل } from "@/components/ui/input";
 import { الزر } from "@/components/ui/button";
 import { هيكل_تحميل } from "@/components/ui/skeleton";
 import { حالة_فارغة } from "@/components/empty-state";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 export type عمود<ت> = {
   المفتاح: string;
@@ -39,14 +40,17 @@ export function جدول_بيانات<ت>({
   البيانات,
   مفتاح_الصف,
   بحث = true,
-  نص_البحث = "ابحث…",
+  نص_البحث,
   لكل_صفحة = 20,
   جارٍ_التحميل,
   خطأ,
-  رسالة_فراغ = "لا توجد سجلات",
+  رسالة_فراغ,
   إجراءات_الصف,
   عند_النقر,
 }: الخصائص<ت>) {
+  const { t, اتجاه } = استخدام_اللغة();
+  const نص_البحث_الفعلي = نص_البحث ?? t("dt.search");
+  const رسالة_الفراغ_الفعلية = رسالة_فراغ ?? t("dt.empty");
   const [استعلام, تعيين_استعلام] = React.useState("");
   const [فرز, تعيين_فرز] = React.useState<{ مفتاح: string; تصاعدي: boolean } | null>(
     null
@@ -112,7 +116,7 @@ export function جدول_بيانات<ت>({
           <الحقل
             value={استعلام}
             onChange={(e) => تعيين_استعلام(e.target.value)}
-            placeholder={نص_البحث}
+            placeholder={نص_البحث_الفعلي}
             className="pe-9"
           />
         </div>
@@ -145,7 +149,7 @@ export function جدول_بيانات<ت>({
                   )}
                 </th>
               ))}
-              {إجراءات_الصف && <th className="px-4 py-3 text-end font-medium">إجراءات</th>}
+              {إجراءات_الصف && <th className="px-4 py-3 text-end font-medium">{t("dt.actions")}</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -196,7 +200,7 @@ export function جدول_بيانات<ت>({
         </table>
         {!جارٍ_التحميل && !خطأ && مرئية.length === 0 && (
           <div className="p-4">
-            <حالة_فارغة العنوان={رسالة_فراغ} />
+            <حالة_فارغة العنوان={رسالة_الفراغ_الفعلية} />
           </div>
         )}
         {خطأ && (
@@ -241,7 +245,7 @@ export function جدول_بيانات<ت>({
             </div>
           ))}
         {!جارٍ_التحميل && مرئية.length === 0 && !خطأ && (
-          <حالة_فارغة العنوان={رسالة_فراغ} />
+          <حالة_فارغة العنوان={رسالة_الفراغ_الفعلية} />
         )}
       </div>
 
@@ -249,7 +253,11 @@ export function جدول_بيانات<ت>({
       {!جارٍ_التحميل && مرتبة.length > لكل_صفحة && (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {مرتبة.length} سجل — صفحة {الصفحة_الحالية} من {إجمالي_الصفحات}
+            {t("dt.records_page", {
+              count: مرتبة.length,
+              current: الصفحة_الحالية,
+              total: إجمالي_الصفحات,
+            })}
           </span>
           <div className="flex gap-1">
             <الزر
@@ -258,7 +266,8 @@ export function جدول_بيانات<ت>({
               disabled={الصفحة_الحالية <= 1}
               onClick={() => تعيين_صفحة((p) => p - 1)}
             >
-              <ChevronRight className="size-4" /> السابق
+              {اتجاه === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}{" "}
+              {t("dt.prev")}
             </الزر>
             <الزر
               variant="outline"
@@ -266,7 +275,8 @@ export function جدول_بيانات<ت>({
               disabled={الصفحة_الحالية >= إجمالي_الصفحات}
               onClick={() => تعيين_صفحة((p) => p + 1)}
             >
-              التالي <ChevronLeft className="size-4" />
+              {t("dt.next")}{" "}
+              {اتجاه === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
             </الزر>
           </div>
         </div>
