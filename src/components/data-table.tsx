@@ -119,7 +119,7 @@ export function جدول_بيانات<ت>({
       )}
 
       {/* جدول لسطح المكتب */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-white md:block">
+      <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
         <table className="w-full text-sm">
           <thead className="bg-appgray text-muted-foreground">
             <tr>

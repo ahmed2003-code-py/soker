@@ -5,10 +5,12 @@ import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { تغيير_كلمتي } from "@/app/(app)/users/actions";
 
 export function نموذج_تغيير_كلمة() {
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [الحالية, تعيين_الحالية] = React.useState("");
   const [الجديدة, تعيين_الجديدة] = React.useState("");
   const [التأكيد, تعيين_التأكيد] = React.useState("");
@@ -30,7 +32,7 @@ export function نموذج_تغيير_كلمة() {
   return (
     <form onSubmit={إرسال} className="space-y-4">
       <div className="space-y-1.5">
-        <العنوان مطلوب>كلمة المرور الحالية</العنوان>
+        <العنوان مطلوب>{t("cpw.current")}</العنوان>
         <الحقل
           type="password"
           autoFocus
@@ -39,7 +41,7 @@ export function نموذج_تغيير_كلمة() {
         />
       </div>
       <div className="space-y-1.5">
-        <العنوان مطلوب>كلمة المرور الجديدة</العنوان>
+        <العنوان مطلوب>{t("cpw.new")}</العنوان>
         <الحقل
           type="password"
           value={الجديدة}
@@ -47,7 +49,7 @@ export function نموذج_تغيير_كلمة() {
         />
       </div>
       <div className="space-y-1.5">
-        <العنوان مطلوب>تأكيد كلمة المرور</العنوان>
+        <العنوان مطلوب>{t("cpw.confirm")}</العنوان>
         <الحقل
           type="password"
           value={التأكيد}
@@ -55,7 +57,7 @@ export function نموذج_تغيير_كلمة() {
         />
       </div>
       <الزر type="submit" className="w-full" disabled={جارٍ}>
-        {جارٍ ? "جارٍ الحفظ…" : "تغيير كلمة المرور"}
+        {جارٍ ? t("common.loading") : t("cpw.submit")}
       </الزر>
     </form>
   );

@@ -128,7 +128,7 @@ export function شاشة_التقارير(props: الخصائص) {
                       className={`rounded-xl border px-3 py-1.5 text-sm transition ${
                         مختار
                           ? "border-primary bg-primary text-primary-foreground shadow-soft"
-                          : "border-border bg-white hover:bg-appgray"
+                          : "border-border bg-card hover:bg-appgray"
                       }`}
                     >
                       {x.التسمية}

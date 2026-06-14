@@ -17,7 +17,7 @@ const محتوى_منبثقة = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-xl border border-border bg-white p-3 text-foreground shadow-card outline-none data-[state=open]:animate-fade-in",
+        "z-50 w-72 rounded-xl border border-border bg-card p-3 text-foreground shadow-card outline-none data-[state=open]:animate-fade-in",
         className
       )}
       {...props}

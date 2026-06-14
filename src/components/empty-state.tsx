@@ -14,7 +14,7 @@ export function حالة_فارغة({
   إجراء,
 }: الخصائص) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-white px-6 py-14 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
       <div className="rounded-full bg-appgray p-4 text-muted-foreground">
         {أيقونة ?? <Inbox className="size-7" />}
       </div>

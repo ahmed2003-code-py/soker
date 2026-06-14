@@ -10,23 +10,40 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Soker white design system tokens
-        border: "#E5E7EB",
-        input: "#E5E7EB",
-        ring: "#2563EB",
-        background: "#FFFFFF",
-        appgray: "#F8FAFC",
-        foreground: "#0F172A",
+        // Soker design tokens — مرتبطة بمتغيّرات CSS لدعم الفاتح/الداكن
+        border: "rgb(var(--border) / <alpha-value>)",
+        input: "rgb(var(--input) / <alpha-value>)",
+        ring: "rgb(var(--ring) / <alpha-value>)",
+        background: "rgb(var(--background) / <alpha-value>)",
+        appgray: "rgb(var(--appgray) / <alpha-value>)",
+        foreground: "rgb(var(--foreground) / <alpha-value>)",
+        sidebar: "rgb(var(--sidebar) / <alpha-value>)",
+        topbar: "rgb(var(--topbar) / <alpha-value>)",
         primary: {
-          DEFAULT: "#1F3864", // navy
-          blue: "#2563EB",
-          foreground: "#FFFFFF",
+          DEFAULT: "rgb(var(--primary) / <alpha-value>)", // navy
+          blue: "rgb(var(--primary-blue) / <alpha-value>)",
+          foreground: "rgb(var(--primary-foreground) / <alpha-value>)",
         },
-        success: { DEFAULT: "#16A34A", soft: "#DCFCE7" }, // income green
-        danger: { DEFAULT: "#DC2626", soft: "#FEE2E2" }, // expense / overdue red
-        warning: { DEFAULT: "#D97706", soft: "#FEF3C7" }, // amber
-        muted: { DEFAULT: "#F1F5F9", foreground: "#64748B" },
-        card: { DEFAULT: "#FFFFFF", foreground: "#0F172A" },
+        success: {
+          DEFAULT: "rgb(var(--success) / <alpha-value>)",
+          soft: "rgb(var(--success-soft) / <alpha-value>)",
+        },
+        danger: {
+          DEFAULT: "rgb(var(--danger) / <alpha-value>)",
+          soft: "rgb(var(--danger-soft) / <alpha-value>)",
+        },
+        warning: {
+          DEFAULT: "rgb(var(--warning) / <alpha-value>)",
+          soft: "rgb(var(--warning-soft) / <alpha-value>)",
+        },
+        muted: {
+          DEFAULT: "rgb(var(--muted) / <alpha-value>)",
+          foreground: "rgb(var(--muted-foreground) / <alpha-value>)",
+        },
+        card: {
+          DEFAULT: "rgb(var(--card) / <alpha-value>)",
+          foreground: "rgb(var(--card-foreground) / <alpha-value>)",
+        },
       },
       borderRadius: {
         xl: "0.875rem",

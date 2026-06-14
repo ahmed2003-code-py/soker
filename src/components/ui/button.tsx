@@ -13,7 +13,7 @@ const أنماط_الزر = cva(
         success: "bg-success text-white hover:bg-success/90",
         danger: "bg-danger text-white hover:bg-danger/90",
         outline:
-          "border border-border bg-white hover:bg-appgray text-foreground",
+          "border border-border bg-card hover:bg-appgray text-foreground",
         ghost: "hover:bg-appgray text-foreground",
         link: "text-primary-blue underline-offset-4 hover:underline",
       },

@@ -12,9 +12,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@prisma/client";
+import type { مفتاح_ترجمة } from "@/lib/i18n";
 
 export type عنصر_تنقل = {
-  العنوان: string;
+  المفتاح: مفتاح_ترجمة;
   المسار: string;
   الأيقونة: LucideIcon;
   مديرون_فقط?: boolean;
@@ -22,16 +23,16 @@ export type عنصر_تنقل = {
 };
 
 export const عناصر_التنقل: عنصر_تنقل[] = [
-  { العنوان: "الرئيسية", المسار: "/dashboard", الأيقونة: LayoutDashboard, ضمن_الشريط_السفلي: true },
-  { العنوان: "الفواتير", المسار: "/invoices", الأيقونة: FileText, ضمن_الشريط_السفلي: true },
-  { العنوان: "العملاء", المسار: "/customers", الأيقونة: Users, ضمن_الشريط_السفلي: true },
-  { العنوان: "الموردون", المسار: "/suppliers", الأيقونة: Truck, ضمن_الشريط_السفلي: true },
-  { العنوان: "الخزنة", المسار: "/treasury", الأيقونة: Wallet },
-  { العنوان: "الشيكات", المسار: "/cheques", الأيقونة: Receipt },
-  { العنوان: "التقارير", المسار: "/reports", الأيقونة: BarChart3 },
-  { العنوان: "المستخدمون", المسار: "/users", الأيقونة: UserCog, مديرون_فقط: true },
-  { العنوان: "سجل العمليات", المسار: "/activity-log", الأيقونة: ScrollText, مديرون_فقط: true },
-  { العنوان: "الإعدادات", المسار: "/settings", الأيقونة: Settings, مديرون_فقط: true },
+  { المفتاح: "nav.dashboard", المسار: "/dashboard", الأيقونة: LayoutDashboard, ضمن_الشريط_السفلي: true },
+  { المفتاح: "nav.invoices", المسار: "/invoices", الأيقونة: FileText, ضمن_الشريط_السفلي: true },
+  { المفتاح: "nav.customers", المسار: "/customers", الأيقونة: Users, ضمن_الشريط_السفلي: true },
+  { المفتاح: "nav.suppliers", المسار: "/suppliers", الأيقونة: Truck, ضمن_الشريط_السفلي: true },
+  { المفتاح: "nav.treasury", المسار: "/treasury", الأيقونة: Wallet },
+  { المفتاح: "nav.cheques", المسار: "/cheques", الأيقونة: Receipt },
+  { المفتاح: "nav.reports", المسار: "/reports", الأيقونة: BarChart3 },
+  { المفتاح: "nav.users", المسار: "/users", الأيقونة: UserCog, مديرون_فقط: true },
+  { المفتاح: "nav.activity", المسار: "/activity-log", الأيقونة: ScrollText, مديرون_فقط: true },
+  { المفتاح: "nav.settings", المسار: "/settings", الأيقونة: Settings, مديرون_فقط: true },
 ];
 
 export function عناصر_مرئية(الدور: Role): عنصر_تنقل[] {

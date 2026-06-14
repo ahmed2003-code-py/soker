@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { الشريط_الجانبي } from "./sidebar";
 import { الشريط_العلوي } from "./topbar";
 import { عناصر_مرئية } from "./nav-items";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 export function هيكل_التطبيق({
   المستخدم,
@@ -19,6 +20,7 @@ export function هيكل_التطبيق({
   const [مطوي, تعيين_مطوي] = React.useState(false);
   const [درج, تعيين_درج] = React.useState(false);
   const مسار = usePathname();
+  const { t } = استخدام_اللغة();
   const العناصر = عناصر_مرئية(المستخدم.role);
   const الشريط_السفلي = العناصر.filter((ع) => ع.ضمن_الشريط_السفلي).slice(0, 4);
 
@@ -32,7 +34,7 @@ export function هيكل_التطبيق({
       {/* الشريط الجانبي — سطح المكتب (يمين في RTL) */}
       <aside
         className={cn(
-          "no-print hidden shrink-0 border-l border-border bg-white transition-all lg:block",
+          "no-print hidden shrink-0 border-e border-border bg-sidebar transition-all lg:block",
           مطوي ? "w-[76px]" : "w-64"
         )}
       >
@@ -48,7 +50,7 @@ export function هيكل_التطبيق({
             className="absolute inset-0 bg-black/40"
             onClick={() => تعيين_درج(false)}
           />
-          <aside className="absolute inset-y-0 end-0 w-72 bg-white shadow-card">
+          <aside className="absolute inset-y-0 end-0 w-72 bg-sidebar shadow-card">
             <div className="flex justify-start p-2">
               <button onClick={() => تعيين_درج(false)} className="rounded-lg p-2 hover:bg-appgray">
                 <X className="size-5" />
@@ -72,7 +74,7 @@ export function هيكل_التطبيق({
         <main className="flex-1 p-4 pb-24 sm:p-6 lg:pb-6">{children}</main>
 
         {/* شريط سفلي للموبايل */}
-        <nav className="no-print fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-white lg:hidden">
+        <nav className="no-print fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-card lg:hidden">
           {الشريط_السفلي.map((ع) => {
             const نشط = مسار === ع.المسار || مسار.startsWith(ع.المسار + "/");
             const Icon = ع.الأيقونة;
@@ -86,7 +88,7 @@ export function هيكل_التطبيق({
                 )}
               >
                 <Icon className="size-5" />
-                {ع.العنوان}
+                {t(ع.المفتاح)}
               </Link>
             );
           })}

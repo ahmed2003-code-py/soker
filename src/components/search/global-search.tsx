@@ -86,7 +86,7 @@ export function البحث_الموحد() {
         className="pe-9"
       />
       {مفتوح && (
-        <div className="absolute inset-x-0 top-12 z-50 max-h-96 overflow-y-auto rounded-xl border border-border bg-white shadow-card">
+        <div className="absolute inset-x-0 top-12 z-50 max-h-96 overflow-y-auto rounded-xl border border-border bg-card shadow-card">
           {مجموعات.length === 0 ? (
             <p className="p-4 text-center text-sm text-muted-foreground">لا نتائج</p>
           ) : (

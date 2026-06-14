@@ -5,6 +5,74 @@
 @layer base {
   :root {
     --font-cairo: "Cairo", system-ui, sans-serif;
+
+    /* ===== الوضع الفاتح (Light) — هوية Soker الكحلية ===== */
+    /* القيم بصيغة قنوات RGB ليعمل معها تعديل الشفافية في Tailwind */
+    --background: 255 255 255;
+    --appgray: 248 250 252;
+    --foreground: 15 23 42;
+    --border: 229 231 235;
+    --input: 229 231 235;
+    --ring: 37 99 235;
+
+    --primary: 31 56 100; /* navy #1F3864 */
+    --primary-blue: 37 99 235; /* #2563EB */
+    --primary-foreground: 255 255 255;
+
+    --success: 22 163 74;
+    --success-soft: 220 252 231;
+    --danger: 220 38 38;
+    --danger-soft: 254 226 226;
+    --warning: 217 119 6;
+    --warning-soft: 254 243 199;
+
+    --muted: 241 245 249;
+    --muted-foreground: 100 116 139;
+    --card: 255 255 255;
+    --card-foreground: 15 23 42;
+
+    /* أسطح الواجهة (شريط/قوائم) + الزجاج */
+    --sidebar: 255 255 255;
+    --topbar: 255 255 255;
+    --glass-bg: 255 255 255;
+    --glass-border: 31 56 100;
+    --glass-blur: 18px;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    /* ===== الوضع الداكن (Dark) — كحلي غامق ===== */
+    --background: 8 13 26;
+    --appgray: 13 20 36;
+    --foreground: 232 237 246;
+    --border: 36 48 73;
+    --input: 36 48 73;
+    --ring: 59 130 246;
+
+    --primary: 91 121 192; /* navy مُفتّح ليقرأ على الداكن */
+    --primary-blue: 59 130 246;
+    --primary-foreground: 255 255 255;
+
+    --success: 34 197 94;
+    --success-soft: 20 50 31;
+    --danger: 239 68 68;
+    --danger-soft: 58 26 28;
+    --warning: 245 158 11;
+    --warning-soft: 58 42 18;
+
+    --muted: 27 39 64;
+    --muted-foreground: 148 163 184;
+    --card: 19 28 49;
+    --card-foreground: 232 237 246;
+
+    --sidebar: 14 22 41;
+    --topbar: 12 19 35;
+    --glass-bg: 19 28 49;
+    --glass-border: 148 163 184;
+    --glass-blur: 22px;
+
+    color-scheme: dark;
   }
 
   html {
@@ -28,7 +96,13 @@
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-slate-300;
+    background-color: rgb(var(--muted-foreground) / 0.35);
+    border-radius: 9999px;
+  }
+
+  /* تعطيل الانتقالات أثناء تبديل الثيم لتفادي الوميض */
+  .theme-transitioning * {
+    transition: none !important;
   }
 }
 
@@ -37,8 +111,32 @@
     @apply rounded-xl border border-border bg-card shadow-card;
   }
 
+  /* ===== الزجاج (Glassmorphism) ===== */
+  .glass-card {
+    background-color: rgb(var(--glass-bg) / 0.72);
+    border: 1px solid rgb(var(--glass-border) / 0.16);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    @apply rounded-2xl shadow-card;
+  }
+  .glass-panel {
+    background-color: rgb(var(--glass-bg) / 0.6);
+    border-color: rgb(var(--glass-border) / 0.12);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  }
+
+  /* خلفية متدرّجة لطيفة لشاشات المصادقة */
+  .auth-aurora {
+    background:
+      radial-gradient(60% 60% at 15% 20%, rgb(var(--primary-blue) / 0.18), transparent 70%),
+      radial-gradient(50% 50% at 85% 15%, rgb(var(--primary) / 0.22), transparent 70%),
+      radial-gradient(60% 60% at 80% 90%, rgb(var(--primary-blue) / 0.14), transparent 70%);
+  }
+
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-slate-100;
+    @apply relative overflow-hidden rounded-md;
+    background-color: rgb(var(--muted) / 1);
   }
   .skeleton::after {
     content: "";
@@ -46,7 +144,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.6),
+      rgb(var(--card) / 0.6),
       transparent
     );
     animation: shimmer 1.4s infinite;
