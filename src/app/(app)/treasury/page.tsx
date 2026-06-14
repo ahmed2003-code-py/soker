@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الخزنة } from "./client";
 
 export const metadata = { title: "الخزنة — سُكر" };
 
 export default async function صفحة_الخزنة() {
+  const { t } = مترجم_الخادم();
   const [حسابات, حركات, أطراف, إعداد_طرق] = await Promise.all([
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
     prisma.treasuryTxn.findMany({
@@ -49,7 +51,7 @@ export default async function صفحة_الخزنة() {
 
   return (
     <div>
-      <ترويسة_الصفحة العنوان="الخزنة" الوصف="الحسابات الأربعة وحركاتها — أرصدة حيّة" />
+      <ترويسة_الصفحة العنوان={t("treasury.title")} الوصف={t("treasury.subtitle")} />
       <شاشة_الخزنة
         الحسابات={بيانات_الحسابات}
         الحركات={بيانات_الحركات}

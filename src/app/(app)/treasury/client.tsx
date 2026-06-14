@@ -31,7 +31,7 @@ import { شارة_حالة } from "@/components/status-badge";
 import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
-import { تسمية_نوع_الحركة } from "@/lib/enums";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
 
 type حساب = {
@@ -77,6 +77,7 @@ export function شاشة_الخزنة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [نموذج, تعيين_نموذج] = React.useState<{ حركة?: حركة } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
@@ -93,27 +94,32 @@ export function شاشة_الخزنة({
   const أعمدة: عمود<حركة>[] = [
     {
       المفتاح: "التاريخ",
-      العنوان: "التاريخ",
+      العنوان: t("common.date"),
       خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} />,
       قيمة: (ص) => ص.التاريخ,
       قابل_للفرز: true,
     },
     {
       المفتاح: "النوع",
-      العنوان: "النوع",
-      خلية: (ص) => <شارة_حالة الحالة={تسمية_نوع_الحركة[ص.النوع]} />,
+      العنوان: t("treasury.col.type"),
+      خلية: (ص) => (
+        <شارة_حالة
+          الحالة={ص.النوع === "INCOME" ? t("treasury.income") : t("treasury.expense")}
+          متغيّر={ص.النوع === "INCOME" ? "success" : "danger"}
+        />
+      ),
     },
-    { المفتاح: "الحساب", العنوان: "الحساب" },
-    { المفتاح: "البيان", العنوان: "البيان" },
+    { المفتاح: "الحساب", العنوان: t("treasury.col.account") },
+    { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
     {
       المفتاح: "الطرف",
-      العنوان: "الطرف",
+      العنوان: t("treasury.col.party"),
       خلية: (ص) => ص.الطرف || "—",
       مخفي_موبايل: true,
     },
     {
       المفتاح: "المبلغ",
-      العنوان: "المبلغ",
+      العنوان: t("pay.amount"),
       محاذاة: "end",
       قيمة: (ص) => ص.المبلغ,
       قابل_للفرز: true,
@@ -123,7 +129,7 @@ export function شاشة_الخزنة({
     },
     {
       المفتاح: "الرصيد_بعد_الحركة",
-      العنوان: "الرصيد بعد الحركة",
+      العنوان: t("ledger.col.balance_after"),
       محاذاة: "end",
       خلية: (ص) => <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} />,
       مخفي_موبايل: true,
@@ -149,7 +155,7 @@ export function شاشة_الخزنة({
               </div>
               {تحت_الحد && (
                 <p className="mt-1 flex items-center gap-1 text-xs text-warning">
-                  <AlertTriangle className="size-3.5" /> تحت الحد الأدنى
+                  <AlertTriangle className="size-3.5" /> {t("dash.under_threshold")}
                 </p>
               )}
             </div>
@@ -157,7 +163,7 @@ export function شاشة_الخزنة({
         })}
         <div className="card-soft border-primary/30 bg-primary/5 p-5">
           <div className="flex items-start justify-between">
-            <p className="text-sm text-muted-foreground">إجمالي الخزنة</p>
+            <p className="text-sm text-muted-foreground">{t("treasury.total")}</p>
             <span className="rounded-xl bg-primary/10 p-2 text-primary">
               <Wallet className="size-5" />
             </span>
@@ -171,13 +177,13 @@ export function شاشة_الخزنة({
       {/* أدوات */}
       <div className="flex flex-wrap items-end gap-3">
         <الزر onClick={() => تعيين_نموذج({})}>
-          <Plus className="size-4" /> تسجيل حركة
+          <Plus className="size-4" /> {t("treasury.record")}
         </الزر>
         <div className="min-w-40 space-y-1.5">
-          <العنوان>تصفية: الحساب</العنوان>
+          <العنوان>{t("treasury.filter_account")}</العنوان>
           <قائمة_اختيار
             الخيارات={[
-              { القيمة: "", التسمية: "كل الحسابات" },
+              { القيمة: "", التسمية: t("treasury.all_accounts") },
               ...الحسابات.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية })),
             ]}
             القيمة={فلتر_حساب}
@@ -186,12 +192,12 @@ export function شاشة_الخزنة({
           />
         </div>
         <div className="min-w-40 space-y-1.5">
-          <العنوان>تصفية: النوع</العنوان>
+          <العنوان>{t("treasury.filter_type")}</العنوان>
           <قائمة_اختيار
             الخيارات={[
-              { القيمة: "", التسمية: "الكل" },
-              { القيمة: "INCOME", التسمية: "إيراد" },
-              { القيمة: "EXPENSE", التسمية: "مصروف" },
+              { القيمة: "", التسمية: t("common.all") },
+              { القيمة: "INCOME", التسمية: t("treasury.income") },
+              { القيمة: "EXPENSE", التسمية: t("treasury.expense") },
             ]}
             القيمة={فلتر_نوع}
             عند_التغيير={تعيين_فلتر_نوع}
@@ -204,10 +210,10 @@ export function شاشة_الخزنة({
         الأعمدة={أعمدة}
         البيانات={حركات_مصفّاة}
         مفتاح_الصف={(ص) => ص.id}
-        رسالة_فراغ="لا توجد حركات"
+        رسالة_فراغ={t("treasury.empty")}
         إجراءات_الصف={(ص) => (
           <div className="flex items-center justify-end gap-1">
-            {ص.مرتبط && <الشارة variant="navy">مرتبطة</الشارة>}
+            {ص.مرتبط && <الشارة variant="navy">{t("ledger.linked")}</الشارة>}
             <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
               <Pencil className="size-4" />
             </الزر>
@@ -231,8 +237,8 @@ export function شاشة_الخزنة({
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان="حذف الحركة"
-          الوصف="سيُعاد حساب رصيد الحساب والإجمالي."
+          العنوان={t("ledger.delete_title")}
+          الوصف={t("treasury.delete_desc")}
           عند_التأكيد={async () => {
             const r = await حذف_حركة_خزنة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
@@ -259,6 +265,7 @@ function حوار_حركة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [تاريخ, تعيين_تاريخ] = React.useState(الحركة ? الحركة.التاريخ.slice(0, 10) : اليوم());
   const [نوع, تعيين_نوع] = React.useState<TxnKind>(الحركة?.النوع ?? "INCOME");
   const [مبلغ, تعيين_مبلغ] = React.useState(الحركة ? String(الحركة.المبلغ) : "");
@@ -295,19 +302,19 @@ function حوار_حركة({
     <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
       <محتوى_الحوار>
         <رأس_الحوار>
-          <عنوان_الحوار>{الحركة ? "تعديل حركة خزنة" : "تسجيل حركة خزنة"}</عنوان_الحوار>
+          <عنوان_الحوار>{الحركة ? t("treasury.dlg.edit") : t("treasury.dlg.add")}</عنوان_الحوار>
         </رأس_الحوار>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <العنوان مطلوب>التاريخ</العنوان>
+            <العنوان مطلوب>{t("common.date")}</العنوان>
             <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>النوع</العنوان>
+            <العنوان مطلوب>{t("treasury.col.type")}</العنوان>
             <قائمة_اختيار
               الخيارات={[
-                { القيمة: "INCOME", التسمية: "إيراد" },
-                { القيمة: "EXPENSE", التسمية: "مصروف" },
+                { القيمة: "INCOME", التسمية: t("treasury.income") },
+                { القيمة: "EXPENSE", التسمية: t("treasury.expense") },
               ]}
               القيمة={نوع}
               عند_التغيير={(v) => تعيين_نوع(v as TxnKind)}
@@ -315,11 +322,11 @@ function حوار_حركة({
             />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>المبلغ</العنوان>
+            <العنوان مطلوب>{t("pay.amount")}</العنوان>
             <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>الحساب</العنوان>
+            <العنوان مطلوب>{t("treasury.col.account")}</العنوان>
             <قائمة_اختيار
               الخيارات={الحسابات.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }))}
               القيمة={حساب}
@@ -328,14 +335,14 @@ function حوار_حركة({
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان مطلوب>البيان</العنوان>
+            <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
             <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان>الطرف (اختياري)</العنوان>
+            <العنوان>{t("treasury.f.party_opt")}</العنوان>
             <قائمة_اختيار
               الخيارات={[
-                { القيمة: "", التسمية: "بدون" },
+                { القيمة: "", التسمية: t("common.none") },
                 ...الأطراف.map((p) => ({ القيمة: String(p.id), التسمية: p.name })),
               ]}
               القيمة={طرف}
@@ -343,7 +350,7 @@ function حوار_حركة({
             />
           </div>
           <div className="space-y-1.5">
-            <العنوان>طريقة الدفع</العنوان>
+            <العنوان>{t("pay.method")}</العنوان>
             <قائمة_اختيار
               الخيارات={[
                 { القيمة: "", التسمية: "—" },
@@ -357,10 +364,10 @@ function حوار_حركة({
         </div>
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
-            {جارٍ ? "جارٍ الحفظ…" : "حفظ"}
+            {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>
-            إلغاء
+            {t("common.cancel")}
           </الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
