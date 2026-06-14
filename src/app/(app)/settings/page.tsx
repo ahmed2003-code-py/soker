@@ -3,6 +3,7 @@ import { المستخدم_الحالي } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الإعدادات } from "./client";
 
 export const metadata = { title: "الإعدادات — سُكر" };
@@ -12,6 +13,7 @@ export default async function صفحة_الإعدادات() {
   const م = await المستخدم_الحالي();
   if (!م) redirect("/login");
   if (م.role !== "ADMIN") redirect("/");
+  const { t } = مترجم_الخادم();
 
   const [إعدادات, حسابات] = await Promise.all([
     prisma.setting.findMany(),
@@ -29,8 +31,8 @@ export default async function صفحة_الإعدادات() {
   return (
     <div>
       <ترويسة_الصفحة
-        العنوان="الإعدادات"
-        الوصف="بيانات الشركة، الشعار، حدود الخزنة، حد الائتمان الافتراضي، وطرق الدفع"
+        العنوان={t("nav.settings")}
+        الوصف={t("set.subtitle")}
       />
       <شاشة_الإعدادات
         القيم={{
