@@ -3,6 +3,7 @@ import * as React from "react";
 import { Upload, ScanLine, Loader2, Camera } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 type حقول_مستخرجة = Partial<{
   اسم_المدين: string;
@@ -26,6 +27,7 @@ export function حقول_OCR_للشيك({
   عند_الصورة: (base64: string, mime: string, نص?: string) => void;
 }) {
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [معاينة, تعيين_معاينة] = React.useState<string | null>(null);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [ملف, تعيين_ملف] = React.useState<File | null>(null);
@@ -34,7 +36,7 @@ export function حقول_OCR_للشيك({
   function اختر(f: File | null) {
     if (!f) return;
     if (f.size > 6 * 1024 * 1024) {
-      إشعار.خطأ("حجم الصورة كبير (الحد 6MB)");
+      إشعار.خطأ(t("ocr.too_large"));
       return;
     }
     تعيين_ملف(f);
@@ -49,7 +51,7 @@ export function حقول_OCR_للشيك({
 
   async function استخرج() {
     if (!ملف) {
-      إشعار.خطأ("اختر صورة الشيك أولاً");
+      إشعار.خطأ(t("ocr.choose_first"));
       return;
     }
     تعيين_جارٍ(true);
@@ -57,7 +59,7 @@ export function حقول_OCR_للشيك({
       const fd = new FormData();
       fd.append("image", ملف);
       const res = await fetch("/api/cheques/ocr", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("تعذّر الاستخراج");
+      if (!res.ok) throw new Error(t("ocr.failed"));
       const data = await res.json();
       const حقول: حقول_مستخرجة = {};
       for (const [ك, ق] of Object.entries(data.حقول ?? {})) {
@@ -68,11 +70,11 @@ export function حقول_OCR_للشيك({
       if (معاينة) عند_الصورة(معاينة, ملف.type, data.نص_OCR ?? "");
       const عدد = Object.keys(حقول).length;
       إشعار.نجاح(
-        عدد ? `تم استخراج ${عدد} حقل` : "لم يتم اكتشاف حقول واضحة",
-        "راجع البيانات وأكملها يدوياً"
+        عدد ? t("ocr.extracted", { count: عدد }) : t("ocr.none_detected"),
+        t("ocr.review_hint")
       );
     } catch (e) {
-      إشعار.خطأ((e as Error).message, "أكمل البيانات يدوياً");
+      إشعار.خطأ((e as Error).message, t("ocr.manual_hint"));
     } finally {
       تعيين_جارٍ(false);
     }
@@ -90,19 +92,19 @@ export function حقول_OCR_للشيك({
           onChange={(e) => اختر(e.target.files?.[0] ?? null)}
         />
         <الزر type="button" variant="outline" size="sm" onClick={() => مرجع.current?.click()}>
-          <Upload className="size-4" /> رفع صورة الشيك
+          <Upload className="size-4" /> {t("ocr.upload")}
         </الزر>
         <الزر type="button" variant="blue" size="sm" onClick={استخرج} disabled={!ملف || جارٍ}>
           {جارٍ ? <Loader2 className="size-4 animate-spin" /> : <ScanLine className="size-4" />}
-          استخراج تلقائي (OCR)
+          {t("ocr.extract")}
         </الزر>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Camera className="size-3.5" /> يمكن التقاط صورة بالكاميرا على الموبايل — أو تخطّي والإدخال يدوياً
+          <Camera className="size-3.5" /> {t("ocr.camera_hint")}
         </span>
       </div>
       {معاينة && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={معاينة} alt="معاينة الشيك" className="mt-3 max-h-40 rounded-lg border border-border" />
+        <img src={معاينة} alt={t("ocr.preview_alt")} className="mt-3 max-h-40 rounded-lg border border-border" />
       )}
     </div>
   );

@@ -3,11 +3,13 @@ import { ترويسة_الصفحة } from "@/components/page-header";
 import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الشيكات } from "./client";
 
 export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
+  const { t } = مترجم_الخادم();
   const [شيكات, تنبيهات] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
@@ -37,12 +39,12 @@ export default async function صفحة_الشيكات() {
 
   return (
     <div>
-      <ترويسة_الصفحة العنوان="الشيكات" الوصف="إدارة الشيكات والتجميع الشهري والتنبيهات" />
+      <ترويسة_الصفحة العنوان={t("cheque.title")} الوصف={t("cheque.subtitle")} />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <بطاقة_مؤشر العنوان="تستحق خلال 7 أيام" القيمة={تنبيهات.عدد_خلال_7} لون="warning" />
-        <بطاقة_مؤشر العنوان="تستحق هذا الشهر" القيمة={تنبيهات.عدد_هذا_الشهر} لون="navy" />
-        <بطاقة_مؤشر العنوان="متأخرة" القيمة={تنبيهات.عدد_متأخر} لون="danger" />
-        <بطاقة_مؤشر العنوان="إجمالي المستحق" القيمة={<نص_مبلغ القيمة={تنبيهات.إجمالي_المستحق} />} لون="navy" />
+        <بطاقة_مؤشر العنوان={t("cheque.kpi.due7")} القيمة={تنبيهات.عدد_خلال_7} لون="warning" />
+        <بطاقة_مؤشر العنوان={t("cheque.kpi.due_month")} القيمة={تنبيهات.عدد_هذا_الشهر} لون="navy" />
+        <بطاقة_مؤشر العنوان={t("cheque.kpi.overdue")} القيمة={تنبيهات.عدد_متأخر} لون="danger" />
+        <بطاقة_مؤشر العنوان={t("cheque.kpi.total_due")} القيمة={<نص_مبلغ القيمة={تنبيهات.إجمالي_المستحق} />} لون="navy" />
       </div>
       <شاشة_الشيكات البيانات={بيانات} />
     </div>

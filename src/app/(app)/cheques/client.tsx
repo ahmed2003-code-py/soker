@@ -28,9 +28,16 @@ import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
-import { تسمية_حالة_الشيك, خيارات_من } from "@/lib/enums";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
 import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك } from "./actions";
+
+const حالات_الشيك = ["PENDING", "COLLECTED", "BOUNCED"] as const;
+const لون_الحالة: Record<ChequeStatus, "warning" | "success" | "danger"> = {
+  PENDING: "warning",
+  COLLECTED: "success",
+  BOUNCED: "danger",
+};
 
 export type شيك = {
   id: number;
@@ -50,15 +57,17 @@ export type شيك = {
 function مفتاح_شهر(iso: string) {
   return iso.slice(0, 7);
 }
-const أشهر_ع = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-function اسم_شهر(iso: string) {
+function اسم_شهر(iso: string, لغة: "ar" | "en") {
   const d = new Date(iso);
-  return `${أشهر_ع[d.getMonth()]} ${d.getFullYear()}`;
+  const شهر = new Intl.DateTimeFormat(لغة === "ar" ? "ar" : "en", { month: "long" }).format(d);
+  return `${شهر} ${d.getFullYear()}`;
 }
 
 export function شاشة_الشيكات({ البيانات }: { البيانات: شيك[] }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t, لغة } = استخدام_اللغة();
+  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
   const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
 
@@ -75,20 +84,20 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
   }, [البيانات]);
 
   const أعمدة: عمود<شيك>[] = [
-    { المفتاح: "اسم_المدين", العنوان: "اسم المدين", قابل_للفرز: true },
+    { المفتاح: "اسم_المدين", العنوان: t("cheque.col.drawer"), قابل_للفرز: true },
     {
       المفتاح: "المبلغ",
-      العنوان: "المبلغ",
+      العنوان: t("pay.amount"),
       محاذاة: "end",
       قيمة: (ص) => ص.المبلغ,
       قابل_للفرز: true,
       خلية: (ص) => <نص_مبلغ القيمة={ص.المبلغ} />,
     },
-    { المفتاح: "المستفيد", العنوان: "المستفيد", خلية: (ص) => ص.المستفيد || "—", مخفي_موبايل: true },
-    { المفتاح: "اسم_البنك", العنوان: "البنك", خلية: (ص) => ص.اسم_البنك || "—", مخفي_موبايل: true },
+    { المفتاح: "المستفيد", العنوان: t("cheque.col.beneficiary"), خلية: (ص) => ص.المستفيد || "—", مخفي_موبايل: true },
+    { المفتاح: "اسم_البنك", العنوان: t("cheque.col.bank"), خلية: (ص) => ص.اسم_البنك || "—", مخفي_موبايل: true },
     {
       المفتاح: "تاريخ_الاستحقاق",
-      العنوان: "الاستحقاق",
+      العنوان: t("cheque.col.due"),
       قابل_للفرز: true,
       قيمة: (ص) => ص.تاريخ_الاستحقاق,
       خلية: (ص) => (
@@ -99,18 +108,18 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
     },
     {
       المفتاح: "رقم_الشيك",
-      العنوان: "رقم الشيك",
+      العنوان: t("cheque.col.number"),
       خلية: (ص) => <span className="ltr-nums">{ص.رقم_الشيك || "—"}</span>,
       مخفي_موبايل: true,
     },
     {
       المفتاح: "الحالة",
-      العنوان: "الحالة",
+      العنوان: t("cheque.col.status"),
       خلية: (ص) =>
         ص.متأخر ? (
-          <الشارة variant="danger">متأخر</الشارة>
+          <الشارة variant="danger">{t("cheque.status.overdue")}</الشارة>
         ) : (
-          <شارة_حالة الحالة={تسمية_حالة_الشيك[ص.الحالة]} />
+          <شارة_حالة الحالة={t(`cheque.status.${ص.الحالة}` as const)} متغيّر={لون_الحالة[ص.الحالة]} />
         ),
     },
   ];
@@ -120,18 +129,18 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
       الأعمدة={أعمدة}
       البيانات={بيانات}
       مفتاح_الصف={(ص) => ص.id}
-      نص_البحث="ابحث بالاسم/البنك/الرقم…"
-      رسالة_فراغ="لا توجد شيكات"
+      نص_البحث={t("cheque.search")}
+      رسالة_فراغ={t("cheque.empty")}
       إجراءات_الصف={(ص) => (
         <div className="flex justify-end gap-1">
           {ص.لها_صورة && (
-            <a href={`/api/cheques/${ص.id}/image`} target="_blank" rel="noreferrer" title="عرض الصورة">
+            <a href={`/api/cheques/${ص.id}/image`} target="_blank" rel="noreferrer" title={t("cheque.view_image")}>
               <الزر size="sm" variant="ghost"><ImageIcon className="size-4" /></الزر>
             </a>
           )}
           <قائمة_اختيار
             className="h-8 w-28"
-            الخيارات={خيارات_من(تسمية_حالة_الشيك)}
+            الخيارات={خيارات_الحالة}
             القيمة={ص.الحالة}
             قابل_للبحث={false}
             عند_التغيير={async (v) => {
@@ -156,17 +165,17 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
     <div className="space-y-4">
       <div className="flex justify-end">
         <الزر onClick={() => تعيين_نموذج({})}>
-          <Plus className="size-4" /> إضافة شيك
+          <Plus className="size-4" /> {t("cheque.add")}
         </الزر>
       </div>
 
       <التبويبات defaultValue="الكل">
         <قائمة_التبويبات>
-          <زر_تبويب value="الكل">الكل ({البيانات.length})</زر_تبويب>
+          <زر_تبويب value="الكل">{t("common.all")} ({البيانات.length})</زر_تبويب>
           {الأشهر.map(([ك, ح]) => (
             <زر_تبويب key={ك} value={ك}>
-              {اسم_شهر(ك + "-01")} ({ح.عدد}) —{" "}
-              {ح.إجمالي.toLocaleString("en-US")} ج.م
+              {اسم_شهر(ك + "-01", لغة)} ({ح.عدد}) —{" "}
+              {ح.إجمالي.toLocaleString("en-US")} {t("common.currency")}
             </زر_تبويب>
           ))}
         </قائمة_التبويبات>
@@ -183,7 +192,7 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={`حذف شيك ${حذف.اسم_المدين}`}
+          العنوان={t("cheque.delete_title", { name: حذف.اسم_المدين })}
           عند_التأكيد={async () => {
             const r = await حذف_شيك(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
@@ -198,6 +207,8 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
 export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: شيك; عند_الإغلاق: () => void }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
+  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
   const [ق, تعيين] = React.useState({
     اسم_المدين: شيك?.اسم_المدين ?? "",
     المبلغ: شيك ? String(شيك.المبلغ) : "",
@@ -233,7 +244,7 @@ export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: ش
     <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
       <محتوى_الحوار className="max-w-2xl">
         <رأس_الحوار>
-          <عنوان_الحوار>{شيك ? "تعديل شيك" : "إضافة شيك"}</عنوان_الحوار>
+          <عنوان_الحوار>{شيك ? t("cheque.dlg.edit") : t("cheque.dlg.add")}</عنوان_الحوار>
         </رأس_الحوار>
 
         {!شيك && (
@@ -255,36 +266,36 @@ export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: ش
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="اسم المدين" مطلوب value={ق.اسم_المدين} onChange={(v) => حدّث("اسم_المدين", v)} autoFocus />
-          <Field label="المبلغ" مطلوب value={ق.المبلغ} onChange={(v) => حدّث("المبلغ", v)} رقمي />
-          <Field label="المستفيد" value={ق.المستفيد} onChange={(v) => حدّث("المستفيد", v)} />
-          <Field label="محوّل من" value={ق.محول_من} onChange={(v) => حدّث("محول_من", v)} />
-          <Field label="اسم البنك" value={ق.اسم_البنك} onChange={(v) => حدّث("اسم_البنك", v)} />
+          <Field label={t("cheque.col.drawer")} مطلوب value={ق.اسم_المدين} onChange={(v) => حدّث("اسم_المدين", v)} autoFocus />
+          <Field label={t("pay.amount")} مطلوب value={ق.المبلغ} onChange={(v) => حدّث("المبلغ", v)} رقمي />
+          <Field label={t("cheque.col.beneficiary")} value={ق.المستفيد} onChange={(v) => حدّث("المستفيد", v)} />
+          <Field label={t("cheque.f.transferred_from")} value={ق.محول_من} onChange={(v) => حدّث("محول_من", v)} />
+          <Field label={t("cheque.col.bank")} value={ق.اسم_البنك} onChange={(v) => حدّث("اسم_البنك", v)} />
           <div className="space-y-1.5">
-            <العنوان مطلوب>تاريخ الاستحقاق</العنوان>
+            <العنوان مطلوب>{t("cheque.col.due")}</العنوان>
             <الحقل type="date" value={ق.تاريخ_الاستحقاق} onChange={(e) => حدّث("تاريخ_الاستحقاق", e.target.value)} />
           </div>
-          <Field label="رقم الشيك" value={ق.رقم_الشيك} onChange={(v) => حدّث("رقم_الشيك", v)} />
+          <Field label={t("cheque.col.number")} value={ق.رقم_الشيك} onChange={(v) => حدّث("رقم_الشيك", v)} />
           <div className="space-y-1.5">
-            <العنوان>الحالة</العنوان>
+            <العنوان>{t("cheque.col.status")}</العنوان>
             <قائمة_اختيار
-              الخيارات={خيارات_من(تسمية_حالة_الشيك)}
+              الخيارات={خيارات_الحالة}
               القيمة={ق.الحالة}
               عند_التغيير={(v) => حدّث("الحالة", v)}
               قابل_للبحث={false}
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>ملاحظات</العنوان>
+            <العنوان>{t("party.f.notes")}</العنوان>
             <منطقة_نص value={ق.ملاحظات} onChange={(e) => حدّث("ملاحظات", e.target.value)} />
           </div>
         </div>
 
         <تذييل_الحوار>
           <الزر variant="success" onClick={احفظ} disabled={جارٍ}>
-            {جارٍ ? "جارٍ الحفظ…" : "حفظ"}
+            {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
-          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>{t("common.cancel")}</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>
