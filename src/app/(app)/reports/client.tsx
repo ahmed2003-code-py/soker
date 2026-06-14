@@ -14,6 +14,7 @@ import { العملة } from "@/lib/money";
 import { تنسيق_تاريخ } from "@/lib/date";
 import { تصدير_إكسل, type عمود_تصدير } from "@/lib/export";
 import { قائمة_التقارير, type نوع_تقرير } from "@/lib/reports";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 type قيم_الفلاتر = {
   من: string;
@@ -50,6 +51,7 @@ function يقبل_فلتر_عميل(ن: نوع_تقرير | ""): boolean {
 export function شاشة_التقارير(props: الخصائص) {
   const { النوع, القيم, العملاء, الموردون, حسابات_الخزنة, البيانات } = props;
   const router = useRouter();
+  const { t } = استخدام_اللغة();
   const [نوع, تعيين_نوع] = React.useState<نوع_تقرير | "">(النوع);
   const [من, تعيين_من] = React.useState(القيم.من);
   const [إلى, تعيين_إلى] = React.useState(القيم.إلى);
@@ -113,7 +115,7 @@ export function شاشة_التقارير(props: الخصائص) {
     <div className="space-y-5">
       {/* اختيار التقرير */}
       <div className="card-soft p-4 no-print">
-        <العنوان>اختر التقرير</العنوان>
+        <العنوان>{t("rep.choose")}</العنوان>
         <div className="mt-3 space-y-4">
           {مجموعات.map(([م, ت]) => (
             <div key={م}>
@@ -146,21 +148,21 @@ export function شاشة_التقارير(props: الخصائص) {
         <div className="card-soft no-print grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
           {يحتاج_ط && (
             <div className="space-y-1.5 lg:col-span-2">
-              <العنوان مطلوب>{يحتاج_ط === "SUPPLIER" ? "المورد" : "العميل"}</العنوان>
+              <العنوان مطلوب>{يحتاج_ط === "SUPPLIER" ? t("rep.supplier") : t("rep.customer")}</العنوان>
               <قائمة_اختيار
                 الخيارات={أطراف_فلتر.map((p) => ({ القيمة: String(p.id), التسمية: p.name }))}
                 القيمة={طرف}
                 عند_التغيير={تعيين_طرف}
-                نص_بديل="اختر…"
+                نص_بديل={t("rep.pick")}
               />
             </div>
           )}
           {يحتاج_حساب(نوع) && (
             <div className="space-y-1.5">
-              <العنوان>الحساب</العنوان>
+              <العنوان>{t("rep.account")}</العنوان>
               <قائمة_اختيار
                 الخيارات={[
-                  { القيمة: "", التسمية: "كل الحسابات" },
+                  { القيمة: "", التسمية: t("rep.all_accounts") },
                   ...حسابات_الخزنة.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية })),
                 ]}
                 القيمة={حساب}
@@ -171,10 +173,10 @@ export function شاشة_التقارير(props: الخصائص) {
           )}
           {يقبل_عميل && (
             <div className="space-y-1.5 lg:col-span-2">
-              <العنوان>العميل (اختياري)</العنوان>
+              <العنوان>{t("rep.customer_opt")}</العنوان>
               <قائمة_اختيار
                 الخيارات={[
-                  { القيمة: "", التسمية: "كل العملاء" },
+                  { القيمة: "", التسمية: t("rep.all_customers") },
                   ...العملاء.map((p) => ({ القيمة: String(p.id), التسمية: p.name })),
                 ]}
                 القيمة={طرف}
@@ -185,27 +187,27 @@ export function شاشة_التقارير(props: الخصائص) {
           {يحتاج_تاريخ(نوع) && (
             <>
               <div className="space-y-1.5">
-                <العنوان>من تاريخ</العنوان>
+                <العنوان>{t("rep.from")}</العنوان>
                 <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <العنوان>إلى تاريخ</العنوان>
+                <العنوان>{t("rep.to")}</العنوان>
                 <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
               </div>
             </>
           )}
           <div className="flex items-end gap-2">
             <الزر onClick={طبّق} disabled={فلاتر_ناقصة}>
-              <Search className="size-4" /> عرض
+              <Search className="size-4" /> {t("rep.show")}
             </الزر>
             <الزر variant="outline" onClick={امسح}>
-              مسح
+              {t("rep.clear")}
             </الزر>
           </div>
         </div>
       )}
 
-      {!نوع && <حالة_فارغة العنوان="اختر تقريراً للعرض" />}
+      {!نوع && <حالة_فارغة العنوان={t("rep.empty_choose")} />}
 
       {/* النتيجة */}
       {نوع && البيانات != null && (
@@ -213,8 +215,8 @@ export function شاشة_التقارير(props: الخصائص) {
       )}
       {نوع && البيانات == null && يحتاج_طرف(نوع) && !طرف && (
         <حالة_فارغة
-          العنوان="فلتر مطلوب"
-          الوصف={`اختر ${يحتاج_طرف(نوع) === "SUPPLIER" ? "المورد" : "العميل"} لعرض التقرير.`}
+          العنوان={t("rep.filter_required")}
+          الوصف={يحتاج_طرف(نوع) === "SUPPLIER" ? t("rep.pick_supplier_to_view") : t("rep.pick_customer_to_view")}
         />
       )}
     </div>
@@ -231,15 +233,16 @@ function أزرار_التصدير({
   العنوان: string;
   عند_التصدير: () => void;
 }) {
+  const { t } = استخدام_اللغة();
   return (
     <div className="no-print flex flex-wrap items-center justify-between gap-2">
       <p className="text-base font-semibold text-foreground">{العنوان}</p>
       <div className="flex gap-2">
         <الزر variant="outline" onClick={() => window.print()}>
-          <Printer className="size-4" /> طباعة / PDF
+          <Printer className="size-4" /> {t("inv.print")}
         </الزر>
         <الزر variant="success" onClick={عند_التصدير}>
-          <FileSpreadsheet className="size-4" /> تصدير Excel
+          <FileSpreadsheet className="size-4" /> {t("rep.export_excel")}
         </الزر>
       </div>
     </div>
@@ -258,14 +261,15 @@ function نتيجة_التقرير({
   البيانات: unknown;
   الفلاتر: { من: string; إلى: string };
 }) {
+  const { t } = استخدام_اللغة();
   const فترة =
     الفلاتر.من && الفلاتر.إلى
-      ? `الفترة: ${تنسيق_تاريخ(الفلاتر.من)} — ${تنسيق_تاريخ(الفلاتر.إلى)}`
+      ? t("rep.period.range", { from: تنسيق_تاريخ(الفلاتر.من), to: تنسيق_تاريخ(الفلاتر.إلى) })
       : الفلاتر.من
-        ? `من ${تنسيق_تاريخ(الفلاتر.من)}`
+        ? t("rep.period.from", { from: تنسيق_تاريخ(الفلاتر.من) })
         : الفلاتر.إلى
-          ? `حتى ${تنسيق_تاريخ(الفلاتر.إلى)}`
-          : "كل الفترات";
+          ? t("rep.period.to", { to: تنسيق_تاريخ(الفلاتر.إلى) })
+          : t("rep.period.all");
 
   if (النوع === "كشف_عميل" || النوع === "كشف_مورد") {
     return <كشف_حساب البيانات={البيانات as KashfData} فترة={فترة} />;

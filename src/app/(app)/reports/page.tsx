@@ -16,6 +16,7 @@ import {
 import { شاشة_التقارير } from "./client";
 import { TxnKind } from "@prisma/client";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 
 export const metadata = { title: "التقارير — سُكر" };
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function صفحة_التقارير({
 }: {
   searchParams: المعاملات;
 }) {
+  const { t } = مترجم_الخادم();
   const النوع = (searchParams.نوع ?? "") as نوع_تقرير | "";
   const ف: فلاتر = {
     من: تحويل_تاريخ(searchParams.من),
@@ -89,8 +91,8 @@ export default async function صفحة_التقارير({
   return (
     <div>
       <ترويسة_الصفحة
-        العنوان="التقارير"
-        الوصف="مركز التقارير — تصفية، طباعة، تصدير PDF/Excel"
+        العنوان={t("rep.title")}
+        الوصف={t("rep.subtitle")}
       />
       <شاشة_التقارير
         النوع={النوع}
