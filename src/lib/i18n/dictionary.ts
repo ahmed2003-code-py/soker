@@ -34,6 +34,18 @@ export const القاموس = {
     "role.ACCOUNTANT": "محاسب",
     "role.READONLY": "قراءة فقط",
 
+    /* ─── المستخدمون ─── */
+    "users.subtitle": "إدارة مستخدمي النظام وأدوارهم (للمديرين فقط)",
+    "users.add": "إضافة مستخدم",
+    "users.col.role": "الدور",
+    "users.col.status": "الحالة",
+    "users.status.active": "نشط",
+    "users.status.inactive": "متوقف",
+    "users.dlg.edit": "تعديل مستخدم",
+    "users.f.temp_password": "كلمة المرور المؤقتة",
+    "users.reset_title": "إعادة تعيين كلمة مرور {name}",
+    "users.reset_hint": "سيُطلب من المستخدم تغييرها عند أول دخول.",
+
     /* ─── شائع ─── */
     "common.save": "حفظ",
     "common.cancel": "إلغاء",
@@ -188,6 +200,29 @@ export const القاموس = {
     "action.UPDATE": "تعديل",
     "action.DELETE": "حذف",
 
+    /* ─── سجل العمليات وأنواع الكيانات ─── */
+    "activity.title": "سجل العمليات",
+    "activity.subtitle": "كل عملية في النظام: مَن ومتى وماذا — قابل للتصفية حسب الشخص ونوع الكيان والتاريخ",
+    "activity.person": "الشخص",
+    "activity.entity_type": "نوع الكيان",
+    "activity.from": "من تاريخ",
+    "activity.to": "إلى تاريخ",
+    "activity.apply": "تطبيق",
+    "activity.clear": "مسح",
+    "activity.col.action": "العملية",
+    "activity.col.entity": "الكيان",
+    "activity.col.id": "المعرّف",
+    "activity.col.by": "بواسطة",
+    "activity.empty": "لا توجد عمليات مطابقة",
+    "entity.الطرف": "الطرف",
+    "entity.الفاتورة": "الفاتورة",
+    "entity.بند_الفاتورة": "بند الفاتورة",
+    "entity.حركة_الحساب": "حركة الحساب",
+    "entity.حركة_الخزنة": "حركة الخزنة",
+    "entity.الشيك": "الشيك",
+    "entity.المستخدم": "المستخدم",
+    "entity.الإعدادات": "الإعدادات",
+
     /* ─── البحث الموحّد ─── */
     "search.placeholder": "بحث موحّد… (عملاء، فواتير، شيكات)",
     "search.no_results": "لا نتائج",
@@ -317,6 +352,18 @@ export const القاموس = {
     "role.ADMIN": "Admin",
     "role.ACCOUNTANT": "Accountant",
     "role.READONLY": "Read only",
+
+    /* ─── users ─── */
+    "users.subtitle": "Manage system users and their roles (admins only)",
+    "users.add": "Add user",
+    "users.col.role": "Role",
+    "users.col.status": "Status",
+    "users.status.active": "Active",
+    "users.status.inactive": "Inactive",
+    "users.dlg.edit": "Edit user",
+    "users.f.temp_password": "Temporary password",
+    "users.reset_title": "Reset password for {name}",
+    "users.reset_hint": "The user will be asked to change it on first login.",
 
     /* ─── common ─── */
     "common.save": "Save",
@@ -471,6 +518,29 @@ export const القاموس = {
     "action.CREATE": "Created",
     "action.UPDATE": "Updated",
     "action.DELETE": "Deleted",
+
+    /* ─── activity log & entity types ─── */
+    "activity.title": "Activity log",
+    "activity.subtitle": "Every action in the system: who, when and what — filter by person, entity type and date",
+    "activity.person": "Person",
+    "activity.entity_type": "Entity type",
+    "activity.from": "From date",
+    "activity.to": "To date",
+    "activity.apply": "Apply",
+    "activity.clear": "Clear",
+    "activity.col.action": "Action",
+    "activity.col.entity": "Entity",
+    "activity.col.id": "ID",
+    "activity.col.by": "By",
+    "activity.empty": "No matching actions",
+    "entity.الطرف": "Party",
+    "entity.الفاتورة": "Invoice",
+    "entity.بند_الفاتورة": "Invoice line",
+    "entity.حركة_الحساب": "Ledger entry",
+    "entity.حركة_الخزنة": "Treasury txn",
+    "entity.الشيك": "Cheque",
+    "entity.المستخدم": "User",
+    "entity.الإعدادات": "Settings",
 
     /* ─── unified search ─── */
     "search.placeholder": "Search… (customers, invoices, cheques)",

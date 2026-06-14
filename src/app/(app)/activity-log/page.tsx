@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { المستخدم_الحالي } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { سجل_العمليات_العرض } from "./client";
 
 export const metadata = { title: "سجل العمليات — سُكر" };
@@ -22,6 +23,7 @@ export default async function صفحة_سجل_العمليات({
   const م = await المستخدم_الحالي();
   if (!م) redirect("/login");
   if (م.role !== "ADMIN") redirect("/");
+  const { t } = مترجم_الخادم();
 
   const where: Prisma.ActivityLogWhereInput = {};
   if (searchParams.المستخدم) where.userId = Number(searchParams.المستخدم);
@@ -59,8 +61,8 @@ export default async function صفحة_سجل_العمليات({
   return (
     <div>
       <ترويسة_الصفحة
-        العنوان="سجل العمليات"
-        الوصف="كل عملية في النظام: مَن ومتى وماذا — قابل للتصفية حسب الشخص ونوع الكيان والتاريخ"
+        العنوان={t("activity.title")}
+        الوصف={t("activity.subtitle")}
       />
       <سجل_العمليات_العرض
         البيانات={بيانات}

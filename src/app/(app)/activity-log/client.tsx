@@ -9,7 +9,8 @@ import { العنوان } from "@/components/ui/label";
 import { الزر } from "@/components/ui/button";
 import { شارة_حالة } from "@/components/status-badge";
 import { نص_تاريخ } from "@/components/date-text";
-import { تسمية_العملية } from "@/lib/enums";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import type { مفتاح_ترجمة } from "@/lib/i18n";
 
 type صف = {
   id: number;
@@ -42,6 +43,7 @@ export function سجل_العمليات_العرض({
   القيم: { المستخدم?: string; النوع?: string; من?: string; إلى?: string };
 }) {
   const router = useRouter();
+  const { t } = استخدام_اللغة();
   const [مستخدم, تعيين_مستخدم] = React.useState(القيم.المستخدم ?? "");
   const [نوع, تعيين_نوع] = React.useState(القيم.النوع ?? "");
   const [من, تعيين_من] = React.useState(القيم.من ?? "");
@@ -66,18 +68,18 @@ export function سجل_العمليات_العرض({
   const أعمدة: عمود<صف>[] = [
     {
       المفتاح: "التاريخ",
-      العنوان: "التاريخ",
+      العنوان: t("common.date"),
       خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} مع_الوقت />,
       قيمة: (ص) => ص.التاريخ,
       قابل_للفرز: true,
     },
-    { المفتاح: "بواسطة", العنوان: "بواسطة", قابل_للفرز: true },
+    { المفتاح: "بواسطة", العنوان: t("activity.col.by"), قابل_للفرز: true },
     {
       المفتاح: "العملية",
-      العنوان: "العملية",
+      العنوان: t("activity.col.action"),
       خلية: (ص) => (
         <شارة_حالة
-          الحالة={تسمية_العملية[ص.العملية]}
+          الحالة={t(`action.${ص.العملية}` as const)}
           متغيّر={
             ص.العملية === "DELETE"
               ? "danger"
@@ -88,10 +90,14 @@ export function سجل_العمليات_العرض({
         />
       ),
     },
-    { المفتاح: "نوع_الكيان", العنوان: "الكيان" },
+    {
+      المفتاح: "نوع_الكيان",
+      العنوان: t("activity.col.entity"),
+      خلية: (ص) => t(`entity.${ص.نوع_الكيان}` as مفتاح_ترجمة),
+    },
     {
       المفتاح: "معرف_الكيان",
-      العنوان: "المعرّف",
+      العنوان: t("activity.col.id"),
       خلية: (ص) => <span className="ltr-nums">{ص.معرف_الكيان ?? "—"}</span>,
       مخفي_موبايل: true,
     },
@@ -101,10 +107,10 @@ export function سجل_العمليات_العرض({
     <div className="space-y-4">
       <div className="card-soft grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="space-y-1.5">
-          <العنوان>الشخص</العنوان>
+          <العنوان>{t("activity.person")}</العنوان>
           <قائمة_اختيار
             الخيارات={[
-              { القيمة: "", التسمية: "الكل" },
+              { القيمة: "", التسمية: t("common.all") },
               ...المستخدمون.map((u) => ({ القيمة: String(u.id), التسمية: u.name })),
             ]}
             القيمة={مستخدم}
@@ -112,28 +118,28 @@ export function سجل_العمليات_العرض({
           />
         </div>
         <div className="space-y-1.5">
-          <العنوان>نوع الكيان</العنوان>
+          <العنوان>{t("activity.entity_type")}</العنوان>
           <قائمة_اختيار
             الخيارات={[
-              { القيمة: "", التسمية: "الكل" },
-              ...أنواع_الكيانات.map((t) => ({ القيمة: t, التسمية: t.replace(/_/g, " ") })),
+              { القيمة: "", التسمية: t("common.all") },
+              ...أنواع_الكيانات.map((ك) => ({ القيمة: ك, التسمية: t(`entity.${ك}` as مفتاح_ترجمة) })),
             ]}
             القيمة={نوع}
             عند_التغيير={تعيين_نوع}
           />
         </div>
         <div className="space-y-1.5">
-          <العنوان>من تاريخ</العنوان>
+          <العنوان>{t("activity.from")}</العنوان>
           <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <العنوان>إلى تاريخ</العنوان>
+          <العنوان>{t("activity.to")}</العنوان>
           <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
         </div>
         <div className="flex items-end gap-2">
-          <الزر onClick={طبّق}>تطبيق</الزر>
+          <الزر onClick={طبّق}>{t("activity.apply")}</الزر>
           <الزر variant="outline" onClick={امسح}>
-            مسح
+            {t("activity.clear")}
           </الزر>
         </div>
       </div>
@@ -142,7 +148,7 @@ export function سجل_العمليات_العرض({
         الأعمدة={أعمدة}
         البيانات={البيانات}
         مفتاح_الصف={(ص) => ص.id}
-        رسالة_فراغ="لا توجد عمليات مطابقة"
+        رسالة_فراغ={t("activity.empty")}
       />
     </div>
   );
