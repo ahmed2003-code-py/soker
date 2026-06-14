@@ -20,6 +20,7 @@ import { نص_تاريخ } from "@/components/date-text";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import { فلتر_فترة } from "@/components/date-filter";
 import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة } from "./actions";
 
 export type حركة = {
@@ -55,6 +56,15 @@ export function حركات_الطرف({
   const [دفعة, تعيين_دفعة] = React.useState(false);
   const [يدوية, تعيين_يدوية] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
+  const [من, تعيين_من] = React.useState("");
+  const [إلى, تعيين_إلى] = React.useState("");
+
+  const حركات_معروضة = الحركات.filter((ح) => {
+    const d = ح.التاريخ.slice(0, 10);
+    if (من && d < من) return false;
+    if (إلى && d > إلى) return false;
+    return true;
+  });
 
   const أعمدة: عمود<حركة>[] = [
     {
@@ -99,19 +109,22 @@ export function حركات_الطرف({
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap justify-end gap-2">
-        <الزر variant="success" onClick={() => تعيين_دفعة(true)}>
-          <HandCoins className="size-4" />
-          {الطرف.النوع === "CUSTOMER" ? t("ledger.collect") : t("ledger.disburse")}
-        </الزر>
-        <الزر variant="outline" onClick={() => تعيين_يدوية(true)}>
-          <Plus className="size-4" /> {t("ledger.manual")}
-        </الزر>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <فلتر_فترة من={من} إلى={إلى} عند_التغيير={(م, ن) => { تعيين_من(م); تعيين_إلى(ن); }} />
+        <div className="flex flex-wrap gap-2">
+          <الزر variant="success" onClick={() => تعيين_دفعة(true)}>
+            <HandCoins className="size-4" />
+            {الطرف.النوع === "CUSTOMER" ? t("ledger.collect") : t("ledger.disburse")}
+          </الزر>
+          <الزر variant="outline" onClick={() => تعيين_يدوية(true)}>
+            <Plus className="size-4" /> {t("ledger.manual")}
+          </الزر>
+        </div>
       </div>
 
       <جدول_بيانات
         الأعمدة={أعمدة}
-        البيانات={الحركات}
+        البيانات={حركات_معروضة}
         مفتاح_الصف={(ص) => ص.id}
         بحث={false}
         رسالة_فراغ={t("ledger.empty")}

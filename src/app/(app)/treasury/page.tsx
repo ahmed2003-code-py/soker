@@ -12,7 +12,6 @@ export default async function صفحة_الخزنة() {
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
     prisma.treasuryTxn.findMany({
       orderBy: [{ date: "desc" }, { id: "desc" }],
-      take: 500,
       include: {
         account: { select: { type: true } },
         party: { select: { name: true } },

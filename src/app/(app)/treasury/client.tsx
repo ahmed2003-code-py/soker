@@ -32,6 +32,7 @@ import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import { فلتر_فترة } from "@/components/date-filter";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
 
 type حساب = {
@@ -82,14 +83,19 @@ export function شاشة_الخزنة({
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
   const [فلتر_نوع, تعيين_فلتر_نوع] = React.useState("");
+  const [من, تعيين_من] = React.useState("");
+  const [إلى, تعيين_إلى] = React.useState("");
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
-  const حركات_مصفّاة = الحركات.filter(
-    (ح) =>
-      (!فلتر_حساب || ح.معرف_الحساب === Number(فلتر_حساب)) &&
-      (!فلتر_نوع || ح.النوع === فلتر_نوع)
-  );
+  const حركات_مصفّاة = الحركات.filter((ح) => {
+    if (فلتر_حساب && ح.معرف_الحساب !== Number(فلتر_حساب)) return false;
+    if (فلتر_نوع && ح.النوع !== فلتر_نوع) return false;
+    const d = ح.التاريخ.slice(0, 10);
+    if (من && d < من) return false;
+    if (إلى && d > إلى) return false;
+    return true;
+  });
 
   const أعمدة: عمود<حركة>[] = [
     {
@@ -204,6 +210,12 @@ export function شاشة_الخزنة({
             قابل_للبحث={false}
           />
         </div>
+        <فلتر_فترة
+          من={من}
+          إلى={إلى}
+          عند_التغيير={(م, ن) => { تعيين_من(م); تعيين_إلى(ن); }}
+          className="w-full border-t border-border pt-3 lg:w-auto lg:border-0 lg:pt-0"
+        />
       </div>
 
       <جدول_بيانات
