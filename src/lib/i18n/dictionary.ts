@@ -173,6 +173,25 @@ export const القاموس = {
     "dt.prev": "السابق",
     "dt.next": "التالي",
 
+    /* ─── حوار التأكيد ─── */
+    "confirm.title": "تأكيد العملية",
+    "confirm.desc": "هل أنت متأكد؟ لا يمكن التراجع بسهولة عن هذا الإجراء.",
+    "confirm.confirm": "تأكيد",
+    "confirm.processing": "جارٍ التنفيذ…",
+
+    /* ─── سجل التغييرات والعمليات ─── */
+    "history.title": "سجل التغييرات",
+    "history.desc": "كل عملية على هذا السجل: مَن ومتى وماذا.",
+    "history.empty": "لا توجد عمليات مسجّلة بعد.",
+    "history.by": "بواسطة {name}",
+    "action.CREATE": "إضافة",
+    "action.UPDATE": "تعديل",
+    "action.DELETE": "حذف",
+
+    /* ─── البحث الموحّد ─── */
+    "search.placeholder": "بحث موحّد… (عملاء، فواتير، شيكات)",
+    "search.no_results": "لا نتائج",
+
     /* ─── الفواتير ─── */
     "inv.title": "الفواتير",
     "inv.subtitle": "إنشاء وإدارة الفواتير",
@@ -407,6 +426,25 @@ export const القاموس = {
     "dt.records_page": "{count} records — page {current} of {total}",
     "dt.prev": "Previous",
     "dt.next": "Next",
+
+    /* ─── confirm dialog ─── */
+    "confirm.title": "Confirm action",
+    "confirm.desc": "Are you sure? This action cannot be easily undone.",
+    "confirm.confirm": "Confirm",
+    "confirm.processing": "Processing…",
+
+    /* ─── change history & actions ─── */
+    "history.title": "Change history",
+    "history.desc": "Every action on this record: who, when and what.",
+    "history.empty": "No actions recorded yet.",
+    "history.by": "by {name}",
+    "action.CREATE": "Created",
+    "action.UPDATE": "Updated",
+    "action.DELETE": "Deleted",
+
+    /* ─── unified search ─── */
+    "search.placeholder": "Search… (customers, invoices, cheques)",
+    "search.no_results": "No results",
 
     /* ─── invoices ─── */
     "inv.title": "Invoices",

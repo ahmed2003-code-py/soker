@@ -3,6 +3,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
 import { الحقل } from "@/components/ui/input";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 type عنصر = { id: number; عنوان: string; وصف: string; رابط: string };
 type مجموعة = { النوع: string; العناصر: عنصر[] };
@@ -10,6 +11,7 @@ type مجموعة = { النوع: string; العناصر: عنصر[] };
 /** البحث الموحّد في الشريط العلوي: debounce + نتائج مجمّعة + تنقّل بلوحة المفاتيح. */
 export function البحث_الموحد() {
   const router = useRouter();
+  const { t } = استخدام_اللغة();
   const [q, setQ] = React.useState("");
   const [مجموعات, setG] = React.useState<مجموعة[]>([]);
   const [مفتوح, setOpen] = React.useState(false);
@@ -82,13 +84,13 @@ export function البحث_الموحد() {
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={مفاتيح}
         onFocus={() => مجموعات.length && setOpen(true)}
-        placeholder="بحث موحّد… (عملاء، فواتير، شيكات)"
+        placeholder={t("search.placeholder")}
         className="pe-9"
       />
       {مفتوح && (
         <div className="absolute inset-x-0 top-12 z-50 max-h-96 overflow-y-auto rounded-xl border border-border bg-card shadow-card">
           {مجموعات.length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted-foreground">لا نتائج</p>
+            <p className="p-4 text-center text-sm text-muted-foreground">{t("search.no_results")}</p>
           ) : (
             مجموعات.map((g) => (
               <div key={g.النوع} className="p-1">
