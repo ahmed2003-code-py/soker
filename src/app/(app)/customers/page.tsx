@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { قائمة_الأطراف } from "../_parties/list-client";
 
 export const metadata = { title: "العملاء — سُكر" };
 
 export default async function صفحة_العملاء() {
+  const { t } = مترجم_الخادم();
   const أطراف = await prisma.party.findMany({
     where: { type: "CUSTOMER" },
     orderBy: { name: "asc" },
@@ -20,7 +22,7 @@ export default async function صفحة_العملاء() {
   }));
   return (
     <div>
-      <ترويسة_الصفحة العنوان="العملاء" الوصف="إدارة العملاء وكشوف حساباتهم" />
+      <ترويسة_الصفحة العنوان={t("party.customers.title")} الوصف={t("party.customers.subtitle")} />
       <قائمة_الأطراف النوع="CUSTOMER" البيانات={بيانات} />
     </div>
   );

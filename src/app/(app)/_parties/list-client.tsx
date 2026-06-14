@@ -19,6 +19,8 @@ import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import type { مفتاح_ترجمة } from "@/lib/i18n";
 import { إنشاء_طرف, تعديل_طرف, حذف_طرف } from "./actions";
 
 export type صف_طرف = {
@@ -32,15 +34,15 @@ export type صف_طرف = {
 };
 
 /** تسمية الرصيد للعرض (نسخة عميل من منطق lib/ledger) */
-function وصف(نوع: PartyType, رصيد: number) {
+function وصف(نوع: PartyType, رصيد: number): { مفتاح: مفتاح_ترجمة; لون: "danger" | "success" | "default" } {
   if (نوع === "CUSTOMER") {
-    if (رصيد > 0) return { نص: "مديونية", لون: "danger" as const };
-    if (رصيد < 0) return { نص: "دفعة مقدمة", لون: "success" as const };
+    if (رصيد > 0) return { مفتاح: "party.bal.debt", لون: "danger" };
+    if (رصيد < 0) return { مفتاح: "party.bal.advance", لون: "success" };
   } else {
-    if (رصيد > 0) return { نص: "مستحق للمورد", لون: "danger" as const };
-    if (رصيد < 0) return { نص: "دفعة مقدمة", لون: "success" as const };
+    if (رصيد > 0) return { مفتاح: "party.bal.payable", لون: "danger" };
+    if (رصيد < 0) return { مفتاح: "party.bal.advance", لون: "success" };
   }
-  return { نص: "مسدّد", لون: "default" as const };
+  return { مفتاح: "party.bal.settled", لون: "default" };
 }
 
 export function قائمة_الأطراف({
@@ -52,22 +54,24 @@ export function قائمة_الأطراف({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const أساس = النوع === "CUSTOMER" ? "/customers" : "/suppliers";
-  const مفرد = النوع === "CUSTOMER" ? "عميل" : "مورد";
+  const نص_الإضافة = النوع === "CUSTOMER" ? t("party.add_customer") : t("party.add_supplier");
+  const نص_الفراغ = النوع === "CUSTOMER" ? t("party.empty_customers") : t("party.empty_suppliers");
   const [نموذج, تعيين_نموذج] = React.useState<{ صف?: صف_طرف } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<صف_طرف | null>(null);
 
   const أعمدة: عمود<صف_طرف>[] = [
-    { المفتاح: "الاسم", العنوان: "الاسم", قابل_للفرز: true },
+    { المفتاح: "الاسم", العنوان: t("party.col.name"), قابل_للفرز: true },
     {
       المفتاح: "الهاتف",
-      العنوان: "الهاتف",
+      العنوان: t("party.col.phone"),
       خلية: (ص) => <span className="ltr-nums">{ص.الهاتف || "—"}</span>,
       مخفي_موبايل: true,
     },
     {
       المفتاح: "الرصيد",
-      العنوان: "الرصيد",
+      العنوان: t("party.col.balance"),
       قابل_للفرز: true,
       قيمة: (ص) => ص.الرصيد,
       محاذاة: "end",
@@ -76,7 +80,7 @@ export function قائمة_الأطراف({
         return (
           <div className="flex items-center justify-end gap-2">
             <نص_مبلغ القيمة={Math.abs(ص.الرصيد)} النوع={و.لون === "danger" ? "مصروف" : "محايد"} />
-            <الشارة variant={و.لون}>{و.نص}</الشارة>
+            <الشارة variant={و.لون}>{t(و.مفتاح)}</الشارة>
           </div>
         );
       },
@@ -87,7 +91,7 @@ export function قائمة_الأطراف({
     <>
       <div className="mb-4 flex justify-end">
         <الزر onClick={() => تعيين_نموذج({})}>
-          <Plus className="size-4" /> إضافة {مفرد}
+          <Plus className="size-4" /> {نص_الإضافة}
         </الزر>
       </div>
 
@@ -96,7 +100,7 @@ export function قائمة_الأطراف({
         البيانات={البيانات}
         مفتاح_الصف={(ص) => ص.id}
         عند_النقر={(ص) => router.push(`${أساس}/${ص.id}`)}
-        رسالة_فراغ={`لا يوجد ${مفرد === "عميل" ? "عملاء" : "موردون"} بعد`}
+        رسالة_فراغ={نص_الفراغ}
         إجراءات_الصف={(ص) => (
           <div className="flex justify-end gap-1">
             <الزر size="sm" variant="ghost" onClick={() => router.push(`${أساس}/${ص.id}`)}>
@@ -124,8 +128,8 @@ export function قائمة_الأطراف({
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={`حذف ${حذف.الاسم}`}
-          الوصف="لا يمكن حذف طرف له حركات أو فواتير."
+          العنوان={t("party.delete_title", { name: حذف.الاسم })}
+          الوصف={t("party.delete_desc")}
           عند_التأكيد={async () => {
             const r = await حذف_طرف(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
@@ -148,7 +152,10 @@ function نموذج_طرف({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
-  const مفرد = النوع === "CUSTOMER" ? "عميل" : "مورد";
+  const { t } = استخدام_اللغة();
+  const العنوان_النموذج = الصف
+    ? النوع === "CUSTOMER" ? t("party.edit_customer") : t("party.edit_supplier")
+    : النوع === "CUSTOMER" ? t("party.add_customer") : t("party.add_supplier");
   const [الاسم, تعيين_الاسم] = React.useState(الصف?.الاسم ?? "");
   const [الهاتف, تعيين_الهاتف] = React.useState(الصف?.الهاتف ?? "");
   const [العنوان_, تعيين_العنوان] = React.useState(الصف?.العنوان ?? "");
@@ -178,38 +185,36 @@ function نموذج_طرف({
     <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
       <محتوى_الحوار>
         <رأس_الحوار>
-          <عنوان_الحوار>
-            {الصف ? `تعديل ${مفرد}` : `إضافة ${مفرد}`}
-          </عنوان_الحوار>
+          <عنوان_الحوار>{العنوان_النموذج}</عنوان_الحوار>
         </رأس_الحوار>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان مطلوب>الاسم</العنوان>
+            <العنوان مطلوب>{t("party.col.name")}</العنوان>
             <الحقل autoFocus value={الاسم} onChange={(e) => تعيين_الاسم(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان>الهاتف</العنوان>
+            <العنوان>{t("party.col.phone")}</العنوان>
             <الحقل className="ltr-nums" value={الهاتف} onChange={(e) => تعيين_الهاتف(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان>حد الائتمان</العنوان>
+            <العنوان>{t("party.f.credit_limit")}</العنوان>
             <الحقل selectOnFocus value={حد} onChange={(e) => تعيين_حد(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>العنوان</العنوان>
+            <العنوان>{t("party.f.address")}</العنوان>
             <الحقل value={العنوان_} onChange={(e) => تعيين_العنوان(e.target.value)} />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>ملاحظات</العنوان>
+            <العنوان>{t("party.f.notes")}</العنوان>
             <منطقة_نص value={ملاحظات} onChange={(e) => تعيين_ملاحظات(e.target.value)} />
           </div>
         </div>
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
-            {جارٍ ? "جارٍ الحفظ…" : "حفظ"}
+            {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>
-            إلغاء
+            {t("common.cancel")}
           </الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
