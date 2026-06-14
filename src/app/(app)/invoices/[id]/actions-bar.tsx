@@ -7,6 +7,7 @@ import { الزر } from "@/components/ui/button";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حذف_فاتورة } from "../actions";
 
 export function شريط_إجراءات_الفاتورة({
@@ -18,31 +19,32 @@ export function شريط_إجراءات_الفاتورة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [حذف, تعيين_حذف] = React.useState(false);
   return (
     <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
       <الزر variant="outline" size="sm" onClick={() => router.push("/invoices")}>
-        <ArrowRight className="size-4" /> رجوع
+        <ArrowRight className="size-4" /> {t("inv.back")}
       </الزر>
       <div className="flex flex-wrap gap-2">
         <سجل_التغييرات النوع="الفاتورة" المعرف={المعرف} />
         <الزر variant="blue" onClick={() => window.print()}>
-          <Printer className="size-4" /> طباعة / PDF
+          <Printer className="size-4" /> {t("inv.print")}
         </الزر>
         <الزر variant="outline" asChild>
           <Link href={`/invoices/${المعرف}/edit`}>
-            <Pencil className="size-4" /> تعديل
+            <Pencil className="size-4" /> {t("common.edit")}
           </Link>
         </الزر>
         <الزر variant="danger" onClick={() => تعيين_حذف(true)}>
-          <Trash2 className="size-4" /> حذف
+          <Trash2 className="size-4" /> {t("common.delete")}
         </الزر>
       </div>
       <حوار_تأكيد
         مفتوح={حذف}
         عند_التغيير={تعيين_حذف}
-        العنوان={`حذف الفاتورة ${String(الرقم).padStart(7, "0")}`}
-        الوصف="سيتم عكس قيد العميل المرتبط."
+        العنوان={t("inv.delete_title", { number: String(الرقم).padStart(7, "0") })}
+        الوصف={t("inv.delete_desc")}
         عند_التأكيد={async () => {
           const r = await حذف_فاتورة(المعرف);
           if (!r.نجاح) return إشعار.خطأ(r.رسالة);

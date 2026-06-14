@@ -8,6 +8,7 @@ import { العنوان } from "@/components/ui/label";
 import { قائمة_اختيار } from "@/components/combobox";
 import { نص_مبلغ } from "@/components/money-text";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { إنشاء_فاتورة, تعديل_فاتورة } from "./actions";
 import { إنشاء_طرف } from "../_parties/actions";
 
@@ -41,6 +42,7 @@ export function نموذج_فاتورة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [عملاء, تعيين_عملاء] = React.useState(عملاء0);
   const [تصنيفات, تعيين_تصنيفات] = React.useState(تصنيفات0);
   const [عميل, تعيين_عميل] = React.useState<string>(
@@ -82,15 +84,15 @@ export function نموذج_فاتورة({
 
   async function أضف_عميل(الاسم: string) {
     const r = await إنشاء_طرف({ الاسم, النوع: "CUSTOMER" });
-    if (!r.نجاح || !r.بيانات) return إشعار.خطأ(r.رسالة || "تعذّر إضافة العميل");
+    if (!r.نجاح || !r.بيانات) return إشعار.خطأ(r.رسالة || t("inv.f.customer_add_err"));
     const جديد = { id: r.بيانات.id, name: الاسم, phone: null };
     تعيين_عملاء((س) => [...س, جديد]);
     تعيين_عميل(String(جديد.id));
-    إشعار.نجاح("تمت إضافة العميل");
+    إشعار.نجاح(t("inv.f.customer_added"));
   }
 
   async function احفظ() {
-    if (!عميل) return إشعار.خطأ("اختر العميل");
+    if (!عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
     تعيين_جارٍ(true);
     const payload = {
       معرف_العميل: Number(عميل),
@@ -120,7 +122,7 @@ export function نموذج_فاتورة({
       {/* الترويسة */}
       <div className="card-soft grid gap-4 p-5 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <العنوان مطلوب>العميل</العنوان>
+          <العنوان مطلوب>{t("inv.col.customer")}</العنوان>
           <قائمة_اختيار
             الخيارات={عملاء.map((c) => ({ القيمة: String(c.id), التسمية: c.name }))}
             القيمة={عميل}
@@ -130,16 +132,16 @@ export function نموذج_فاتورة({
               if (c?.phone && !هاتف) تعيين_هاتف(c.phone);
             }}
             عند_الإضافة={أضف_عميل}
-            تسمية_الإضافة="إضافة عميل"
-            نص_بديل="اختر العميل أو أضف جديداً"
+            تسمية_الإضافة={t("party.add_customer")}
+            نص_بديل={t("inv.f.pick_customer")}
           />
         </div>
         <div className="space-y-1.5">
-          <العنوان>الهاتف</العنوان>
+          <العنوان>{t("party.col.phone")}</العنوان>
           <الحقل className="ltr-nums" value={هاتف} onChange={(e) => تعيين_هاتف(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <العنوان مطلوب>التاريخ</العنوان>
+          <العنوان مطلوب>{t("common.date")}</العنوان>
           <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
         </div>
       </div>
@@ -147,21 +149,21 @@ export function نموذج_فاتورة({
       {/* البنود */}
       <div className="card-soft p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">البنود</h2>
+          <h2 className="text-lg font-semibold">{t("inv.f.items")}</h2>
           <الزر size="sm" variant="outline" onClick={أضف_بند}>
-            <Plus className="size-4" /> إضافة بند (Enter)
+            <Plus className="size-4" /> {t("inv.f.add_item")}
           </الزر>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border">
-                <th className="p-2 text-start">اللون</th>
-                <th className="p-2 text-start">التصنيف</th>
-                <th className="p-2 text-end">الكمية (عدد)</th>
-                <th className="p-2 text-end">الوزن (كجم)</th>
-                <th className="p-2 text-end">السعر/كجم</th>
-                <th className="p-2 text-end">المجموع</th>
+                <th className="p-2 text-start">{t("inv.f.color")}</th>
+                <th className="p-2 text-start">{t("inv.f.category")}</th>
+                <th className="p-2 text-end">{t("inv.f.qty_count")}</th>
+                <th className="p-2 text-end">{t("inv.f.weight_kg")}</th>
+                <th className="p-2 text-end">{t("inv.f.price_kg")}</th>
+                <th className="p-2 text-end">{t("inv.f.subtotal")}</th>
                 <th className="p-2"></th>
               </tr>
             </thead>
@@ -169,19 +171,19 @@ export function نموذج_فاتورة({
               {بنود.map((ب, i) => (
                 <tr key={i} className="border-b border-border/60">
                   <td className="p-1.5 min-w-32">
-                    <الحقل value={ب.اللون} onChange={(e) => حدّث(i, "اللون", e.target.value)} placeholder="اللون" />
+                    <الحقل value={ب.اللون} onChange={(e) => حدّث(i, "اللون", e.target.value)} placeholder={t("inv.f.color")} />
                   </td>
                   <td className="p-1.5 min-w-40">
                     <قائمة_اختيار
                       الخيارات={تصنيفات.map((c) => ({ القيمة: c, التسمية: c }))}
                       القيمة={ب.التصنيف}
                       عند_التغيير={(v) => حدّث(i, "التصنيف", v)}
-                      عند_الإضافة={(t) => {
-                        if (!تصنيفات.includes(t)) تعيين_تصنيفات((s) => [...s, t]);
-                        حدّث(i, "التصنيف", t);
+                      عند_الإضافة={(جديد) => {
+                        if (!تصنيفات.includes(جديد)) تعيين_تصنيفات((s) => [...s, جديد]);
+                        حدّث(i, "التصنيف", جديد);
                       }}
-                      تسمية_الإضافة="تصنيف جديد"
-                      نص_بديل="التصنيف"
+                      تسمية_الإضافة={t("inv.f.new_category")}
+                      نص_بديل={t("inv.f.category")}
                     />
                   </td>
                   <td className="p-1.5">
@@ -235,16 +237,16 @@ export function نموذج_فاتورة({
       {/* ملخص التجميع + الإجماليات */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card-soft p-5">
-          <h3 className="mb-3 font-semibold">ملخص حسب التصنيف</h3>
+          <h3 className="mb-3 font-semibold">{t("inv.f.summary_by_cat")}</h3>
           {تجميع.length === 0 ? (
-            <p className="text-sm text-muted-foreground">أدخل بنوداً لعرض التجميع.</p>
+            <p className="text-sm text-muted-foreground">{t("inv.f.enter_items")}</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="text-muted-foreground">
                 <tr className="border-b border-border">
-                  <th className="p-2 text-start">التصنيف</th>
-                  <th className="p-2 text-end">إجمالي العدد</th>
-                  <th className="p-2 text-end">إجمالي الوزن</th>
+                  <th className="p-2 text-start">{t("inv.f.category")}</th>
+                  <th className="p-2 text-end">{t("inv.f.total_count")}</th>
+                  <th className="p-2 text-end">{t("inv.col.total_weight")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,7 +254,7 @@ export function نموذج_فاتورة({
                   <tr key={ت} className="border-b border-border/60">
                     <td className="p-2">{ت}</td>
                     <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
-                    <td className="p-2 text-end ltr-nums">{ح.وزن.toFixed(2)} كجم</td>
+                    <td className="p-2 text-end ltr-nums">{ح.وزن.toFixed(2)} {t("inv.kg")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -260,22 +262,22 @@ export function نموذج_فاتورة({
           )}
         </div>
         <div className="card-soft space-y-2 p-5">
-          <h3 className="mb-3 font-semibold">الإجماليات</h3>
-          <div className="flex justify-between"><span className="text-muted-foreground">إجمالي العدد</span><span className="ltr-nums font-medium">{إجمالي_الكمية}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">إجمالي الوزن</span><span className="ltr-nums font-medium">{إجمالي_الوزن.toFixed(2)} كجم</span></div>
-          <div className="flex justify-between border-t border-border pt-2 text-lg"><span className="font-semibold">الإجمالي المالي</span><نص_مبلغ القيمة={الإجمالي_المالي} /></div>
+          <h3 className="mb-3 font-semibold">{t("inv.f.totals")}</h3>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.f.total_count")}</span><span className="ltr-nums font-medium">{إجمالي_الكمية}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.col.total_weight")}</span><span className="ltr-nums font-medium">{إجمالي_الوزن.toFixed(2)} {t("inv.kg")}</span></div>
+          <div className="flex justify-between border-t border-border pt-2 text-lg"><span className="font-semibold">{t("inv.f.financial_total")}</span><نص_مبلغ القيمة={الإجمالي_المالي} /></div>
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <العنوان>ملاحظات</العنوان>
+        <العنوان>{t("party.f.notes")}</العنوان>
         <منطقة_نص value={ملاحظات} onChange={(e) => تعيين_ملاحظات(e.target.value)} />
       </div>
 
       <div className="flex justify-end gap-2">
-        <الزر variant="outline" onClick={() => router.back()}>إلغاء</الزر>
+        <الزر variant="outline" onClick={() => router.back()}>{t("common.cancel")}</الزر>
         <الزر variant="success" onClick={احفظ} disabled={جارٍ}>
-          <Save className="size-4" /> {جارٍ ? "جارٍ الحفظ…" : "حفظ الفاتورة"}
+          <Save className="size-4" /> {جارٍ ? t("common.saving") : t("inv.f.save")}
         </الزر>
       </div>
     </div>

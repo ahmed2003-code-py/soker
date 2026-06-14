@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { نموذج_فاتورة } from "../../form";
 
 export const metadata = { title: "تعديل فاتورة — سُكر" };
 
 export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
+  const { t } = مترجم_الخادم();
   const [فاتورة, عملاء, تصنيفات] = await Promise.all([
     prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
     prisma.party.findMany({
@@ -20,7 +22,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
 
   return (
     <div>
-      <ترويسة_الصفحة العنوان={`تعديل الفاتورة ${String(فاتورة.number).padStart(7, "0")}`} />
+      <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
       <نموذج_فاتورة
         العملاء={عملاء}
         التصنيفات={تصنيفات.map((c) => c.category)}

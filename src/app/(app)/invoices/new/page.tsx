@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { نموذج_فاتورة } from "../form";
 
 export const metadata = { title: "فاتورة جديدة — سُكر" };
 
 export default async function صفحة_فاتورة_جديدة() {
+  const { t } = مترجم_الخادم();
   const [عملاء, تصنيفات] = await Promise.all([
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
@@ -15,7 +17,7 @@ export default async function صفحة_فاتورة_جديدة() {
   ]);
   return (
     <div>
-      <ترويسة_الصفحة العنوان="فاتورة جديدة" الوصف="أدخل بنود الفاتورة — التسعير بالوزن" />
+      <ترويسة_الصفحة العنوان={t("inv.new")} الوصف={t("inv.new_subtitle")} />
       <نموذج_فاتورة العملاء={عملاء} التصنيفات={تصنيفات.map((c) => c.category)} />
     </div>
   );

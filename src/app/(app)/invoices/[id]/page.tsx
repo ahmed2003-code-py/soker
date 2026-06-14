@@ -5,12 +5,14 @@ import { نص_تاريخ } from "@/components/date-text";
 import { سطر_المساءلة } from "@/components/accountability-line";
 import { تفقيط } from "@/lib/tafqit";
 import { جمّع_حسب_التصنيف } from "@/lib/invoice";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شريط_إجراءات_الفاتورة } from "./actions-bar";
 
 export const metadata = { title: "عرض فاتورة — سُكر" };
 
 export default async function صفحة_عرض_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
+  const { t } = مترجم_الخادم();
   const [فاتورة, إعدادات] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id },
@@ -42,36 +44,36 @@ export default async function صفحة_عرض_فاتورة({ params }: { params:
           <div className="flex items-center gap-3">
             {شعار ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={شعار} alt="الشعار" className="h-16 w-16 object-contain" />
+              <img src={شعار} alt={t("inv.v.logo_alt")} className="h-16 w-16 object-contain" />
             ) : null}
             <div>
               <h1 className="text-2xl font-bold text-primary">{اسم_الشركة}</h1>
-              <p className="text-sm text-muted-foreground">فاتورة مبيعات</p>
+              <p className="text-sm text-muted-foreground">{t("inv.v.sales_invoice")}</p>
             </div>
           </div>
           <div className="text-end">
-            <p className="text-sm text-muted-foreground">رقم الفاتورة</p>
+            <p className="text-sm text-muted-foreground">{t("inv.col.number")}</p>
             <p className="ltr-nums text-xl font-bold">{رقم}</p>
             <p className="mt-1 text-sm">
-              التاريخ: <نص_تاريخ القيمة={فاتورة.date} />
+              {t("common.date")}: <نص_تاريخ القيمة={فاتورة.date} />
             </p>
           </div>
         </div>
 
         <div className="my-4 flex flex-wrap gap-x-8 gap-y-1 text-sm">
-          <span>العميل: <span className="font-semibold">{فاتورة.customer.name}</span></span>
-          <span>الهاتف: <span className="ltr-nums">{فاتورة.phone || فاتورة.customer.phone || "—"}</span></span>
+          <span>{t("inv.col.customer")}: <span className="font-semibold">{فاتورة.customer.name}</span></span>
+          <span>{t("party.col.phone")}: <span className="ltr-nums">{فاتورة.phone || فاتورة.customer.phone || "—"}</span></span>
         </div>
 
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-appgray text-muted-foreground">
-              <th className="border border-border p-2 text-start">اللون / البيان</th>
-              <th className="border border-border p-2 text-start">التصنيف</th>
-              <th className="border border-border p-2 text-end">العدد</th>
-              <th className="border border-border p-2 text-end">الوزن (كجم)</th>
-              <th className="border border-border p-2 text-end">السعر/كجم</th>
-              <th className="border border-border p-2 text-end">المجموع</th>
+              <th className="border border-border p-2 text-start">{t("inv.v.color_desc")}</th>
+              <th className="border border-border p-2 text-start">{t("inv.f.category")}</th>
+              <th className="border border-border p-2 text-end">{t("inv.v.count")}</th>
+              <th className="border border-border p-2 text-end">{t("inv.f.weight_kg")}</th>
+              <th className="border border-border p-2 text-end">{t("inv.f.price_kg")}</th>
+              <th className="border border-border p-2 text-end">{t("inv.f.subtotal")}</th>
             </tr>
           </thead>
           <tbody>
@@ -95,13 +97,13 @@ export default async function صفحة_عرض_فاتورة({ params }: { params:
         {/* ملخص التجميع */}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <h3 className="mb-2 font-semibold">ملخص حسب التصنيف</h3>
+            <h3 className="mb-2 font-semibold">{t("inv.f.summary_by_cat")}</h3>
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-appgray text-muted-foreground">
-                  <th className="border border-border p-1.5 text-start">التصنيف</th>
-                  <th className="border border-border p-1.5 text-end">العدد</th>
-                  <th className="border border-border p-1.5 text-end">الوزن</th>
+                  <th className="border border-border p-1.5 text-start">{t("inv.f.category")}</th>
+                  <th className="border border-border p-1.5 text-end">{t("inv.v.count")}</th>
+                  <th className="border border-border p-1.5 text-end">{t("inv.v.weight")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -116,20 +118,20 @@ export default async function صفحة_عرض_فاتورة({ params }: { params:
             </table>
           </div>
           <div className="space-y-2">
-            <div className="flex justify-between"><span className="text-muted-foreground">إجمالي العدد</span><span className="ltr-nums">{Number(فاتورة.totalQty)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">إجمالي الوزن</span><span className="ltr-nums">{Number(فاتورة.totalWeight)} كجم</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.f.total_count")}</span><span className="ltr-nums">{Number(فاتورة.totalQty)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.col.total_weight")}</span><span className="ltr-nums">{Number(فاتورة.totalWeight)} {t("inv.kg")}</span></div>
             <div className="flex items-center justify-between rounded-lg bg-primary/5 p-3 text-lg">
-              <span className="font-bold">الإجمالي</span>
+              <span className="font-bold">{t("inv.col.total")}</span>
               <نص_مبلغ القيمة={فاتورة.totalAmount} />
             </div>
             <p className="text-sm text-muted-foreground">
-              فقط وقدره: {تفقيط(Number(فاتورة.totalAmount))}
+              {t("inv.v.in_words")} {تفقيط(Number(فاتورة.totalAmount))}
             </p>
           </div>
         </div>
 
         {فاتورة.notes && (
-          <p className="mt-4 text-sm text-muted-foreground">ملاحظات: {فاتورة.notes}</p>
+          <p className="mt-4 text-sm text-muted-foreground">{t("inv.v.notes_label")} {فاتورة.notes}</p>
         )}
 
         <div className="mt-6 border-t border-border pt-3 no-print">
