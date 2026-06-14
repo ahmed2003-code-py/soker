@@ -13,12 +13,6 @@ import {
   عنوان_الحوار,
   تذييل_الحوار,
 } from "@/components/ui/dialog";
-import {
-  التبويبات,
-  قائمة_التبويبات,
-  زر_تبويب,
-  محتوى_تبويب,
-} from "@/components/ui/tabs";
 import { قائمة_اختيار } from "@/components/combobox";
 import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { نص_مبلغ } from "@/components/money-text";
@@ -54,15 +48,6 @@ export type شيك = {
   متأخر: boolean;
 };
 
-function مفتاح_شهر(iso: string) {
-  return iso.slice(0, 7);
-}
-function اسم_شهر(iso: string, لغة: "ar" | "en") {
-  const d = new Date(iso);
-  const شهر = new Intl.DateTimeFormat(لغة === "ar" ? "ar" : "en", { month: "long" }).format(d);
-  return `${شهر} ${d.getFullYear()}`;
-}
-
 export function شاشة_الشيكات({ البيانات }: { البيانات: شيك[] }) {
   const router = useRouter();
   const إشعار = useإشعار();
@@ -97,18 +82,6 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
       { م: لغة === "ar" ? "هذه السنة" : "This year", ب: new Date(y, 0, 1), هـ: new Date(y, 11, 31) },
     ];
   })();
-
-  const الأشهر = React.useMemo(() => {
-    const م = new Map<string, { عدد: number; إجمالي: number }>();
-    for (const ش of البيانات) {
-      const ك = مفتاح_شهر(ش.تاريخ_الاستحقاق);
-      const ح = م.get(ك) ?? { عدد: 0, إجمالي: 0 };
-      ح.عدد += 1;
-      ح.إجمالي += ش.المبلغ;
-      م.set(ك, ح);
-    }
-    return [...م.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [البيانات]);
 
   const أعمدة: عمود<شيك>[] = [
     { المفتاح: "اسم_المدين", العنوان: t("cheque.col.drawer"), قابل_للفرز: true },
@@ -224,11 +197,11 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
         <div className="flex items-end gap-2">
           <div className="space-y-1">
             <العنوان>{t("rep.from")}</العنوان>
-            <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} className="h-9" />
+            <الحقل type="date" dir="ltr" value={من} onChange={(e) => تعيين_من(e.target.value)} className="h-9 text-start" />
           </div>
           <div className="space-y-1">
             <العنوان>{t("rep.to")}</العنوان>
-            <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} className="h-9" />
+            <الحقل type="date" dir="ltr" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} className="h-9 text-start" />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -254,23 +227,7 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
         </div>
       </div>
 
-      <التبويبات defaultValue="الكل">
-        <قائمة_التبويبات>
-          <زر_تبويب value="الكل">{t("common.all")} ({البيانات.length})</زر_تبويب>
-          {الأشهر.map(([ك, ح]) => (
-            <زر_تبويب key={ك} value={ك}>
-              {اسم_شهر(ك + "-01", لغة)} ({ح.عدد}) —{" "}
-              {ح.إجمالي.toLocaleString("en-US")} {t("common.currency")}
-            </زر_تبويب>
-          ))}
-        </قائمة_التبويبات>
-        <محتوى_تبويب value="الكل">{جدول(طبّق_الفلاتر(البيانات))}</محتوى_تبويب>
-        {الأشهر.map(([ك]) => (
-          <محتوى_تبويب key={ك} value={ك}>
-            {جدول(طبّق_الفلاتر(البيانات.filter((ش) => مفتاح_شهر(ش.تاريخ_الاستحقاق) === ك)))}
-          </محتوى_تبويب>
-        ))}
-      </التبويبات>
+      {جدول(طبّق_الفلاتر(البيانات))}
 
       {نموذج && <حوار_شيك شيك={نموذج.شيك} عند_الإغلاق={() => تعيين_نموذج(null)} />}
       {حذف && (

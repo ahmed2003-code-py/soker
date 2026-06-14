@@ -135,6 +135,7 @@ export function شاشة_التقارير(props: الخصائص) {
   const أطراف_فلتر: { id: number; name: string }[] = يحتاج_ط === "SUPPLIER" ? الموردون : العملاء;
   const يقبل_عميل = يقبل_فلتر_عميل(نوع);
   const فلاتر_ناقصة = يحتاج_ط ? !طرف : false;
+  const فلاتر_نشطة = !!(من || إلى || طرف || حساب);
 
   return (
     <div className="space-y-5">
@@ -213,11 +214,11 @@ export function شاشة_التقارير(props: الخصائص) {
             <>
               <div className="space-y-1.5">
                 <العنوان>{t("rep.from")}</العنوان>
-                <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} />
+                <الحقل type="date" dir="ltr" className="text-start" value={من} onChange={(e) => تعيين_من(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <العنوان>{t("rep.to")}</العنوان>
-                <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
+                <الحقل type="date" dir="ltr" className="text-start" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
               </div>
             </>
           )}
@@ -225,9 +226,11 @@ export function شاشة_التقارير(props: الخصائص) {
             <الزر onClick={طبّق} disabled={فلاتر_ناقصة}>
               <Search className="size-4" /> {t("rep.show")}
             </الزر>
-            <الزر variant="outline" onClick={امسح}>
-              {t("rep.clear")}
-            </الزر>
+            {فلاتر_نشطة && (
+              <الزر variant="outline" onClick={امسح}>
+                {t("rep.clear")}
+              </الزر>
+            )}
           </div>
 
           {يحتاج_تاريخ(نوع) && (
@@ -250,6 +253,7 @@ export function شاشة_التقارير(props: الخصائص) {
                 {لغة === "ar" ? "شهر:" : "Month:"}
                 <input
                   type="month"
+                  dir="ltr"
                   className="rounded-lg border border-input bg-card px-2 py-1 text-xs"
                   onChange={(e) => {
                     const v = e.target.value;

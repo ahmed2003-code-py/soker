@@ -130,17 +130,19 @@ export function سجل_العمليات_العرض({
         </div>
         <div className="space-y-1.5">
           <العنوان>{t("activity.from")}</العنوان>
-          <الحقل type="date" value={من} onChange={(e) => تعيين_من(e.target.value)} />
+          <الحقل type="date" dir="ltr" className="text-start" value={من} onChange={(e) => تعيين_من(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <العنوان>{t("activity.to")}</العنوان>
-          <الحقل type="date" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
+          <الحقل type="date" dir="ltr" className="text-start" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
         </div>
         <div className="flex items-end gap-2">
           <الزر onClick={طبّق}>{t("activity.apply")}</الزر>
-          <الزر variant="outline" onClick={امسح}>
-            {t("activity.clear")}
-          </الزر>
+          {(مستخدم || نوع || من || إلى) && (
+            <الزر variant="outline" onClick={امسح}>
+              {t("activity.clear")}
+            </الزر>
+          )}
         </div>
       </div>
 
