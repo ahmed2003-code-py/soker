@@ -8,6 +8,7 @@ import { الشارة } from "@/components/ui/badge";
 import { سطر_المساءلة } from "@/components/accountability-line";
 import { سجل_التغييرات } from "@/components/record-history";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مترجم_الخادم } from "@/lib/i18n/server";
 import { حركات_الطرف } from "./detail-client";
 
 export async function تفاصيل_الطرف({
@@ -42,6 +43,7 @@ export async function تفاصيل_الطرف({
     },
   });
   if (!طرف || طرف.type !== النوع) notFound();
+  const { t } = مترجم_الخادم();
 
   const [حسابات, إعداد_طرق] = await Promise.all([
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
@@ -77,22 +79,22 @@ export async function تفاصيل_الطرف({
     <div>
       <ترويسة_الصفحة
         العنوان={طرف.name}
-        الوصف={عميل ? "كشف حساب العميل" : "كشف حساب المورد"}
+        الوصف={عميل ? t("party.d.statement_customer") : t("party.d.statement_supplier")}
         إجراء={<سجل_التغييرات النوع="الطرف" المعرف={طرف.id} />}
       />
 
       <div className="mb-4 card-soft p-4">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
           <span>
-            الهاتف: <span className="ltr-nums">{طرف.phone || "—"}</span>
+            {t("party.col.phone")}: <span className="ltr-nums">{طرف.phone || "—"}</span>
           </span>
-          <span>العنوان: {طرف.address || "—"}</span>
+          <span>{t("party.f.address")}: {طرف.address || "—"}</span>
           {طرف.creditLimit != null && (
             <span>
-              حد الائتمان: <نص_مبلغ القيمة={طرف.creditLimit} />
+              {t("party.f.credit_limit")}: <نص_مبلغ القيمة={طرف.creditLimit} />
             </span>
           )}
-          <الشارة variant="navy">{عميل ? "عميل" : "مورد"}</الشارة>
+          <الشارة variant="navy">{عميل ? t("party.badge_customer") : t("party.badge_supplier")}</الشارة>
         </div>
         {طرف.notes && <p className="mt-2 text-sm text-muted-foreground">{طرف.notes}</p>}
         <div className="mt-3 border-t border-border pt-3">
@@ -107,32 +109,32 @@ export async function تفاصيل_الطرف({
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <بطاقة_مؤشر
-          العنوان={عميل ? "إجمالي الفواتير" : "إجمالي المشتريات"}
+          العنوان={عميل ? t("party.d.total_invoices") : t("party.d.total_purchases")}
           القيمة={<نص_مبلغ القيمة={إجمالي_التعاملات} />}
           لون="navy"
         />
         <بطاقة_مؤشر
-          العنوان="إجمالي المدفوعات"
+          العنوان={t("party.d.total_payments")}
           القيمة={<نص_مبلغ القيمة={إجمالي_المدفوعات} />}
           لون="success"
         />
         <بطاقة_مؤشر
-          العنوان={عميل ? "الرصيد الحالي (مديونية)" : "الرصيد الحالي (مستحق)"}
+          العنوان={عميل ? t("party.d.balance_debt") : t("party.d.balance_payable")}
           القيمة={<نص_مبلغ القيمة={Math.abs(الرصيد)} />}
           لون={الرصيد > 0 ? "danger" : "success"}
           وصف={
             الرصيد > 0
               ? عميل
-                ? "مدين لنا"
-                : "مستحق للمورد"
+                ? t("party.d.owes_us")
+                : t("party.bal.payable")
               : الرصيد < 0
-                ? "دفعة مقدمة"
-                : "مسدّد بالكامل"
+                ? t("party.bal.advance")
+                : t("party.d.fully_settled")
           }
         />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">حركات الحساب</h2>
+      <h2 className="mb-3 text-lg font-semibold">{t("party.d.ledger")}</h2>
       <حركات_الطرف
         الطرف={{ id: طرف.id, النوع: طرف.type }}
         الحركات={حركات}

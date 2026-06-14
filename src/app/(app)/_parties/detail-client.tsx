@@ -19,6 +19,7 @@ import { نص_مبلغ } from "@/components/money-text";
 import { نص_تاريخ } from "@/components/date-text";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
+import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة } from "./actions";
 
 export type حركة = {
@@ -50,6 +51,7 @@ export function حركات_الطرف({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [دفعة, تعيين_دفعة] = React.useState(false);
   const [يدوية, تعيين_يدوية] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
@@ -57,39 +59,39 @@ export function حركات_الطرف({
   const أعمدة: عمود<حركة>[] = [
     {
       المفتاح: "التاريخ",
-      العنوان: "التاريخ",
+      العنوان: t("common.date"),
       خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} />,
       قيمة: (ص) => ص.التاريخ,
       قابل_للفرز: true,
     },
     {
       المفتاح: "رقم_المستند",
-      العنوان: "المستند/الفاتورة",
+      العنوان: t("ledger.col.doc"),
       خلية: (ص) => <span className="ltr-nums">{ص.رقم_المستند || "—"}</span>,
       مخفي_موبايل: true,
     },
-    { المفتاح: "البيان", العنوان: "البيان" },
+    { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
     {
       المفتاح: "الكمية",
-      العنوان: "الكمية",
+      العنوان: t("ledger.col.qty"),
       خلية: (ص) => (ص.الكمية != null ? <span className="ltr-nums">{ص.الكمية}</span> : "—"),
       مخفي_موبايل: true,
     },
     {
       المفتاح: "مدين",
-      العنوان: "مدين",
+      العنوان: t("ledger.col.debit"),
       محاذاة: "end",
       خلية: (ص) => (ص.مدين ? <نص_مبلغ القيمة={ص.مدين} مع_العملة={false} /> : "—"),
     },
     {
       المفتاح: "دائن",
-      العنوان: "دائن",
+      العنوان: t("ledger.col.credit"),
       محاذاة: "end",
       خلية: (ص) => (ص.دائن ? <نص_مبلغ القيمة={ص.دائن} مع_العملة={false} /> : "—"),
     },
     {
       المفتاح: "الرصيد_بعد_الحركة",
-      العنوان: "الرصيد بعد الحركة",
+      العنوان: t("ledger.col.balance_after"),
       محاذاة: "end",
       خلية: (ص) => <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} />,
     },
@@ -100,10 +102,10 @@ export function حركات_الطرف({
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         <الزر variant="success" onClick={() => تعيين_دفعة(true)}>
           <HandCoins className="size-4" />
-          {الطرف.النوع === "CUSTOMER" ? "تحصيل دفعة" : "صرف دفعة"}
+          {الطرف.النوع === "CUSTOMER" ? t("ledger.collect") : t("ledger.disburse")}
         </الزر>
         <الزر variant="outline" onClick={() => تعيين_يدوية(true)}>
-          <Plus className="size-4" /> حركة يدوية
+          <Plus className="size-4" /> {t("ledger.manual")}
         </الزر>
       </div>
 
@@ -112,10 +114,10 @@ export function حركات_الطرف({
         البيانات={الحركات}
         مفتاح_الصف={(ص) => ص.id}
         بحث={false}
-        رسالة_فراغ="لا توجد حركات بعد"
+        رسالة_فراغ={t("ledger.empty")}
         إجراءات_الصف={(ص) =>
           ص.مرتبط ? (
-            <span className="text-xs text-muted-foreground">مرتبطة</span>
+            <span className="text-xs text-muted-foreground">{t("ledger.linked")}</span>
           ) : (
             <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
               <Trash2 className="size-4 text-danger" />
@@ -139,8 +141,8 @@ export function حركات_الطرف({
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان="حذف الحركة"
-          الوصف="سيُعاد حساب رصيد الطرف بعد الحذف."
+          العنوان={t("ledger.delete_title")}
+          الوصف={t("ledger.delete_desc")}
           عند_التأكيد={async () => {
             const r = await حذف_حركة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
@@ -165,6 +167,7 @@ function حوار_دفعة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
   const [مبلغ, تعيين_مبلغ] = React.useState("");
   const [طريقة, تعيين_طريقة] = React.useState(طرق_الدفع[0] ?? "نقدي");
@@ -196,20 +199,20 @@ function حوار_دفعة({
       <محتوى_الحوار>
         <رأس_الحوار>
           <عنوان_الحوار>
-            {الطرف.النوع === "CUSTOMER" ? "تحصيل دفعة من العميل" : "صرف دفعة للمورد"}
+            {الطرف.النوع === "CUSTOMER" ? t("pay.collect_from") : t("pay.disburse_to")}
           </عنوان_الحوار>
         </رأس_الحوار>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <العنوان مطلوب>التاريخ</العنوان>
+            <العنوان مطلوب>{t("common.date")}</العنوان>
             <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>المبلغ</العنوان>
+            <العنوان مطلوب>{t("pay.amount")}</العنوان>
             <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>طريقة الدفع</العنوان>
+            <العنوان مطلوب>{t("pay.method")}</العنوان>
             <قائمة_اختيار
               الخيارات={طرق_الدفع.map((m) => ({ القيمة: m, التسمية: m }))}
               القيمة={طريقة}
@@ -218,7 +221,7 @@ function حوار_دفعة({
             />
           </div>
           <div className="space-y-1.5">
-            <العنوان>حساب الخزنة</العنوان>
+            <العنوان>{t("pay.account")}</العنوان>
             <قائمة_اختيار
               الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
               القيمة={حساب}
@@ -226,20 +229,20 @@ function حوار_دفعة({
               قابل_للبحث={false}
             />
             <p className="text-xs text-muted-foreground">
-              يُربط بالخزنة تلقائياً في المرحلة 9.
+              {t("pay.treasury_hint")}
             </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>رقم الفاتورة (اختياري)</العنوان>
+            <العنوان>{t("pay.invoice_opt")}</العنوان>
             <الحقل className="ltr-nums" value={رقم} onChange={(e) => تعيين_رقم(e.target.value)} />
           </div>
         </div>
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
-            {جارٍ ? "جارٍ الحفظ…" : "حفظ"}
+            {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>
-            إلغاء
+            {t("common.cancel")}
           </الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
@@ -256,6 +259,7 @@ function حوار_حركة_يدوية({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
   const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
   const [بيان, تعيين_بيان] = React.useState("");
   const [مدين, تعيين_مدين] = React.useState("");
@@ -282,32 +286,32 @@ function حوار_حركة_يدوية({
     <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
       <محتوى_الحوار>
         <رأس_الحوار>
-          <عنوان_الحوار>حركة يدوية (رصيد افتتاحي / تسوية)</عنوان_الحوار>
+          <عنوان_الحوار>{t("manual.title")}</عنوان_الحوار>
         </رأس_الحوار>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <العنوان مطلوب>التاريخ</العنوان>
+            <العنوان مطلوب>{t("common.date")}</العنوان>
             <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>البيان</العنوان>
+            <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
             <الحقل autoFocus value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <العنوان>مدين</العنوان>
+            <العنوان>{t("ledger.col.debit")}</العنوان>
             <الحقل selectOnFocus value={مدين} onChange={(e) => تعيين_مدين(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <العنوان>دائن</العنوان>
+            <العنوان>{t("ledger.col.credit")}</العنوان>
             <الحقل selectOnFocus value={دائن} onChange={(e) => تعيين_دائن(e.target.value)} placeholder="0.00" />
           </div>
         </div>
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
-            {جارٍ ? "جارٍ الحفظ…" : "حفظ"}
+            {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>
-            إلغاء
+            {t("common.cancel")}
           </الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
