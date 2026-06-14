@@ -18,6 +18,15 @@ const ألوان: Record<NonNullable<الخصائص["لون"]>, string> = {
   neutral: "text-foreground",
 };
 
+// خلفية الأيقونة بلون مُلمّح حسب نوع المؤشر
+const خلفية_الأيقونة: Record<NonNullable<الخصائص["لون"]>, string> = {
+  navy: "bg-primary/10",
+  success: "bg-success/10",
+  danger: "bg-danger/10",
+  warning: "bg-warning/10",
+  neutral: "bg-appgray",
+};
+
 export function بطاقة_مؤشر({
   العنوان,
   القيمة,
@@ -27,19 +36,23 @@ export function بطاقة_مؤشر({
   رابط,
 }: الخصائص) {
   const المحتوى = (
-    <div className="card-soft flex items-start justify-between gap-3 p-5 transition hover:shadow-card">
+    <div className="card-soft card-hover flex h-full items-start justify-between gap-3 p-5">
       <div className="min-w-0">
         <p className="text-sm text-muted-foreground">{العنوان}</p>
-        <div className={cn("mt-2 text-2xl font-bold", ألوان[لون])}>{القيمة}</div>
+        <div className={cn("mt-2 text-2xl font-bold tracking-tight", ألوان[لون])}>
+          {القيمة}
+        </div>
         {وصف && <p className="mt-1 text-xs text-muted-foreground">{وصف}</p>}
       </div>
       {أيقونة && (
-        <div className={cn("rounded-xl bg-appgray p-2.5", ألوان[لون])}>{أيقونة}</div>
+        <div className={cn("rounded-xl p-2.5", خلفية_الأيقونة[لون], ألوان[لون])}>
+          {أيقونة}
+        </div>
       )}
     </div>
   );
   return رابط ? (
-    <Link href={رابط} className="block">
+    <Link href={رابط} className="block h-full">
       {المحتوى}
     </Link>
   ) : (

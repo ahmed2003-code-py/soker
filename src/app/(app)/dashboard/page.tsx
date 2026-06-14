@@ -14,6 +14,7 @@ import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { نص_تاريخ } from "@/components/date-text";
 import { مترجم_الخادم } from "@/lib/i18n/server";
+import { قائمة_متدرجة, عنصر_متدرج, رقم_متحرك } from "@/components/motion/motion-primitives";
 import { رسوم_اللوحة } from "./charts";
 
 export const metadata = { title: "الرئيسية — سُكر" };
@@ -28,17 +29,17 @@ export default async function صفحة_الرئيسية() {
       <ترويسة_الصفحة العنوان={t("dash.title")} الوصف={t("dash.subtitle")} />
 
       {/* مؤشرات رئيسية */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <بطاقة_مؤشر العنوان={t("dash.kpi.treasury_total")} القيمة={<نص_مبلغ القيمة={د.الخزنة.الإجمالي} />} أيقونة={<Wallet className="size-5" />} لون="navy" رابط="/treasury" />
-        <بطاقة_مؤشر العنوان={t("dash.kpi.customer_debt")} القيمة={<نص_مبلغ القيمة={د.العملاء.إجمالي_المديونية} />} أيقونة={<Users className="size-5" />} لون="danger" وصف={t("dash.customers_count", { count: د.العملاء.عدد })} رابط="/customers" />
-        <بطاقة_مؤشر العنوان={t("dash.kpi.supplier_payable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_المستحقات} />} أيقونة={<Truck className="size-5" />} لون="warning" وصف={t("dash.suppliers_count", { count: د.الموردون.عدد })} رابط="/suppliers" />
-        <بطاقة_مؤشر العنوان={t("dash.kpi.month_sales")} القيمة={<نص_مبلغ القيمة={د.الفواتير.مبيعات_الشهر} />} أيقونة={<FileText className="size-5" />} لون="success" وصف={t("dash.invoices_count_month", { count: د.الفواتير.عدد_الشهر })} رابط="/invoices" />
-      </div>
+      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.treasury_total")} القيمة={<نص_مبلغ القيمة={د.الخزنة.الإجمالي} />} أيقونة={<Wallet className="size-5" />} لون="navy" رابط="/treasury" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.customer_debt")} القيمة={<نص_مبلغ القيمة={د.العملاء.إجمالي_المديونية} />} أيقونة={<Users className="size-5" />} لون="danger" وصف={t("dash.customers_count", { count: د.العملاء.عدد })} رابط="/customers" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.supplier_payable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_المستحقات} />} أيقونة={<Truck className="size-5" />} لون="warning" وصف={t("dash.suppliers_count", { count: د.الموردون.عدد })} رابط="/suppliers" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.month_sales")} القيمة={<نص_مبلغ القيمة={د.الفواتير.مبيعات_الشهر} />} أيقونة={<FileText className="size-5" />} لون="success" وصف={t("dash.invoices_count_month", { count: د.الفواتير.عدد_الشهر })} رابط="/invoices" /></عنصر_متدرج>
+      </قائمة_متدرجة>
 
       {/* الخزنة بالتفصيل */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {د.الخزنة.حسابات.map((h) => (
-          <div key={h.التسمية} className="card-soft p-4">
+          <div key={h.التسمية} className="card-soft card-hover p-4">
             <p className="text-sm text-muted-foreground">{h.التسمية}</p>
             <div className={`mt-1 text-lg font-bold ${h.الرصيد < 0 ? "text-danger" : ""}`}>
               <نص_مبلغ القيمة={h.الرصيد} />
@@ -72,12 +73,12 @@ export default async function صفحة_الرئيسية() {
       )}
 
       {/* بطاقات إضافية */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <بطاقة_مؤشر العنوان={t("dash.invoices_today")} القيمة={د.الفواتير.عدد_اليوم} وصف={t("dash.sales_label", { amount: د.الفواتير.مبيعات_اليوم.toLocaleString("en-US") })} أيقونة={<FileText className="size-5" />} />
-        <بطاقة_مؤشر العنوان={t("dash.cheques_due_month")} القيمة={د.الشيكات.عدد_هذا_الشهر} أيقونة={<Receipt className="size-5" />} لون="navy" رابط="/cheques" />
-        <بطاقة_مؤشر العنوان={t("dash.cheques_overdue")} القيمة={د.الشيكات.عدد_متأخر} أيقونة={<Receipt className="size-5" />} لون="danger" رابط="/cheques" />
-        <بطاقة_مؤشر العنوان={t("dash.cheques_total_due")} القيمة={<نص_مبلغ القيمة={د.الشيكات.إجمالي_المستحق} />} أيقونة={<Receipt className="size-5" />} لون="warning" />
-      </div>
+      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.invoices_today")} القيمة={<رقم_متحرك القيمة={د.الفواتير.عدد_اليوم} />} وصف={t("dash.sales_label", { amount: د.الفواتير.مبيعات_اليوم.toLocaleString("en-US") })} أيقونة={<FileText className="size-5" />} /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_due_month")} القيمة={<رقم_متحرك القيمة={د.الشيكات.عدد_هذا_الشهر} />} أيقونة={<Receipt className="size-5" />} لون="navy" رابط="/cheques" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_overdue")} القيمة={<رقم_متحرك القيمة={د.الشيكات.عدد_متأخر} />} أيقونة={<Receipt className="size-5" />} لون="danger" رابط="/cheques" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_total_due")} القيمة={<نص_مبلغ القيمة={د.الشيكات.إجمالي_المستحق} />} أيقونة={<Receipt className="size-5" />} لون="warning" /></عنصر_متدرج>
+      </قائمة_متدرجة>
 
       {/* الرسوم */}
       <رسوم_اللوحة السلسلة={د.السلسلة} />

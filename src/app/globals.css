@@ -119,11 +119,34 @@
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
     @apply rounded-2xl shadow-card;
   }
+  /* الشريط العلوي: شفافية أعلى + blur أخف لتفادي التقطيع عند التمرير */
   .glass-panel {
-    background-color: rgb(var(--glass-bg) / 0.6);
-    border-color: rgb(var(--glass-border) / 0.12);
-    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    background-color: rgb(var(--topbar) / 0.82);
+    border-color: rgb(var(--border) / 0.7);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    will-change: backdrop-filter;
+    transform: translateZ(0);
+  }
+
+  /* رفع البطاقة عند المرور — micro-interaction خفيف */
+  .card-hover {
+    transition:
+      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.22s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 2px 6px -1px rgb(16 24 40 / 0.08),
+      0 12px 28px -6px rgb(16 24 40 / 0.12);
+    border-color: rgb(var(--primary-blue) / 0.35);
+  }
+  .dark .card-hover:hover {
+    box-shadow:
+      0 2px 6px -1px rgb(0 0 0 / 0.4),
+      0 14px 32px -8px rgb(0 0 0 / 0.55);
   }
 
   /* خلفية متدرّجة لطيفة لشاشات المصادقة */
@@ -170,4 +193,16 @@
 
 .print-only {
   display: none;
+}
+
+/* ===== احترام تفضيل تقليل الحركة ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
