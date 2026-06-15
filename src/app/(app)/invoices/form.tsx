@@ -223,9 +223,11 @@ export function نموذج_فاتورة({
                     {(ع(ب.السعر) * ع(ب.الوزن)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="p-1.5 text-center">
-                    <الزر size="icon" variant="ghost" onClick={() => احذف_بند(i)}>
-                      <Trash2 className="size-4 text-danger" />
-                    </الزر>
+                    {بنود.length > 1 && (
+                      <الزر size="icon" variant="ghost" onClick={() => احذف_بند(i)} title="حذف البند">
+                        <Trash2 className="size-4 text-danger" />
+                      </الزر>
+                    )}
                   </td>
                 </tr>
               ))}

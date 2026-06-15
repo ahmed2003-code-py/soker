@@ -78,7 +78,7 @@ export function شاشة_الخزنة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
-  const { t } = استخدام_اللغة();
+  const { t, لغة } = استخدام_اللغة();
   const [نموذج, تعيين_نموذج] = React.useState<{ حركة?: حركة } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
@@ -87,6 +87,24 @@ export function شاشة_الخزنة({
   const [إلى, تعيين_إلى] = React.useState("");
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
+
+  // عند تحديد فترة بالتاريخ: الكروت الفوق تعرض صافي الفترة لكل حساب + الإجمالي
+  const مفلتر_فترة = !!(من || إلى);
+  const بالفترة = الحركات.filter((ح) => {
+    const d = ح.التاريخ.slice(0, 10);
+    if (من && d < من) return false;
+    if (إلى && d > إلى) return false;
+    return true;
+  });
+  function ملخص_حساب(معرف: number) {
+    let إيراد = 0, مصروف = 0;
+    for (const ح of بالفترة)
+      if (ح.معرف_الحساب === معرف) {
+        if (ح.النوع === "INCOME") إيراد += ح.المبلغ; else مصروف += ح.المبلغ;
+      }
+    return { إيراد, مصروف, صافي: إيراد - مصروف };
+  }
+  const صافي_الفترة_الكلي = بالفترة.reduce((س, ح) => س + (ح.النوع === "INCOME" ? ح.المبلغ : -ح.المبلغ), 0);
 
   const حركات_مصفّاة = الحركات.filter((ح) => {
     if (فلتر_حساب && ح.معرف_الحساب !== Number(فلتر_حساب)) return false;
@@ -147,35 +165,44 @@ export function شاشة_الخزنة({
       {/* البطاقات */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {الحسابات.map((ح) => {
-          const تحت_الحد = ح.الحد_الأدنى != null && ح.الرصيد < ح.الحد_الأدنى;
+          const تحت_الحد = !مفلتر_فترة && ح.الحد_الأدنى != null && ح.الرصيد < ح.الحد_الأدنى;
+          const ملخص = مفلتر_فترة ? ملخص_حساب(ح.id) : null;
+          const قيمة = ملخص ? ملخص.صافي : ح.الرصيد;
           return (
-            <div key={ح.id} className="card-soft p-5">
+            <div key={ح.id} className="card-soft card-hover p-5">
               <div className="flex items-start justify-between">
                 <p className="text-sm text-muted-foreground">{ح.التسمية}</p>
                 <span className="rounded-xl bg-appgray p-2 text-primary">
                   {أيقونات[ح.النوع]}
                 </span>
               </div>
-              <div className={`mt-2 text-xl font-bold ${ح.الرصيد < 0 ? "text-danger" : "text-foreground"}`}>
-                <نص_مبلغ القيمة={ح.الرصيد} />
+              <div className={`mt-2 text-xl font-bold ${قيمة < 0 ? "text-danger" : "text-foreground"}`}>
+                <نص_مبلغ القيمة={قيمة} />
               </div>
-              {تحت_الحد && (
+              {ملخص ? (
+                <p className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
+                  <span className="text-success">▲ {ملخص.إيراد.toLocaleString("en-US")}</span>
+                  <span className="text-danger">▼ {ملخص.مصروف.toLocaleString("en-US")}</span>
+                </p>
+              ) : تحت_الحد ? (
                 <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                   <AlertTriangle className="size-3.5" /> {t("dash.under_threshold")}
                 </p>
-              )}
+              ) : null}
             </div>
           );
         })}
-        <div className="card-soft border-primary/30 bg-primary/5 p-5">
+        <div className="card-soft card-hover border-primary/30 bg-primary/5 p-5">
           <div className="flex items-start justify-between">
-            <p className="text-sm text-muted-foreground">{t("treasury.total")}</p>
+            <p className="text-sm text-muted-foreground">
+              {مفلتر_فترة ? (لغة === "ar" ? "صافي الفترة" : "Period net") : t("treasury.total")}
+            </p>
             <span className="rounded-xl bg-primary/10 p-2 text-primary">
               <Wallet className="size-5" />
             </span>
           </div>
-          <div className="mt-2 text-xl font-bold text-primary">
-            <نص_مبلغ القيمة={الإجمالي} />
+          <div className={`mt-2 text-xl font-bold ${مفلتر_فترة && صافي_الفترة_الكلي < 0 ? "text-danger" : "text-primary"}`}>
+            <نص_مبلغ القيمة={مفلتر_فترة ? صافي_الفترة_الكلي : الإجمالي} />
           </div>
         </div>
       </div>

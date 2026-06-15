@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Upload, ScanLine, Loader2, Camera } from "lucide-react";
+import { Upload, ScanLine, Loader2, Camera, X } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
@@ -22,16 +22,25 @@ type حقول_مستخرجة = Partial<{
 export function حقول_OCR_للشيك({
   عند_الاستخراج,
   عند_الصورة,
+  عند_المسح,
 }: {
   عند_الاستخراج: (حقول: حقول_مستخرجة, نص_خام: string) => void;
   عند_الصورة: (base64: string, mime: string, نص?: string) => void;
+  عند_المسح?: () => void;
 }) {
   const إشعار = useإشعار();
-  const { t } = استخدام_اللغة();
+  const { t, لغة } = استخدام_اللغة();
   const [معاينة, تعيين_معاينة] = React.useState<string | null>(null);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [ملف, تعيين_ملف] = React.useState<File | null>(null);
   const مرجع = React.useRef<HTMLInputElement>(null);
+
+  function امسح_الصورة() {
+    تعيين_معاينة(null);
+    تعيين_ملف(null);
+    if (مرجع.current) مرجع.current.value = "";
+    عند_المسح?.();
+  }
 
   function اختر(f: File | null) {
     if (!f) return;
@@ -98,13 +107,28 @@ export function حقول_OCR_للشيك({
           {جارٍ ? <Loader2 className="size-4 animate-spin" /> : <ScanLine className="size-4" />}
           {t("ocr.extract")}
         </الزر>
+        {معاينة && (
+          <الزر type="button" variant="ghost" size="sm" onClick={امسح_الصورة} disabled={جارٍ}>
+            <X className="size-4 text-danger" /> {لغة === "ar" ? "مسح الصورة" : "Remove image"}
+          </الزر>
+        )}
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Camera className="size-3.5" /> {t("ocr.camera_hint")}
         </span>
       </div>
       {معاينة && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={معاينة} alt={t("ocr.preview_alt")} className="mt-3 max-h-40 rounded-lg border border-border" />
+        <div className="relative mt-3 inline-block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={معاينة} alt={t("ocr.preview_alt")} className="max-h-40 rounded-lg border border-border" />
+          <button
+            type="button"
+            onClick={امسح_الصورة}
+            title={لغة === "ar" ? "مسح الصورة" : "Remove image"}
+            className="absolute end-2 top-2 rounded-full bg-black/60 p-1 text-white transition hover:bg-danger"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
       )}
     </div>
   );
