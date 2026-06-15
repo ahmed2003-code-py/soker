@@ -3,7 +3,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Printer, FileSpreadsheet, Search } from "lucide-react";
 import { الزر } from "@/components/ui/button";
-import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { قائمة_اختيار, type خيار } from "@/components/combobox";
 import { نص_مبلغ } from "@/components/money-text";
@@ -15,6 +14,7 @@ import { تنسيق_تاريخ } from "@/lib/date";
 import { تصدير_إكسل, type عمود_تصدير } from "@/lib/export";
 import { قائمة_التقارير, type نوع_تقرير } from "@/lib/reports";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import { منتقي_تاريخ } from "@/components/date-picker";
 
 type قيم_الفلاتر = {
   من: string;
@@ -214,11 +214,11 @@ export function شاشة_التقارير(props: الخصائص) {
             <>
               <div className="space-y-1.5">
                 <العنوان>{t("rep.from")}</العنوان>
-                <الحقل type="date" dir="ltr" className="text-start" value={من} onChange={(e) => تعيين_من(e.target.value)} />
+                <منتقي_تاريخ القيمة={من} عند_التغيير={تعيين_من} />
               </div>
               <div className="space-y-1.5">
                 <العنوان>{t("rep.to")}</العنوان>
-                <الحقل type="date" dir="ltr" className="text-start" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
+                <منتقي_تاريخ القيمة={إلى} عند_التغيير={تعيين_إلى} />
               </div>
             </>
           )}

@@ -6,6 +6,7 @@ import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { قائمة_اختيار } from "@/components/combobox";
+import { منتقي_تاريخ } from "@/components/date-picker";
 import { نص_مبلغ } from "@/components/money-text";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
@@ -142,7 +143,7 @@ export function نموذج_فاتورة({
         </div>
         <div className="space-y-1.5">
           <العنوان مطلوب>{t("common.date")}</العنوان>
-          <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
+          <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
         </div>
       </div>
 

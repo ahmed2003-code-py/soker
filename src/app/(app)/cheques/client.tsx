@@ -14,6 +14,7 @@ import {
   تذييل_الحوار,
 } from "@/components/ui/dialog";
 import { قائمة_اختيار } from "@/components/combobox";
+import { منتقي_تاريخ } from "@/components/date-picker";
 import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { نص_مبلغ } from "@/components/money-text";
 import { نص_تاريخ } from "@/components/date-text";
@@ -195,13 +196,13 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
         </div>
         <span className="hidden h-6 w-px bg-border sm:block" />
         <div className="flex items-end gap-2">
-          <div className="space-y-1">
+          <div className="w-36 space-y-1">
             <العنوان>{t("rep.from")}</العنوان>
-            <الحقل type="date" dir="ltr" value={من} onChange={(e) => تعيين_من(e.target.value)} className="h-9 text-start" />
+            <منتقي_تاريخ القيمة={من} عند_التغيير={تعيين_من} className="h-9" />
           </div>
-          <div className="space-y-1">
+          <div className="w-36 space-y-1">
             <العنوان>{t("rep.to")}</العنوان>
-            <الحقل type="date" dir="ltr" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} className="h-9 text-start" />
+            <منتقي_تاريخ القيمة={إلى} عند_التغيير={تعيين_إلى} className="h-9" />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -316,7 +317,7 @@ export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: ش
           <Field label={t("cheque.col.bank")} value={ق.اسم_البنك} onChange={(v) => حدّث("اسم_البنك", v)} />
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("cheque.col.due")}</العنوان>
-            <الحقل type="date" value={ق.تاريخ_الاستحقاق} onChange={(e) => حدّث("تاريخ_الاستحقاق", e.target.value)} />
+            <منتقي_تاريخ القيمة={ق.تاريخ_الاستحقاق} عند_التغيير={(v) => حدّث("تاريخ_الاستحقاق", v)} />
           </div>
           <Field label={t("cheque.col.number")} value={ق.رقم_الشيك} onChange={(v) => حدّث("رقم_الشيك", v)} />
           <div className="space-y-1.5">

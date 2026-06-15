@@ -1,8 +1,8 @@
 "use client";
 import * as React from "react";
 import { CalendarRange, X } from "lucide-react";
-import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
+import { منتقي_تاريخ } from "@/components/date-picker";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
 /**
@@ -39,13 +39,13 @@ export function فلتر_فترة({
   return (
     <div className={`flex flex-wrap items-end gap-x-4 gap-y-2 ${className ?? ""}`}>
       <div className="flex items-end gap-2">
-        <div className="space-y-1">
+        <div className="w-36 space-y-1">
           <العنوان>{لغة === "ar" ? "من تاريخ" : "From"}</العنوان>
-          <الحقل type="date" dir="ltr" className="h-9 text-start" value={من} onChange={(e) => عند_التغيير(e.target.value, إلى)} />
+          <منتقي_تاريخ القيمة={من} عند_التغيير={(v) => عند_التغيير(v, إلى)} className="h-9" />
         </div>
-        <div className="space-y-1">
+        <div className="w-36 space-y-1">
           <العنوان>{لغة === "ar" ? "إلى تاريخ" : "To"}</العنوان>
-          <الحقل type="date" dir="ltr" className="h-9 text-start" value={إلى} onChange={(e) => عند_التغيير(من, e.target.value)} />
+          <منتقي_تاريخ القيمة={إلى} عند_التغيير={(v) => عند_التغيير(من, v)} className="h-9" />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 pb-0.5">

@@ -33,6 +33,7 @@ import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
+import { منتقي_تاريخ } from "@/components/date-picker";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
 
 type حساب = {
@@ -346,7 +347,7 @@ function حوار_حركة({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("common.date")}</العنوان>
-            <الحقل type="date" value={تاريخ} onChange={(e) => تعيين_تاريخ(e.target.value)} />
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("treasury.col.type")}</العنوان>

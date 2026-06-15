@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import type { ActivityAction } from "@prisma/client";
 import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { قائمة_اختيار } from "@/components/combobox";
-import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { الزر } from "@/components/ui/button";
 import { شارة_حالة } from "@/components/status-badge";
 import { نص_تاريخ } from "@/components/date-text";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import { منتقي_تاريخ } from "@/components/date-picker";
 import type { مفتاح_ترجمة } from "@/lib/i18n";
 
 type صف = {
@@ -130,11 +130,11 @@ export function سجل_العمليات_العرض({
         </div>
         <div className="space-y-1.5">
           <العنوان>{t("activity.from")}</العنوان>
-          <الحقل type="date" dir="ltr" className="text-start" value={من} onChange={(e) => تعيين_من(e.target.value)} />
+          <منتقي_تاريخ القيمة={من} عند_التغيير={تعيين_من} />
         </div>
         <div className="space-y-1.5">
           <العنوان>{t("activity.to")}</العنوان>
-          <الحقل type="date" dir="ltr" className="text-start" value={إلى} onChange={(e) => تعيين_إلى(e.target.value)} />
+          <منتقي_تاريخ القيمة={إلى} عند_التغيير={تعيين_إلى} />
         </div>
         <div className="flex items-end gap-2">
           <الزر onClick={طبّق}>{t("activity.apply")}</الزر>
