@@ -104,6 +104,29 @@
   .theme-transitioning * {
     transition: none !important;
   }
+
+  /* ===== حقول التاريخ — شكل أنيق ومتّسق + دعم الداكن ===== */
+  .field-date {
+    font-variant-numeric: tabular-nums;
+  }
+  .field-date::-webkit-datetime-edit {
+    color: rgb(var(--foreground));
+  }
+  .field-date::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+    border-radius: 6px;
+    padding: 2px;
+    margin-inline-start: auto;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+  }
+  .field-date::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background-color: rgb(var(--muted));
+  }
+  .dark .field-date::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.6);
+  }
 }
 
 @layer components {
