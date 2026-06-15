@@ -1,17 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import {
-  Wallet,
-  Plus,
-  Pencil,
-  Trash2,
-  Smartphone,
-  Banknote,
-  Building2,
-  CircleDollarSign,
-  AlertTriangle,
-} from "lucide-react";
+import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -34,6 +24,8 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
+import { أيقونة_الحساب } from "@/components/account-icon";
+import { لقطة_الأرصدة } from "./balance-snapshot";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
 
 type حساب = {
@@ -57,12 +49,6 @@ type حركة = {
   مرتبط: boolean;
 };
 
-const أيقونات: Record<TreasuryAccountType, React.ReactNode> = {
-  INSTAPAY: <Smartphone className="size-5" />,
-  CASH: <Banknote className="size-5" />,
-  BANK: <Building2 className="size-5" />,
-  VODAFONE: <CircleDollarSign className="size-5" />,
-};
 
 const اليوم = () => new Date().toISOString().slice(0, 10);
 
@@ -116,6 +102,29 @@ export function شاشة_الخزنة({
     return true;
   });
 
+  const حساب_بالمعرف = React.useMemo(() => {
+    const m = new Map<number, حساب>();
+    for (const ح of الحسابات) m.set(ح.id, ح);
+    return m;
+  }, [الحسابات]);
+
+  // لقطة أرصدة الحسابات الأربعة + الإجمالي بعد كل معاملة (ترتيب زمني)
+  const لقطات = React.useMemo(() => {
+    const ترتيب = [...الحركات].sort((a, b) =>
+      a.التاريخ === b.التاريخ ? a.id - b.id : a.التاريخ < b.التاريخ ? -1 : 1
+    );
+    const جارٍ: Record<number, number> = {};
+    for (const ح of الحسابات) جارٍ[ح.id] = 0;
+    const map = new Map<number, { أرصدة: { النوع: TreasuryAccountType; التسمية: string; رصيد: number }[]; إجمالي: number }>();
+    for (const t of ترتيب) {
+      جارٍ[t.معرف_الحساب] = (جارٍ[t.معرف_الحساب] ?? 0) + (t.النوع === "INCOME" ? t.المبلغ : -t.المبلغ);
+      const أرصدة = الحسابات.map((ح) => ({ النوع: ح.النوع, التسمية: ح.التسمية, رصيد: جارٍ[ح.id] ?? 0 }));
+      const إجمالي = أرصدة.reduce((س, a) => س + a.رصيد, 0);
+      map.set(t.id, { أرصدة, إجمالي });
+    }
+    return map;
+  }, [الحركات, الحسابات]);
+
   const أعمدة: عمود<حركة>[] = [
     {
       المفتاح: "التاريخ",
@@ -134,7 +143,19 @@ export function شاشة_الخزنة({
         />
       ),
     },
-    { المفتاح: "الحساب", العنوان: t("treasury.col.account") },
+    {
+      المفتاح: "الحساب",
+      العنوان: t("treasury.col.account"),
+      خلية: (ص) => {
+        const ح = حساب_بالمعرف.get(ص.معرف_الحساب);
+        return (
+          <span className="flex items-center gap-2">
+            {ح && <أيقونة_الحساب النوع={ح.النوع} حجم="sm" />}
+            <span>{ص.الحساب}</span>
+          </span>
+        );
+      },
+    },
     { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
     {
       المفتاح: "الطرف",
@@ -156,7 +177,31 @@ export function شاشة_الخزنة({
       المفتاح: "الرصيد_بعد_الحركة",
       العنوان: t("ledger.col.balance_after"),
       محاذاة: "end",
-      خلية: (ص) => <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} />,
+      خلية: (ص) => {
+        const ح = حساب_بالمعرف.get(ص.معرف_الحساب);
+        const لقطة = لقطات.get(ص.id);
+        const صعود = ص.النوع === "INCOME";
+        const قبل = ص.الرصيد_بعد_الحركة + (صعود ? -ص.المبلغ : ص.المبلغ);
+        const محتوى = (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            {ح && <أيقونة_الحساب النوع={ح.النوع} حجم="sm" />}
+            <span className="text-end">
+              <span className={`flex items-center justify-end gap-0.5 font-semibold ${صعود ? "text-success" : "text-danger"}`}>
+                {صعود ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} className={صعود ? "text-success" : "text-danger"} />
+              </span>
+              <span className="block text-[10px] text-muted-foreground ltr-nums">
+                {قبل.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </span>
+          </span>
+        );
+        return لقطة ? (
+          <لقطة_الأرصدة أرصدة={لقطة.أرصدة} إجمالي={لقطة.إجمالي}>{محتوى}</لقطة_الأرصدة>
+        ) : (
+          محتوى
+        );
+      },
       مخفي_موبايل: true,
     },
   ];
@@ -173,9 +218,7 @@ export function شاشة_الخزنة({
             <div key={ح.id} className="card-soft card-hover p-5">
               <div className="flex items-start justify-between">
                 <p className="text-sm text-muted-foreground">{ح.التسمية}</p>
-                <span className="rounded-xl bg-appgray p-2 text-primary">
-                  {أيقونات[ح.النوع]}
-                </span>
+                <أيقونة_الحساب النوع={ح.النوع} />
               </div>
               <div className={`mt-2 text-xl font-bold ${قيمة < 0 ? "text-danger" : "text-foreground"}`}>
                 <نص_مبلغ القيمة={قيمة} />
