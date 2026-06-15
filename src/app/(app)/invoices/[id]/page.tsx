@@ -38,55 +38,67 @@ export default async function صفحة_عرض_فاتورة({ params }: { params:
     <div>
       <شريط_إجراءات_الفاتورة المعرف={فاتورة.id} الرقم={فاتورة.number} />
 
-      {/* ورقة الفاتورة (قابلة للطباعة) */}
-      <div className="mx-auto max-w-3xl card-soft p-8 print:border-0 print:shadow-none">
-        <div className="flex items-start justify-between border-b-2 border-primary pb-4">
+      {/* ورقة الفاتورة (قابلة للطباعة) — تصميم بسيط وواضح */}
+      <div className="mx-auto max-w-3xl card-soft p-8 text-foreground print:max-w-none print:border-0 print:p-0 print:text-black print:shadow-none">
+        {/* الرأس */}
+        <div className="flex items-start justify-between gap-4 border-b-2 border-foreground/80 pb-4 print:border-black">
           <div className="flex items-center gap-3">
             {شعار ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={شعار} alt={t("inv.v.logo_alt")} className="h-16 w-16 object-contain" />
+              <img src={شعار} alt={t("inv.v.logo_alt")} className="h-14 w-14 object-contain" />
             ) : null}
             <div>
-              <h1 className="text-2xl font-bold text-primary">{اسم_الشركة}</h1>
-              <p className="text-sm text-muted-foreground">{t("inv.v.sales_invoice")}</p>
+              <h1 className="text-2xl font-bold">{اسم_الشركة}</h1>
+              <p className="text-sm font-medium">{t("inv.v.sales_invoice")}</p>
             </div>
           </div>
-          <div className="text-end">
-            <p className="text-sm text-muted-foreground">{t("inv.col.number")}</p>
-            <p className="ltr-nums text-xl font-bold">{رقم}</p>
-            <p className="mt-1 text-sm">
-              {t("common.date")}: <نص_تاريخ القيمة={فاتورة.date} />
+          <div className="text-end text-sm leading-7">
+            <p>
+              <span className="font-semibold">{t("inv.col.number")}: </span>
+              <span className="ltr-nums text-lg font-bold">{رقم}</span>
+            </p>
+            <p>
+              <span className="font-semibold">{t("common.date")}: </span>
+              <نص_تاريخ القيمة={فاتورة.date} />
             </p>
           </div>
         </div>
 
-        <div className="my-4 flex flex-wrap gap-x-8 gap-y-1 text-sm">
-          <span>{t("inv.col.customer")}: <span className="font-semibold">{فاتورة.customer.name}</span></span>
-          <span>{t("party.col.phone")}: <span className="ltr-nums">{فاتورة.phone || فاتورة.customer.phone || "—"}</span></span>
+        {/* العميل */}
+        <div className="my-5 flex flex-wrap gap-x-10 gap-y-1 text-[15px]">
+          <span>
+            <span className="font-semibold">{t("inv.col.customer")}: </span>
+            {فاتورة.customer.name}
+          </span>
+          <span>
+            <span className="font-semibold">{t("party.col.phone")}: </span>
+            <span className="ltr-nums">{فاتورة.phone || فاتورة.customer.phone || "—"}</span>
+          </span>
         </div>
 
-        <table className="w-full border-collapse text-sm">
+        {/* البنود — خطوط أفقية فقط لقراءة أسهل */}
+        <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="bg-appgray text-muted-foreground">
-              <th className="border border-border p-2 text-start">{t("inv.v.color_desc")}</th>
-              <th className="border border-border p-2 text-start">{t("inv.f.category")}</th>
-              <th className="border border-border p-2 text-end">{t("inv.v.count")}</th>
-              <th className="border border-border p-2 text-end">{t("inv.f.weight_kg")}</th>
-              <th className="border border-border p-2 text-end">{t("inv.f.price_kg")}</th>
-              <th className="border border-border p-2 text-end">{t("inv.f.subtotal")}</th>
+            <tr className="border-y-2 border-foreground/70 print:border-black">
+              <th className="px-2 py-2.5 text-start font-bold">{t("inv.v.color_desc")}</th>
+              <th className="px-2 py-2.5 text-start font-bold">{t("inv.f.category")}</th>
+              <th className="px-2 py-2.5 text-end font-bold">{t("inv.v.count")}</th>
+              <th className="px-2 py-2.5 text-end font-bold">{t("inv.f.weight_kg")}</th>
+              <th className="px-2 py-2.5 text-end font-bold">{t("inv.f.price_kg")}</th>
+              <th className="px-2 py-2.5 text-end font-bold">{t("inv.f.subtotal")}</th>
             </tr>
           </thead>
           <tbody>
             {فاتورة.lines.map((l) => (
-              <tr key={l.id}>
-                <td className="border border-border p-2">{l.color}</td>
-                <td className="border border-border p-2">{l.category}</td>
-                <td className="border border-border p-2 text-end ltr-nums">{Number(l.qty)}</td>
-                <td className="border border-border p-2 text-end ltr-nums">{Number(l.weight)}</td>
-                <td className="border border-border p-2 text-end ltr-nums">
+              <tr key={l.id} className="border-b border-foreground/15 print:border-black/20">
+                <td className="px-2 py-2">{l.color}</td>
+                <td className="px-2 py-2">{l.category}</td>
+                <td className="px-2 py-2 text-end ltr-nums">{Number(l.qty)}</td>
+                <td className="px-2 py-2 text-end ltr-nums">{Number(l.weight)}</td>
+                <td className="px-2 py-2 text-end ltr-nums">
                   {l.price != null ? Number(l.price).toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
                 </td>
-                <td className="border border-border p-2 text-end ltr-nums">
+                <td className="px-2 py-2 text-end ltr-nums font-medium">
                   {Number(l.lineTotal).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -94,44 +106,59 @@ export default async function صفحة_عرض_فاتورة({ params }: { params:
           </tbody>
         </table>
 
-        {/* ملخص التجميع */}
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <h3 className="mb-2 font-semibold">{t("inv.f.summary_by_cat")}</h3>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-appgray text-muted-foreground">
-                  <th className="border border-border p-1.5 text-start">{t("inv.f.category")}</th>
-                  <th className="border border-border p-1.5 text-end">{t("inv.v.count")}</th>
-                  <th className="border border-border p-1.5 text-end">{t("inv.v.weight")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {تجميع.map((g) => (
-                  <tr key={g.التصنيف}>
-                    <td className="border border-border p-1.5">{g.التصنيف}</td>
-                    <td className="border border-border p-1.5 text-end ltr-nums">{Number(g.الكمية)}</td>
-                    <td className="border border-border p-1.5 text-end ltr-nums">{Number(g.الوزن)}</td>
+        {/* الإجماليات — بارزة وبسيطة */}
+        <div className="mt-6 flex flex-col items-end gap-4 sm:flex-row sm:items-start sm:justify-between">
+          {/* ملخص التصنيف (مختصر) */}
+          {تجميع.length > 0 && (
+            <div className="w-full sm:max-w-xs">
+              <h3 className="mb-1.5 text-sm font-bold">{t("inv.f.summary_by_cat")}</h3>
+              <table className="w-full border-collapse text-[13px]">
+                <thead>
+                  <tr className="border-b border-foreground/40 text-start print:border-black/50">
+                    <th className="py-1 text-start font-semibold">{t("inv.f.category")}</th>
+                    <th className="py-1 text-end font-semibold">{t("inv.v.count")}</th>
+                    <th className="py-1 text-end font-semibold">{t("inv.v.weight")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.f.total_count")}</span><span className="ltr-nums">{Number(فاتورة.totalQty)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">{t("inv.col.total_weight")}</span><span className="ltr-nums">{Number(فاتورة.totalWeight)} {t("inv.kg")}</span></div>
-            <div className="flex items-center justify-between rounded-lg bg-primary/5 p-3 text-lg">
-              <span className="font-bold">{t("inv.col.total")}</span>
+                </thead>
+                <tbody>
+                  {تجميع.map((g) => (
+                    <tr key={g.التصنيف} className="border-b border-foreground/10 print:border-black/10">
+                      <td className="py-1">{g.التصنيف}</td>
+                      <td className="py-1 text-end ltr-nums">{Number(g.الكمية)}</td>
+                      <td className="py-1 text-end ltr-nums">{Number(g.الوزن)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* الإجمالي المالي */}
+          <div className="w-full sm:max-w-xs">
+            <div className="flex justify-between py-1 text-sm">
+              <span>{t("inv.f.total_count")}</span>
+              <span className="ltr-nums font-medium">{Number(فاتورة.totalQty)}</span>
+            </div>
+            <div className="flex justify-between py-1 text-sm">
+              <span>{t("inv.col.total_weight")}</span>
+              <span className="ltr-nums font-medium">{Number(فاتورة.totalWeight)} {t("inv.kg")}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between border-t-2 border-foreground/80 pt-2 text-lg font-bold print:border-black">
+              <span>{t("inv.col.total")}</span>
               <نص_مبلغ القيمة={فاتورة.totalAmount} />
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t("inv.v.in_words")} {تفقيط(Number(فاتورة.totalAmount))}
+            <p className="mt-2 text-[13px]">
+              <span className="font-semibold">{t("inv.v.in_words")} </span>
+              {تفقيط(Number(فاتورة.totalAmount))}
             </p>
           </div>
         </div>
 
         {فاتورة.notes && (
-          <p className="mt-4 text-sm text-muted-foreground">{t("inv.v.notes_label")} {فاتورة.notes}</p>
+          <p className="mt-5 border-t border-foreground/15 pt-3 text-sm print:border-black/20">
+            <span className="font-semibold">{t("inv.v.notes_label")} </span>
+            {فاتورة.notes}
+          </p>
         )}
 
         <div className="mt-6 border-t border-border pt-3 no-print">
