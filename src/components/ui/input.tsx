@@ -14,14 +14,16 @@ const الحقل = React.forwardRef<HTMLInputElement, خصائص_الحقل>(
   ({ className, type, selectOnFocus, onFocus, dir, ...props }, ref) => {
     const نوع_LTR = !!type && أنواع_LTR.has(type);
     const تاريخي = type === "date" || type === "month" || type === "time" || type === "datetime-local" || type === "week";
-    // اتجاه ذكي: التواريخ/الأرقام LTR، والنص المختلط عربي/إنجليزي يتأقلم حسب المحتوى
-    const الاتجاه = dir ?? (نوع_LTR ? "ltr" : "auto");
+    // اتجاه: الأرقام/التواريخ LTR دائماً؛ النص العادي يرث اتجاه الصفحة (RTL في العربي)
+    // مع unicode-bidi:plaintext فيظهر الفارغ/العربي يميناً والإنجليزي LTR صحيحاً.
+    const الاتجاه = dir ?? (نوع_LTR ? "ltr" : undefined);
     return (
       <input
         type={type}
         dir={الاتجاه}
         className={cn(
           "flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50",
+          !نوع_LTR && "[unicode-bidi:plaintext]",
           تاريخي && "field-date text-start",
           className
         )}
@@ -43,9 +45,9 @@ const منطقة_نص = React.forwardRef<
 >(({ className, dir, ...props }, ref) => (
   <textarea
     ref={ref}
-    dir={dir ?? "auto"}
+    dir={dir}
     className={cn(
-      "flex min-h-[80px] w-full rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+      "flex min-h-[80px] w-full rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [unicode-bidi:plaintext]",
       className
     )}
     {...props}
