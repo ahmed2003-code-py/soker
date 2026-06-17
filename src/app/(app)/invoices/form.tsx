@@ -156,7 +156,7 @@ export function نموذج_فاتورة({
             عند_التغيير={(v) => {
               تعيين_عميل(v);
               const c = عملاء.find((x) => String(x.id) === v);
-              if (c?.phone && !هاتف) تعيين_هاتف(c.phone);
+              if (c) تعيين_هاتف(c.phone ?? "");
             }}
             عند_الإضافة={أضف_عميل}
             تسمية_الإضافة={t("party.add_customer")}

@@ -2,6 +2,7 @@
 import * as React from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff, LogIn } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
@@ -12,6 +13,7 @@ export function نموذج_الدخول() {
   const { t } = استخدام_اللغة();
   const [اسم, تعيين_اسم] = React.useState("");
   const [كلمة, تعيين_كلمة] = React.useState("");
+  const [إظهار_الباسورد, تعيين_إظهار_الباسورد] = React.useState(false);
   const [خطأ, تعيين_خطأ] = React.useState<boolean>(false);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
@@ -34,8 +36,8 @@ export function نموذج_الدخول() {
   }
 
   return (
-    <form onSubmit={إرسال} className="space-y-4">
-      <h2 className="text-lg font-semibold">{t("login.title")}</h2>
+    <form onSubmit={إرسال} className="space-y-5">
+      {/* اسم المستخدم */}
       <div className="space-y-1.5">
         <العنوان مطلوب htmlFor="username">{t("login.username")}</العنوان>
         <الحقل
@@ -44,27 +46,59 @@ export function نموذج_الدخول() {
           value={اسم}
           onChange={(e) => تعيين_اسم(e.target.value)}
           placeholder="ahmed"
-          className="ltr-nums"
+          className="ltr-nums h-11"
           autoComplete="username"
         />
       </div>
+
+      {/* كلمة المرور مع زر الإظهار/الإخفاء */}
       <div className="space-y-1.5">
         <العنوان مطلوب htmlFor="password">{t("login.password")}</العنوان>
-        <الحقل
-          id="password"
-          type="password"
-          value={كلمة}
-          onChange={(e) => تعيين_كلمة(e.target.value)}
-          placeholder="••••••••"
-          autoComplete="current-password"
-        />
+        <div className="relative">
+          <الحقل
+            id="password"
+            type={إظهار_الباسورد ? "text" : "password"}
+            value={كلمة}
+            onChange={(e) => تعيين_كلمة(e.target.value)}
+            placeholder="••••••••"
+            className="h-11 ps-10 ltr-nums"
+            autoComplete="current-password"
+          />
+          <button
+            type="button"
+            onClick={() => تعيين_إظهار_الباسورد((v) => !v)}
+            className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+            tabIndex={-1}
+            aria-label={إظهار_الباسورد ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+          >
+            {إظهار_الباسورد ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
       </div>
+
+      {/* خطأ */}
       {خطأ && (
-        <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{t("login.error")}</p>
+        <div className="flex items-center gap-2 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+          <span className="size-1.5 rounded-full bg-danger" />
+          {t("login.error")}
+        </div>
       )}
-      <الزر type="submit" className="w-full" disabled={جارٍ}>
-        {جارٍ ? t("login.submitting") : t("login.submit")}
+
+      {/* زر الدخول */}
+      <الزر type="submit" className="h-11 w-full gap-2 text-base" disabled={جارٍ}>
+        {جارٍ ? (
+          <span className="flex items-center gap-2">
+            <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            {t("login.submitting")}
+          </span>
+        ) : (
+          <>
+            <LogIn className="size-4" />
+            {t("login.submit")}
+          </>
+        )}
       </الزر>
+
       <p className="text-center text-xs text-muted-foreground">{t("login.forgot")}</p>
     </form>
   );
