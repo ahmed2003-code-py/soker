@@ -54,13 +54,13 @@ export function نموذج_الدخول() {
             value={كلمة}
             onChange={(e) => تعيين_كلمة(e.target.value)}
             placeholder="••••••••"
-            className="h-11 pe-10 ltr-nums"
+            className="h-11 ps-10"
             autoComplete="current-password"
           />
           <button
             type="button"
             onClick={() => تعيين_إظهار((v) => !v)}
-            className="absolute end-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none"
+            className="absolute start-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none"
             tabIndex={-1}
             aria-label={إظهار ? "إخفاء" : "إظهار"}
           >
