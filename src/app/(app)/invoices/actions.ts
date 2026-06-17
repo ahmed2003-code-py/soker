@@ -42,6 +42,7 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
         lines: {
           create: بنود_محسوبة.map((x) => ({
             color: x.اللون,
+            company: x.الشركة || null,
             qty: x._كمية,
             weight: x._وزن,
             category: x.التصنيف,
@@ -108,6 +109,7 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
         lines: {
           create: بنود_محسوبة.map((x) => ({
             color: x.اللون,
+            company: x.الشركة || null,
             qty: x._كمية,
             weight: x._وزن,
             category: x.التصنيف,

@@ -1,11 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import { د, جمع, ضرب } from "@/lib/decimal";
-import { أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
+import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 
 type عميل_معاملة = Prisma.TransactionClient;
 
 export type بند_إدخال = {
   اللون: string;
+  الشركة?: string | null;
   الكمية: Prisma.Decimal.Value | null;
   الوزن: Prisma.Decimal.Value | null;
   التصنيف: string;
@@ -74,20 +75,16 @@ export async function رحّل_فاتورة_للعميل(
     أنشأ: number;
   }
 ) {
-  await tx.ledgerEntry.create({
-    data: {
-      partyId: بيانات.معرف_العميل,
-      date: بيانات.التاريخ,
-      description: `فاتورة رقم ${بيانات.رقم_الفاتورة}`,
-      docNumber: String(بيانات.رقم_الفاتورة),
-      debit: د(بيانات.القيمة),
-      credit: 0,
-      balanceAfter: 0,
-      invoiceId: بيانات.معرف_الفاتورة,
-      createdById: بيانات.أنشأ,
-    },
+  // يمرّ عبر أضف_قيد لإعادة استخدام منطق دفتر الأستاذ (والتحديث التزايدي للرصيد)
+  await أضف_قيد(tx, {
+    معرف_الطرف: بيانات.معرف_العميل,
+    التاريخ: بيانات.التاريخ,
+    البيان: `فاتورة رقم ${بيانات.رقم_الفاتورة}`,
+    مدين: بيانات.القيمة,
+    رقم_المستند: String(بيانات.رقم_الفاتورة),
+    معرف_الفاتورة: بيانات.معرف_الفاتورة,
+    أنشأ: بيانات.أنشأ,
   });
-  await أعد_حساب_سلسلة_الطرف(tx, بيانات.معرف_العميل);
 }
 
 /** عكس قيود فاتورة (حذف قيود دفتر الأستاذ المرتبطة) + إعادة حساب رصيد العميل. */

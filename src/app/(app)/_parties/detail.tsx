@@ -24,7 +24,7 @@ export async function تفاصيل_الطرف({
       createdBy: { select: { name: true } },
       updatedBy: { select: { name: true } },
       ledgerEntries: {
-        orderBy: [{ date: "asc" }, { id: "asc" }],
+        orderBy: [{ date: "desc" }, { id: "desc" }],
         select: {
           id: true,
           date: true,

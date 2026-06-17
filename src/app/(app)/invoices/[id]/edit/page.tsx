@@ -34,6 +34,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           ملاحظات: فاتورة.notes,
           البنود: فاتورة.lines.map((l) => ({
             اللون: l.color,
+            الشركة: l.company ?? "",
             الكمية: String(Number(l.qty)),
             الوزن: String(Number(l.weight)),
             التصنيف: l.category,

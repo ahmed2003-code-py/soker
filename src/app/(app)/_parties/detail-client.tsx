@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, HandCoins, Trash2 } from "lucide-react";
+import { Plus, HandCoins, Trash2, Pencil } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
-import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة } from "./actions";
+import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_متعددة } from "./actions";
 
 export type حركة = {
   id: number;
@@ -35,7 +35,7 @@ export type حركة = {
   مدين: number;
   دائن: number;
   الرصيد_بعد_الحركة: number;
-  مرتبط: boolean; // مرتبط بفاتورة/خزنة → لا يُحذف يدوياً
+  مرتبط: boolean; // مرتبط بفاتورة/خزنة → لا يُحذف/يُعدّل يدوياً
 };
 
 const اليوم = () => new Date().toISOString().slice(0, 10);
@@ -57,8 +57,11 @@ export function حركات_الطرف({
   const [دفعة, تعيين_دفعة] = React.useState(false);
   const [يدوية, تعيين_يدوية] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
+  const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
+  const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
+  const [حذف_جماعي, تعيين_حذف_جماعي] = React.useState(false);
 
   const حركات_معروضة = الحركات.filter((ح) => {
     const d = ح.التاريخ.slice(0, 10);
@@ -67,7 +70,50 @@ export function حركات_الطرف({
     return true;
   });
 
+  const قابلة_للحذف = حركات_معروضة.filter((ح) => !ح.مرتبط);
+
+  function تبديل_تحديد(id: number) {
+    تعيين_محددة((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function تحديد_الكل() {
+    if (محددة.size === قابلة_للحذف.length && قابلة_للحذف.length > 0) {
+      تعيين_محددة(new Set());
+    } else {
+      تعيين_محددة(new Set(قابلة_للحذف.map((ح) => ح.id)));
+    }
+  }
+
+  const كل_محدد =
+    قابلة_للحذف.length > 0 && محددة.size === قابلة_للحذف.length;
+
   const أعمدة: عمود<حركة>[] = [
+    {
+      المفتاح: "_select",
+      العنوان: (
+        <input
+          type="checkbox"
+          checked={كل_محدد}
+          onChange={تحديد_الكل}
+          className="size-4 cursor-pointer"
+          title="تحديد الكل"
+        />
+      ) as unknown as string,
+      خلية: (ص) =>
+        ص.مرتبط ? null : (
+          <input
+            type="checkbox"
+            checked={محددة.has(ص.id)}
+            onChange={() => تبديل_تحديد(ص.id)}
+            className="size-4 cursor-pointer"
+          />
+        ),
+      مخفي_موبايل: false,
+    },
     {
       المفتاح: "التاريخ",
       العنوان: t("common.date"),
@@ -83,39 +129,78 @@ export function حركات_الطرف({
     },
     { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
     {
-      المفتاح: "الكمية",
-      العنوان: t("ledger.col.qty"),
-      خلية: (ص) => (ص.الكمية != null ? <span className="ltr-nums">{ص.الكمية}</span> : "—"),
+      المفتاح: "المبلغ",
+      العنوان: "المبلغ",
+      محاذاة: "end",
+      خلية: (ص) => {
+        const قيمة = ص.مدين || ص.دائن;
+        return قيمة ? (
+          <نص_مبلغ القيمة={قيمة} مع_العملة={false} />
+        ) : (
+          <span>—</span>
+        );
+      },
       مخفي_موبايل: true,
     },
     {
       المفتاح: "مدين",
       العنوان: t("ledger.col.debit"),
       محاذاة: "end",
-      خلية: (ص) => (ص.مدين ? <نص_مبلغ القيمة={ص.مدين} مع_العملة={false} /> : "—"),
+      خلية: (ص) =>
+        ص.مدين ? (
+          <نص_مبلغ القيمة={ص.مدين} مع_العملة={false} />
+        ) : (
+          <span>—</span>
+        ),
     },
     {
       المفتاح: "دائن",
       العنوان: t("ledger.col.credit"),
       محاذاة: "end",
-      خلية: (ص) => (ص.دائن ? <نص_مبلغ القيمة={ص.دائن} مع_العملة={false} /> : "—"),
+      خلية: (ص) =>
+        ص.دائن ? (
+          <نص_مبلغ القيمة={ص.دائن} مع_العملة={false} />
+        ) : (
+          <span>—</span>
+        ),
     },
     {
       المفتاح: "الرصيد_بعد_الحركة",
       العنوان: t("ledger.col.balance_after"),
       محاذاة: "end",
-      خلية: (ص) => <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} />,
+      خلية: (ص) => (
+        <نص_مبلغ القيمة={ص.الرصيد_بعد_الحركة} مع_العملة={false} />
+      ),
     },
   ];
 
   return (
     <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <فلتر_فترة من={من} إلى={إلى} عند_التغيير={(م, ن) => { تعيين_من(م); تعيين_إلى(ن); }} />
+        <فلتر_فترة
+          من={من}
+          إلى={إلى}
+          عند_التغيير={(م, ن) => {
+            تعيين_من(م);
+            تعيين_إلى(ن);
+          }}
+        />
         <div className="flex flex-wrap gap-2">
+          {محددة.size > 0 && (
+            <الزر
+              variant="danger"
+              size="sm"
+              onClick={() => تعيين_حذف_جماعي(true)}
+            >
+              <Trash2 className="size-4" />
+              حذف المحدد ({محددة.size})
+            </الزر>
+          )}
           <الزر variant="success" onClick={() => تعيين_دفعة(true)}>
             <HandCoins className="size-4" />
-            {الطرف.النوع === "CUSTOMER" ? t("ledger.collect") : t("ledger.disburse")}
+            {الطرف.النوع === "CUSTOMER"
+              ? t("ledger.collect")
+              : t("ledger.disburse")}
           </الزر>
           <الزر variant="outline" onClick={() => تعيين_يدوية(true)}>
             <Plus className="size-4" /> {t("ledger.manual")}
@@ -131,11 +216,28 @@ export function حركات_الطرف({
         رسالة_فراغ={t("ledger.empty")}
         إجراءات_الصف={(ص) =>
           ص.مرتبط ? (
-            <span className="text-xs text-muted-foreground">{t("ledger.linked")}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("ledger.linked")}
+            </span>
           ) : (
-            <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
-              <Trash2 className="size-4 text-danger" />
-            </الزر>
+            <div className="flex items-center gap-1">
+              <الزر
+                size="sm"
+                variant="ghost"
+                onClick={() => تعيين_تعديل(ص)}
+                title="تعديل"
+              >
+                <Pencil className="size-4 text-primary" />
+              </الزر>
+              <الزر
+                size="sm"
+                variant="ghost"
+                onClick={() => تعيين_حذف(ص)}
+                title="حذف"
+              >
+                <Trash2 className="size-4 text-danger" />
+              </الزر>
+            </div>
           )
         }
       />
@@ -149,7 +251,17 @@ export function حركات_الطرف({
         />
       )}
       {يدوية && (
-        <حوار_حركة_يدوية الطرف={الطرف} عند_الإغلاق={() => تعيين_يدوية(false)} />
+        <حوار_حركة_يدوية
+          الطرف={الطرف}
+          عند_الإغلاق={() => تعيين_يدوية(false)}
+        />
+      )}
+      {تعديل && (
+        <حوار_تعديل_حركة
+          الحركة={تعديل}
+          الطرف={الطرف}
+          عند_الإغلاق={() => تعيين_تعديل(null)}
+        />
       )}
       {حذف && (
         <حوار_تأكيد
@@ -160,7 +272,30 @@ export function حركات_الطرف({
           عند_التأكيد={async () => {
             const r = await حذف_حركة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) router.refresh();
+            if (r.نجاح) {
+              تعيين_محددة((prev) => {
+                const next = new Set(prev);
+                next.delete(حذف.id);
+                return next;
+              });
+              router.refresh();
+            }
+          }}
+        />
+      )}
+      {حذف_جماعي && (
+        <حوار_تأكيد
+          مفتوح
+          عند_التغيير={(o) => !o && تعيين_حذف_جماعي(false)}
+          العنوان={`حذف ${محددة.size} حركة`}
+          الوصف="سيُعاد حساب رصيد الطرف بعد الحذف. لا يمكن التراجع."
+          عند_التأكيد={async () => {
+            const r = await حذف_حركات_متعددة([...محددة]);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            if (r.نجاح) {
+              تعيين_محددة(new Set());
+              router.refresh();
+            }
           }}
         />
       )}
@@ -213,7 +348,9 @@ function حوار_دفعة({
       <محتوى_الحوار>
         <رأس_الحوار>
           <عنوان_الحوار>
-            {الطرف.النوع === "CUSTOMER" ? t("pay.collect_from") : t("pay.disburse_to")}
+            {الطرف.النوع === "CUSTOMER"
+              ? t("pay.collect_from")
+              : t("pay.disburse_to")}
           </عنوان_الحوار>
         </رأس_الحوار>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -223,7 +360,13 @@ function حوار_دفعة({
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("pay.amount")}</العنوان>
-            <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
+            <الحقل
+              autoFocus
+              selectOnFocus
+              value={مبلغ}
+              onChange={(e) => تعيين_مبلغ(e.target.value)}
+              placeholder="0.00"
+            />
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("pay.method")}</العنوان>
@@ -237,7 +380,10 @@ function حوار_دفعة({
           <div className="space-y-1.5">
             <العنوان>{t("pay.account")}</العنوان>
             <قائمة_اختيار
-              الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+              الخيارات={حسابات_الخزنة.map((a) => ({
+                القيمة: String(a.id),
+                التسمية: a.التسمية,
+              }))}
               القيمة={حساب}
               عند_التغيير={تعيين_حساب}
               قابل_للبحث={false}
@@ -248,7 +394,11 @@ function حوار_دفعة({
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <العنوان>{t("pay.invoice_opt")}</العنوان>
-            <الحقل className="ltr-nums" value={رقم} onChange={(e) => تعيين_رقم(e.target.value)} />
+            <الحقل
+              className="ltr-nums"
+              value={رقم}
+              onChange={(e) => تعيين_رقم(e.target.value)}
+            />
           </div>
         </div>
         <تذييل_الحوار>
@@ -309,15 +459,120 @@ function حوار_حركة_يدوية({
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
-            <الحقل autoFocus value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />
+            <الحقل
+              autoFocus
+              value={بيان}
+              onChange={(e) => تعيين_بيان(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <العنوان>{t("ledger.col.debit")}</العنوان>
-            <الحقل selectOnFocus value={مدين} onChange={(e) => تعيين_مدين(e.target.value)} placeholder="0.00" />
+            <الحقل
+              selectOnFocus
+              value={مدين}
+              onChange={(e) => تعيين_مدين(e.target.value)}
+              placeholder="0.00"
+            />
           </div>
           <div className="space-y-1.5">
             <العنوان>{t("ledger.col.credit")}</العنوان>
-            <الحقل selectOnFocus value={دائن} onChange={(e) => تعيين_دائن(e.target.value)} placeholder="0.00" />
+            <الحقل
+              selectOnFocus
+              value={دائن}
+              onChange={(e) => تعيين_دائن(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? t("common.saving") : t("common.save")}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>
+            {t("common.cancel")}
+          </الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+function حوار_تعديل_حركة({
+  الحركة,
+  الطرف,
+  عند_الإغلاق,
+}: {
+  الحركة: حركة;
+  الطرف: { id: number; النوع: PartyType };
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
+  const [تاريخ, تعيين_تاريخ] = React.useState(
+    الحركة.التاريخ.slice(0, 10)
+  );
+  const [بيان, تعيين_بيان] = React.useState(الحركة.البيان);
+  const [مدين, تعيين_مدين] = React.useState(
+    الحركة.مدين ? String(الحركة.مدين) : ""
+  );
+  const [دائن, تعيين_دائن] = React.useState(
+    الحركة.دائن ? String(الحركة.دائن) : ""
+  );
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  async function حفظ() {
+    تعيين_جارٍ(true);
+    const r = await تعديل_حركة(الحركة.id, {
+      معرف_الطرف: الطرف.id,
+      التاريخ: تاريخ,
+      البيان: بيان,
+      مدين: مدين || "",
+      دائن: دائن || "",
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار>
+        <رأس_الحوار>
+          <عنوان_الحوار>تعديل الحركة</عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("common.date")}</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
+            <الحقل
+              autoFocus
+              value={بيان}
+              onChange={(e) => تعيين_بيان(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان>{t("ledger.col.debit")}</العنوان>
+            <الحقل
+              selectOnFocus
+              value={مدين}
+              onChange={(e) => تعيين_مدين(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان>{t("ledger.col.credit")}</العنوان>
+            <الحقل
+              selectOnFocus
+              value={دائن}
+              onChange={(e) => تعيين_دائن(e.target.value)}
+              placeholder="0.00"
+            />
           </div>
         </div>
         <تذييل_الحوار>

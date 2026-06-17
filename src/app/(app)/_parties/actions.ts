@@ -1,6 +1,5 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { PartyType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
@@ -9,15 +8,12 @@ import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledg
 import { سجّل_عملية_مرتبطة } from "@/app/(app)/_integration/actions";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
+import { مسار_قائمة_الطرف, مسار_صفحة_الطرف } from "@/lib/paths";
 import {
   مخطط_طرف,
   مخطط_دفعة,
   مخطط_حركة_يدوية,
 } from "@/lib/schemas/party";
-
-function مسار_الطرف(نوع: PartyType) {
-  return نوع === PartyType.CUSTOMER ? "/customers" : "/suppliers";
-}
 
 export async function إنشاء_طرف(مدخلات: unknown): Promise<نتيجة<{ id: number }>> {
   const فاعل = await اطلب_المستخدم();
@@ -49,7 +45,7 @@ export async function إنشاء_طرف(مدخلات: unknown): Promise<نتيج
     return p;
   });
 
-  revalidatePath(مسار_الطرف(ب.النوع));
+  revalidatePath(مسار_قائمة_الطرف(ب.النوع));
   return نجح({ id: طرف.id }, "تمت إضافة الطرف");
 }
 
@@ -83,8 +79,8 @@ export async function تعديل_طرف(id: number, مدخلات: unknown): Prom
       التفاصيل: { قبل: { الاسم: حالي.name }, بعد: { الاسم: ب.الاسم } },
     });
   });
-  revalidatePath(مسار_الطرف(ب.النوع));
-  revalidatePath(`${مسار_الطرف(ب.النوع)}/${id}`);
+  revalidatePath(مسار_قائمة_الطرف(ب.النوع));
+  revalidatePath(مسار_صفحة_الطرف(ب.النوع, id));
   return نجح(undefined, "تم حفظ التعديلات");
 }
 
@@ -109,7 +105,7 @@ export async function حذف_طرف(id: number): Promise<نتيجة> {
       التفاصيل: { الاسم: طرف.name },
     });
   });
-  revalidatePath(مسار_الطرف(طرف.type));
+  revalidatePath(مسار_قائمة_الطرف(طرف.type));
   return نجح(undefined, "تم حذف الطرف");
 }
 
@@ -126,7 +122,7 @@ export async function سجل_دفعة(
     const ب = مخطط_دفعة.safeParse(مدخلات);
     if (ب.success) {
       const طرف = await prisma.party.findUnique({ where: { id: ب.data.معرف_الطرف } });
-      if (طرف) revalidatePath(`${مسار_الطرف(طرف.type)}/${طرف.id}`);
+      if (طرف) revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
     }
   }
   return r;
@@ -162,8 +158,95 @@ export async function أضف_حركة_يدوية(مدخلات: unknown): Promise
       التفاصيل: { يدوية: true, مدين: ب.مدين, دائن: ب.دائن, البيان: ب.البيان },
     });
   });
-  revalidatePath(`${مسار_الطرف(طرف.type)}/${طرف.id}`);
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
   return نجح(undefined, "تمت إضافة الحركة");
+}
+
+/** تعديل حركة حساب يدوية (لا تكون مرتبطة بفاتورة أو خزنة) */
+export async function تعديل_حركة(
+  id: number,
+  مدخلات: unknown
+): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_حركة_يدوية.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  const قيد = await prisma.ledgerEntry.findUnique({
+    where: { id },
+    include: { party: true },
+  });
+  if (!قيد) return فشل("الحركة غير موجودة");
+  if (قيد.invoiceId)
+    return فشل("هذه الحركة مرتبطة بفاتورة — عدّل الفاتورة بدلاً من ذلك");
+  if (قيد.treasuryTxnId)
+    return فشل("هذه الحركة مرتبطة بالخزنة — عدّلها من الخزنة");
+  const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ledgerEntry.update({
+      where: { id },
+      data: {
+        date: تاريخ,
+        description: ب.البيان,
+        debit: ب.مدين ?? "0",
+        credit: ب.دائن ?? "0",
+        updatedById: فاعل.id,
+      },
+    });
+    await أعد_حساب_سلسلة_الطرف(tx, قيد.partyId);
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "UPDATE",
+      نوع_الكيان: "حركة_الحساب",
+      معرف_الكيان: id,
+      التفاصيل: {
+        قبل: { مدين: قيد.debit, دائن: قيد.credit, البيان: قيد.description },
+        بعد: { مدين: ب.مدين, دائن: ب.دائن, البيان: ب.البيان },
+      },
+    });
+  });
+  revalidatePath(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+  return نجح(undefined, "تم تعديل الحركة وإعادة حساب الرصيد");
+}
+
+/** حذف مجموعة حركات يدوية دفعةً واحدة */
+export async function حذف_حركات_متعددة(ids: number[]): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "حذف");
+  if (!ids.length) return فشل("لم تُحدد أي حركات");
+
+  const قيود = await prisma.ledgerEntry.findMany({
+    where: { id: { in: ids } },
+    include: { party: true },
+  });
+  if (قيود.length === 0) return فشل("لم يُعثر على الحركات");
+
+  // تحقق: لا يوجد قيد مرتبط بفاتورة أو خزنة
+  const مرتبطة = قيود.filter((ق) => ق.invoiceId || ق.treasuryTxnId);
+  if (مرتبطة.length > 0)
+    return فشل(`${مرتبطة.length} حركة مرتبطة بفاتورة/خزنة لا يمكن حذفها`);
+
+  const معرفات_الأطراف = [...new Set(قيود.map((ق) => ق.partyId))];
+  const نوع_الطرف = قيود[0].party.type;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ledgerEntry.deleteMany({ where: { id: { in: ids } } });
+    for (const معرف of معرفات_الأطراف) {
+      await أعد_حساب_سلسلة_الطرف(tx, معرف);
+    }
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "DELETE",
+      نوع_الكيان: "حركة_الحساب",
+      معرف_الكيان: ids[0],
+      التفاصيل: { عدد_المحذوفة: ids.length, المعرفات: ids },
+    });
+  });
+  for (const معرف of معرفات_الأطراف) {
+    revalidatePath(مسار_صفحة_الطرف(نوع_الطرف, معرف));
+  }
+  return نجح(undefined, `تم حذف ${ids.length} حركة وإعادة حساب الأرصدة`);
 }
 
 /** حذف حركة حساب (يدوية/دفعة) مع إعادة حساب سلسلة الطرف */
@@ -191,6 +274,6 @@ export async function حذف_حركة(id: number): Promise<نتيجة> {
       التفاصيل: { مدين: قيد.debit, دائن: قيد.credit, البيان: قيد.description },
     });
   });
-  revalidatePath(`${مسار_الطرف(قيد.party.type)}/${قيد.partyId}`);
+  revalidatePath(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
   return نجح(undefined, "تم حذف الحركة وإعادة حساب الرصيد");
 }

@@ -4,11 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
-import { PartyType } from "@prisma/client";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
-import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, type اتجاه } from "@/lib/integration";
+import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, اتجاه_الطرف, type اتجاه } from "@/lib/integration";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
+import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { مخطط_حركة_خزنة } from "@/lib/schemas/treasury";
 
 /** هل ستجعل الحركة رصيد الحساب سالباً؟ (للتنبيه فقط — مسموح) */
@@ -66,7 +66,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
 
   // عملية مرتبطة بطرف → عكس وإعادة تطبيق (الجانبان متّسقان)
   if (حالي.ledgerEntry && حالي.party) {
-    const الاتجاه: اتجاه = حالي.party.type === PartyType.CUSTOMER ? "تحصيل" : "صرف";
+    const الاتجاه: اتجاه = اتجاه_الطرف(حالي.party.type);
     await prisma.$transaction(async (tx) => {
       await اعكس_عملية_مرتبطة(tx, id);
       const r = await أنشئ_عملية_مرتبطة(tx, {
@@ -88,7 +88,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
       });
     });
     revalidatePath("/treasury");
-    revalidatePath(`/${حالي.party.type === "CUSTOMER" ? "customers" : "suppliers"}/${حالي.party.id}`);
+    revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
     return نجح(undefined, "تم تعديل العملية المرتبطة (عكس وإعادة تطبيق)");
   }
 
@@ -148,7 +148,7 @@ export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> 
     });
     revalidatePath("/treasury");
     if (حالي.party)
-      revalidatePath(`/${حالي.party.type === "CUSTOMER" ? "customers" : "suppliers"}/${حالي.party.id}`);
+      revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
     return نجح(undefined, "تم حذف العملية المرتبطة وعكس الجانبين");
   }
 

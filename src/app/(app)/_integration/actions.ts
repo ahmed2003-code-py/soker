@@ -1,16 +1,17 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { PartyType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
+import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { مخطط_دفعة } from "@/lib/schemas/party";
 import {
   أنشئ_عملية_مرتبطة,
   اعكس_عملية_مرتبطة,
+  اتجاه_الطرف,
   type اتجاه,
 } from "@/lib/integration";
 
@@ -25,7 +26,7 @@ export async function سجّل_عملية_مرتبطة(مدخلات: unknown): P
 
   const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
   if (!طرف) return فشل("الطرف غير موجود");
-  const الاتجاه: اتجاه = طرف.type === PartyType.CUSTOMER ? "تحصيل" : "صرف";
+  const الاتجاه: اتجاه = اتجاه_الطرف(طرف.type);
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
   const نتج = await prisma.$transaction(async (tx) => {
@@ -51,7 +52,7 @@ export async function سجّل_عملية_مرتبطة(مدخلات: unknown): P
   });
 
   revalidatePath("/treasury");
-  revalidatePath(`/${طرف.type === "CUSTOMER" ? "customers" : "suppliers"}/${طرف.id}`);
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
   return نجح(نتج, الاتجاه === "تحصيل" ? "تم تسجيل التحصيل وربطه بالخزنة" : "تم تسجيل الصرف وربطه بالخزنة");
 }
 
@@ -68,7 +69,7 @@ export async function عدّل_عملية_مرتبطة(
   if (!ب.معرف_حساب_الخزنة) return فشل("اختر حساب الخزنة");
   const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
   if (!طرف) return فشل("الطرف غير موجود");
-  const الاتجاه: اتجاه = طرف.type === PartyType.CUSTOMER ? "تحصيل" : "صرف";
+  const الاتجاه: اتجاه = اتجاه_الطرف(طرف.type);
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
   await prisma.$transaction(async (tx) => {
@@ -93,7 +94,7 @@ export async function عدّل_عملية_مرتبطة(
     });
   });
   revalidatePath("/treasury");
-  revalidatePath(`/${طرف.type === "CUSTOMER" ? "customers" : "suppliers"}/${طرف.id}`);
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
   return نجح(undefined, "تم تعديل العملية (عكس وإعادة تطبيق) — الجانبان متّسقان");
 }
 
@@ -117,7 +118,7 @@ export async function احذف_عملية_مرتبطة(معرف_حركة: number
   revalidatePath("/treasury");
   if (حركة.partyId) {
     const ط = await prisma.party.findUnique({ where: { id: حركة.partyId } });
-    if (ط) revalidatePath(`/${ط.type === "CUSTOMER" ? "customers" : "suppliers"}/${ط.id}`);
+    if (ط) revalidatePath(مسار_صفحة_الطرف(ط.type, ط.id));
   }
   return نجح(undefined, "تم حذف العملية وعكس الجانبين");
 }

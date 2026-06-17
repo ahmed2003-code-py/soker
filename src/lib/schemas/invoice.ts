@@ -13,6 +13,7 @@ const رقم_غير_سالب = z
 
 export const مخطط_بند = z.object({
   اللون: z.string().trim().min(1, "اللون مطلوب"),
+  الشركة: z.string().trim().optional().nullable(),
   الكمية: رقم_غير_سالب,
   الوزن: رقم_غير_سالب,
   التصنيف: z.string().trim().min(1, "التصنيف مطلوب"),

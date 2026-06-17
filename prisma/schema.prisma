@@ -108,6 +108,9 @@ model Party {
 
   @@index([type])
   @@index([name])
+  // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "parties_name_trgm_idx")
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "parties_phone_trgm_idx")
   @@map("parties")
 }
 
@@ -146,6 +149,7 @@ model InvoiceLine {
   invoiceId Int      @map("invoice_id")
   invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   color     String   @map("color")
+  company   String?  @map("company") // الشركة / المصنع
   qty       Decimal  @default(0) @map("qty") @db.Decimal(18, 4)
   weight    Decimal  @default(0) @map("weight") @db.Decimal(18, 4)
   category  String   @map("category")
@@ -239,6 +243,8 @@ model TreasuryTxn {
 
   @@index([accountId, date])
   @@index([kind])
+  // فهرس trigram لتسريع البحث (contains/ILIKE) في البيان ضمن البحث الموحّد
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "treasury_txns_description_trgm_idx")
   @@map("treasury_txns")
 }
 
@@ -267,6 +273,11 @@ model Cheque {
 
   @@index([dueDate])
   @@index([status])
+  // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
+  @@index([drawerName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_drawer_name_trgm_idx")
+  @@index([bankName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_bank_name_trgm_idx")
+  @@index([beneficiary(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_beneficiary_trgm_idx")
+  @@index([chequeNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_cheque_number_trgm_idx")
   @@map("cheques")
 }
 

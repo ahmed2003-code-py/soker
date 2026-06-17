@@ -1,10 +1,15 @@
 import type { Prisma } from "@prisma/client";
-import { TxnKind } from "@prisma/client";
+import { TxnKind, PartyType } from "@prisma/client";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
 import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 
 type عميل_معاملة = Prisma.TransactionClient;
 export type اتجاه = "تحصيل" | "صرف"; // تحصيل من عميل / صرف لمورد
+
+/** اتجاه العملية المرتبطة حسب نوع الطرف: عميل → تحصيل، مورد → صرف. */
+export function اتجاه_الطرف(النوع: PartyType): اتجاه {
+  return النوع === PartyType.CUSTOMER ? "تحصيل" : "صرف";
+}
 
 /**
  * قلب التكامل: عملية خزنة مرتبطة بحساب طرف — معاملة ذرّية واحدة.
