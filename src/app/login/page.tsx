@@ -13,10 +13,10 @@ export default async function صفحة_الدخول() {
   const { t } = مترجم_الخادم();
 
   const الميزات = [
-    { أيقونة: FileText, نص: "فواتير احترافية بالتفاصيل الكاملة" },
-    { أيقونة: Wallet,   نص: "خزنة ذكية لمتابعة كل الحسابات" },
-    { أيقونة: Users,    نص: "إدارة العملاء والموردين في مكان واحد" },
-    { أيقونة: CheckSquare, نص: "شيكات واردة وصادرة مع تتبع تلقائي" },
+    { أيقونة: FileText,    نص: t("login.feature1") },
+    { أيقونة: Wallet,      نص: t("login.feature2") },
+    { أيقونة: Users,       نص: t("login.feature3") },
+    { أيقونة: CheckSquare, نص: t("login.feature4") },
   ];
 
   return (
@@ -41,13 +41,13 @@ export default async function صفحة_الدخول() {
           {/* الشعار */}
           <div>
             <div className="text-5xl font-extrabold tracking-tight lg:text-6xl">سُكر</div>
-            <p className="mt-2 text-base text-white/60 lg:text-lg">{t("app.tagline")}</p>
+            <p className="mt-2 text-base text-white/60 lg:text-lg">{t("login.brand_sub")}</p>
           </div>
 
           {/* الميزات */}
           <div className="space-y-5">
             <p className="text-sm font-semibold uppercase tracking-widest text-white/40">
-              كل أعمالك في منصة واحدة
+              {t("login.brand_sub")}
             </p>
             {الميزات.map(({ أيقونة: Icon, نص }) => (
               <div key={نص} className="flex items-center gap-4">
@@ -83,16 +83,14 @@ export default async function صفحة_الدخول() {
 
           {/* العنوان */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-foreground">أهلاً بك 👋</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              سجّل دخولك لمتابعة أعمالك
-            </p>
+            <h1 className="text-2xl font-bold text-foreground">{t("login.greeting")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("login.greeting_sub")}</p>
           </div>
 
           {/* خط فاصل */}
           <div className="mb-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">بيانات الدخول</span>
+            <span className="text-xs text-muted-foreground">{t("login.data_divider")}</span>
             <div className="h-px flex-1 bg-border" />
           </div>
 

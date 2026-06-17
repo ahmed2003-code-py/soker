@@ -77,7 +77,10 @@ export function قائمة_اختيار({
             />
           </div>
         )}
-        <div className="max-h-60 overflow-y-auto p-1">
+        <div
+          className="max-h-60 overflow-y-auto overscroll-contain p-1"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {مُصفّاة.length === 0 && !يمكن_الإضافة && (
             <p className="px-3 py-4 text-center text-sm text-muted-foreground">
               لا نتائج

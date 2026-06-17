@@ -338,6 +338,14 @@ export const القاموس = {
     "login.error": "اسم المستخدم أو كلمة المرور غير صحيحة",
     "login.owners_hint": "للمالكَين: ahmed / mahmoud",
     "login.forgot": "نسيت كلمة المرور؟ اطلب من المالك الآخر إعادة تعيينها.",
+    "login.greeting": "أهلاً بك 👋",
+    "login.greeting_sub": "سجّل دخولك لمتابعة أعمالك",
+    "login.data_divider": "بيانات الدخول",
+    "login.brand_sub": "كل أعمالك في منصة واحدة",
+    "login.feature1": "فواتير احترافية بالتفاصيل الكاملة",
+    "login.feature2": "خزنة ذكية لمتابعة كل الحسابات",
+    "login.feature3": "إدارة العملاء والموردين في مكان واحد",
+    "login.feature4": "شيكات واردة وصادرة مع تتبع تلقائي",
 
     /* ─── تغيير كلمة المرور ─── */
     "cpw.title": "تغيير كلمة المرور",
@@ -714,6 +722,14 @@ export const القاموس = {
     "login.error": "Incorrect username or password",
     "login.owners_hint": "Owners: ahmed / mahmoud",
     "login.forgot": "Forgot your password? Ask the other owner to reset it.",
+    "login.greeting": "Welcome 👋",
+    "login.greeting_sub": "Sign in to continue",
+    "login.data_divider": "Your credentials",
+    "login.brand_sub": "All your business in one platform",
+    "login.feature1": "Professional invoices with full details",
+    "login.feature2": "Smart treasury to track all accounts",
+    "login.feature3": "Manage customers & suppliers in one place",
+    "login.feature4": "Incoming & outgoing cheques with auto-tracking",
 
     /* ─── change password ─── */
     "cpw.title": "Change password",
