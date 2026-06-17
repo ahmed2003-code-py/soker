@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Image as ImageIcon } from "lucide-react";
-import { ChequeStatus } from "@prisma/client";
+import { ChequeStatus, ChequeDirection } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
@@ -43,6 +43,7 @@ export type شيك = {
   اسم_البنك: string | null;
   تاريخ_الاستحقاق: string;
   رقم_الشيك: string | null;
+  الاتجاه: ChequeDirection;
   الحالة: ChequeStatus;
   ملاحظات: string | null;
   لها_صورة: boolean;
@@ -54,8 +55,9 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
   const إشعار = useإشعار();
   const { t, لغة } = استخدام_اللغة();
   const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
-  const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك } | null>(null);
+  const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك; اتجاه_افتراضي?: ChequeDirection } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
+  const [تبويب, تعيين_تبويب] = React.useState<ChequeDirection>("INCOMING");
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
@@ -168,12 +170,36 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
     { ق: "متأخر", ت: t("cheque.status.overdue") },
   ];
 
+  const الواردة = البيانات.filter((ش) => ش.الاتجاه === "INCOMING");
+  const الصادرة = البيانات.filter((ش) => ش.الاتجاه === "OUTGOING");
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <الزر onClick={() => تعيين_نموذج({})}>
+        <الزر onClick={() => تعيين_نموذج({ اتجاه_افتراضي: تبويب })}>
           <Plus className="size-4" /> {t("cheque.add")}
         </الزر>
+      </div>
+
+      {/* تبويبات الاتجاه */}
+      <div className="flex border-b border-border">
+        {(["INCOMING", "OUTGOING"] as ChequeDirection[]).map((dir) => (
+          <button
+            key={dir}
+            type="button"
+            onClick={() => تعيين_تبويب(dir)}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              تبويب === dir
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {dir === "INCOMING" ? t("cheque.tab.incoming") : t("cheque.tab.outgoing")}
+            <span className={`mr-2 rounded-full px-1.5 py-0.5 text-xs ${تبويب === dir ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+              {(dir === "INCOMING" ? الواردة : الصادرة).length}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* فلاتر: الحالة + الفترة */}
@@ -228,9 +254,15 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
         </div>
       </div>
 
-      {جدول(طبّق_الفلاتر(البيانات))}
+      {جدول(طبّق_الفلاتر(تبويب === "INCOMING" ? الواردة : الصادرة))}
 
-      {نموذج && <حوار_شيك شيك={نموذج.شيك} عند_الإغلاق={() => تعيين_نموذج(null)} />}
+      {نموذج && (
+        <حوار_شيك
+          شيك={نموذج.شيك}
+          اتجاه_افتراضي={نموذج.اتجاه_افتراضي ?? "INCOMING"}
+          عند_الإغلاق={() => تعيين_نموذج(null)}
+        />
+      )}
       {حذف && (
         <حوار_تأكيد
           مفتوح
@@ -247,7 +279,15 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
   );
 }
 
-export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: شيك; عند_الإغلاق: () => void }) {
+export function حوار_شيك({
+  شيك,
+  اتجاه_افتراضي = "INCOMING",
+  عند_الإغلاق,
+}: {
+  شيك?: شيك;
+  اتجاه_افتراضي?: ChequeDirection;
+  عند_الإغلاق: () => void;
+}) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
@@ -260,6 +300,7 @@ export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: ش
     اسم_البنك: شيك?.اسم_البنك ?? "",
     تاريخ_الاستحقاق: شيك?.تاريخ_الاستحقاق?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     رقم_الشيك: شيك?.رقم_الشيك ?? "",
+    الاتجاه: (شيك?.الاتجاه ?? اتجاه_افتراضي) as ChequeDirection,
     الحالة: (شيك?.الحالة ?? "PENDING") as ChequeStatus,
     ملاحظات: شيك?.ملاحظات ?? "",
   });
@@ -289,6 +330,23 @@ export function حوار_شيك({ شيك, عند_الإغلاق }: { شيك?: ش
         <رأس_الحوار>
           <عنوان_الحوار>{شيك ? t("cheque.dlg.edit") : t("cheque.dlg.add")}</عنوان_الحوار>
         </رأس_الحوار>
+
+        {/* اختيار الاتجاه */}
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-appgray p-3">
+          <span className="text-sm text-muted-foreground">{t("cheque.col.direction")}</span>
+          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+            {(["INCOMING", "OUTGOING"] as ChequeDirection[]).map((dir) => (
+              <button
+                key={dir}
+                type="button"
+                className={`px-4 py-1.5 transition-colors ${ق.الاتجاه === dir ? "bg-primary text-white" : "bg-white hover:bg-muted"}`}
+                onClick={() => حدّث("الاتجاه", dir)}
+              >
+                {dir === "INCOMING" ? t("cheque.tab.incoming") : t("cheque.tab.outgoing")}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {!شيك && (
           <حقول_OCR_للشيك

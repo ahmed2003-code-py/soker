@@ -57,6 +57,7 @@ export async function أضف_حركة_خزنة(
     معرف_الحساب: number;
     البيان: string;
     معرف_الطرف?: number | null;
+    اسم_الطرف_الخارجي?: string | null;
     معرف_الفاتورة?: number | null;
     طريقة_الدفع?: string | null;
     أنشأ: number;
@@ -82,6 +83,7 @@ export async function أضف_حركة_خزنة(
       accountId: بيانات.معرف_الحساب,
       description: بيانات.البيان,
       partyId: بيانات.معرف_الطرف ?? null,
+      externalPartyName: بيانات.اسم_الطرف_الخارجي ?? null,
       invoiceId: بيانات.معرف_الفاتورة ?? null,
       method: بيانات.طريقة_الدفع ?? null,
       balanceAfter: رصيد_جديد,

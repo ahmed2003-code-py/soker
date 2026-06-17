@@ -16,7 +16,7 @@ export default async function صفحة_الشيكات() {
       select: {
         id: true, drawerName: true, amount: true, beneficiary: true,
         transferredFrom: true, bankName: true, dueDate: true, chequeNumber: true,
-        status: true, notes: true, imageMime: true,
+        direction: true, status: true, notes: true, imageMime: true,
       },
     }),
     تنبيهات_الشيكات(),
@@ -31,6 +31,7 @@ export default async function صفحة_الشيكات() {
     اسم_البنك: c.bankName,
     تاريخ_الاستحقاق: c.dueDate.toISOString(),
     رقم_الشيك: c.chequeNumber,
+    الاتجاه: c.direction,
     الحالة: c.status,
     ملاحظات: c.notes,
     لها_صورة: !!c.imageMime,

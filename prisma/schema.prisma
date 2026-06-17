@@ -44,6 +44,11 @@ enum ChequeStatus {
   BOUNCED // مرتجع
 }
 
+enum ChequeDirection {
+  INCOMING // وارد
+  OUTGOING // صادر
+}
+
 enum ActivityAction {
   CREATE // إضافة
   UPDATE // تعديل
@@ -224,8 +229,9 @@ model TreasuryTxn {
   accountId    Int             @map("account_id")
   account      TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   description  String          @map("description")
-  partyId      Int?            @map("party_id")
-  party        Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  partyId          Int?            @map("party_id")
+  party            Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  externalPartyName String?        @map("external_party_name") // اسم الطرف الخارجي (غير مسجّل)
   invoiceId    Int?            @map("invoice_id")
   invoice      Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   method       String?         @map("method")
@@ -250,16 +256,18 @@ model TreasuryTxn {
 
 // ==================== Cheque (الشيك) ====================
 model Cheque {
-  id              Int          @id @default(autoincrement())
-  drawerName      String       @map("drawer_name")
-  amount          Decimal      @map("amount") @db.Decimal(18, 4)
-  beneficiary     String?      @map("beneficiary")
-  transferredFrom String?      @map("transferred_from")
-  bankName        String?      @map("bank_name")
-  dueDate         DateTime     @map("due_date") @db.Date
-  chequeNumber    String?      @map("cheque_number")
-  status          ChequeStatus @default(PENDING) @map("status")
-  notes           String?      @map("notes")
+  id              Int              @id @default(autoincrement())
+  drawerName      String           @map("drawer_name")
+  amount          Decimal          @map("amount") @db.Decimal(18, 4)
+  direction       ChequeDirection  @default(INCOMING) @map("direction")
+  beneficiary     String?          @map("beneficiary")
+  transferredFrom String?          @map("transferred_from")
+  bankName        String?          @map("bank_name")
+  dueDate         DateTime         @map("due_date") @db.Date
+  chequeNumber    String?          @map("cheque_number")
+  status          ChequeStatus     @default(PENDING) @map("status")
+  collectedTxnId  Int?             @unique @map("collected_txn_id") // معرّف حركة الخزنة عند التحصيل (للشيكات الصادرة)
+  notes           String?          @map("notes")
   imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
   imageMime       String?      @map("image_mime")
   ocrText         String?      @map("ocr_text")
@@ -273,6 +281,7 @@ model Cheque {
 
   @@index([dueDate])
   @@index([status])
+  @@index([direction])
   // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
   @@index([drawerName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_drawer_name_trgm_idx")
   @@index([bankName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_bank_name_trgm_idx")

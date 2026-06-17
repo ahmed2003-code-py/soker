@@ -14,6 +14,7 @@ export const مخطط_حركة_خزنة = z.object({
   معرف_الحساب: z.number().int().positive("اختر الحساب"),
   البيان: z.string().trim().min(1, "البيان مطلوب"),
   معرف_الطرف: z.number().int().positive().optional().nullable(),
+  اسم_الطرف_الخارجي: z.string().trim().optional().nullable(),
   رقم_الفاتورة: z.string().trim().optional().nullable(),
   طريقة_الدفع: z.string().trim().optional().nullable(),
 });

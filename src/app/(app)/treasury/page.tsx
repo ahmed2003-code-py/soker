@@ -8,7 +8,7 @@ export const metadata = { title: "الخزنة — سُكر" };
 
 export default async function صفحة_الخزنة() {
   const { t } = مترجم_الخادم();
-  const [حسابات, حركات, أطراف, إعداد_طرق] = await Promise.all([
+  const [حسابات, حركات, أطراف] = await Promise.all([
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
     prisma.treasuryTxn.findMany({
       orderBy: [{ date: "desc" }, { id: "desc" }],
@@ -18,13 +18,7 @@ export default async function صفحة_الخزنة() {
       },
     }),
     prisma.party.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.setting.findUnique({ where: { key: "طرق_الدفع" } }),
   ]);
-
-  let طرق_الدفع: string[] = ["نقدي", "إنستا باي", "بنك", "فودافون كاش"];
-  try {
-    if (إعداد_طرق?.value) طرق_الدفع = JSON.parse(إعداد_طرق.value);
-  } catch {}
 
   const بيانات_الحسابات = حسابات.map((h) => ({
     id: h.id,
@@ -42,8 +36,7 @@ export default async function صفحة_الخزنة() {
     معرف_الحساب: ح.accountId,
     الحساب: تسمية_حساب_الخزنة[ح.account.type],
     البيان: ح.description,
-    الطرف: ح.party?.name ?? null,
-    طريقة_الدفع: ح.method,
+    الطرف: ح.party?.name ?? ح.externalPartyName ?? null,
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
     مرتبط: ح.partyId != null,
   }));
@@ -55,7 +48,6 @@ export default async function صفحة_الخزنة() {
         الحسابات={بيانات_الحسابات}
         الحركات={بيانات_الحركات}
         الأطراف={أطراف}
-        طرق_الدفع={طرق_الدفع}
       />
     </div>
   );

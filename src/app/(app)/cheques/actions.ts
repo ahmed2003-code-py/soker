@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
+import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مخطط_شيك } from "@/lib/schemas/cheque";
+import { TxnKind, TreasuryAccountType } from "@prisma/client";
 
 function فكّ_base64(صورة?: string | null): Buffer | null {
   if (!صورة) return null;
@@ -16,6 +18,15 @@ function فكّ_base64(صورة?: string | null): Buffer | null {
   } catch {
     return null;
   }
+}
+
+/** ابحث عن حساب البنك، أو أول حساب خزنة كاحتياط */
+async function حساب_البنك(): Promise<number | null> {
+  const بنك = await prisma.treasuryAccount.findFirst({
+    where: { type: TreasuryAccountType.BANK },
+    select: { id: true },
+  });
+  return بنك?.id ?? null;
 }
 
 export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيجة<{ id: number }>> {
@@ -37,6 +48,7 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
         bankName: ب.اسم_البنك || null,
         dueDate: تاريخ,
         chequeNumber: ب.رقم_الشيك || null,
+        direction: ب.الاتجاه,
         status: ب.الحالة,
         notes: ب.ملاحظات || null,
         imageData: فكّ_base64(ب.صورة_base64),
@@ -50,7 +62,7 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
       العملية: "CREATE",
       نوع_الكيان: "الشيك",
       معرف_الكيان: c.id,
-      التفاصيل: { اسم_المدين: ب.اسم_المدين, المبلغ: ب.المبلغ, الاستحقاق: ب.تاريخ_الاستحقاق },
+      التفاصيل: { اسم_المدين: ب.اسم_المدين, المبلغ: ب.المبلغ, الاتجاه: ب.الاتجاه, الاستحقاق: ب.تاريخ_الاستحقاق },
     });
     return c;
   });
@@ -82,9 +94,9 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
         bankName: ب.اسم_البنك || null,
         dueDate: تاريخ,
         chequeNumber: ب.رقم_الشيك || null,
+        direction: ب.الاتجاه,
         status: ب.الحالة,
         notes: ب.ملاحظات || null,
-        // لا نمسح الصورة الموجودة إن لم تُرسَل جديدة
         ...(صورة ? { imageData: صورة, imageMime: ب.صورة_mime || null } : {}),
         ...(ب.نص_OCR ? { ocrText: ب.نص_OCR } : {}),
         updatedById: فاعل.id,
@@ -95,7 +107,7 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
       العملية: "UPDATE",
       نوع_الكيان: "الشيك",
       معرف_الكيان: id,
-      التفاصيل: { قبل: { الحالة: حالي.status }, بعد: { الحالة: ب.الحالة } },
+      التفاصيل: { قبل: { الحالة: حالي.status }, بعد: { الحالة: ب.الحالة, الاتجاه: ب.الاتجاه } },
     });
   });
   revalidatePath("/cheques");
@@ -108,7 +120,63 @@ export async function تغيير_حالة_شيك(
 ): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
+
+  const شيك = await prisma.cheque.findUnique({ where: { id } });
+  if (!شيك) return فشل("الشيك غير موجود");
+
   await prisma.$transaction(async (tx) => {
+    // شيك صادر: تحويل إلى COLLECTED → خصم من البنك (مرة واحدة فقط)
+    if (شيك.direction === "OUTGOING" && الحالة === "COLLECTED" && شيك.status !== "COLLECTED" && !شيك.collectedTxnId) {
+      const معرف_البنك = await حساب_البنك();
+      if (معرف_البنك) {
+        const حركة = await أضف_حركة_خزنة(tx, {
+          التاريخ: new Date(),
+          النوع: TxnKind.EXPENSE,
+          المبلغ: شيك.amount,
+          معرف_الحساب: معرف_البنك,
+          البيان: `صرف شيك صادر${شيك.chequeNumber ? " رقم " + شيك.chequeNumber : ""} — ${شيك.drawerName}`,
+          أنشأ: فاعل.id,
+        });
+        await tx.cheque.update({
+          where: { id },
+          data: { status: الحالة, collectedTxnId: حركة.id, updatedById: فاعل.id },
+        });
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "UPDATE",
+          نوع_الكيان: "الشيك",
+          معرف_الكيان: id,
+          التفاصيل: { تغيير_الحالة: الحالة, خصم_بنك: true, معرف_حركة: حركة.id, المبلغ: Number(شيك.amount) },
+        });
+        return;
+      }
+    }
+
+    // شيك صادر: العودة من COLLECTED → عكس خصم البنك
+    if (شيك.direction === "OUTGOING" && شيك.status === "COLLECTED" && الحالة !== "COLLECTED" && شيك.collectedTxnId) {
+      const معرف_الحساب_المؤثر = await tx.treasuryTxn.findUnique({
+        where: { id: شيك.collectedTxnId },
+        select: { accountId: true },
+      });
+      await tx.treasuryTxn.delete({ where: { id: شيك.collectedTxnId } });
+      if (معرف_الحساب_المؤثر) {
+        await أعد_حساب_حساب_الخزنة(tx, معرف_الحساب_المؤثر.accountId);
+      }
+      await tx.cheque.update({
+        where: { id },
+        data: { status: الحالة, collectedTxnId: null, updatedById: فاعل.id },
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { تغيير_الحالة: الحالة, عكس_خصم_بنك: true },
+      });
+      return;
+    }
+
+    // تغيير حالة عادي بدون أثر مالي
     await tx.cheque.update({ where: { id }, data: { status: الحالة, updatedById: فاعل.id } });
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
@@ -119,6 +187,7 @@ export async function تغيير_حالة_شيك(
     });
   });
   revalidatePath("/cheques");
+  revalidatePath("/treasury");
   return نجح(undefined, "تم تحديث الحالة");
 }
 
@@ -127,16 +196,29 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
   تحقق_الصلاحية(فاعل.role, "حذف");
   const ش = await prisma.cheque.findUnique({ where: { id } });
   if (!ش) return فشل("الشيك غير موجود");
+
   await prisma.$transaction(async (tx) => {
+    // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً
+    if (ش.direction === "OUTGOING" && ش.collectedTxnId) {
+      const معرف_الحساب_المؤثر = await tx.treasuryTxn.findUnique({
+        where: { id: ش.collectedTxnId },
+        select: { accountId: true },
+      });
+      await tx.treasuryTxn.delete({ where: { id: ش.collectedTxnId } });
+      if (معرف_الحساب_المؤثر) {
+        await أعد_حساب_حساب_الخزنة(tx, معرف_الحساب_المؤثر.accountId);
+      }
+    }
     await tx.cheque.delete({ where: { id } });
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "DELETE",
       نوع_الكيان: "الشيك",
       معرف_الكيان: id,
-      التفاصيل: { اسم_المدين: ش.drawerName, المبلغ: ش.amount },
+      التفاصيل: { اسم_المدين: ش.drawerName, المبلغ: ش.amount, الاتجاه: ش.direction },
     });
   });
   revalidatePath("/cheques");
+  if (ش.collectedTxnId) revalidatePath("/treasury");
   return نجح(undefined, "تم حذف الشيك");
 }

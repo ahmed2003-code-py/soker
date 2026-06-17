@@ -12,6 +12,7 @@ export const مخطط_شيك = z.object({
   اسم_البنك: z.string().trim().optional().nullable(),
   تاريخ_الاستحقاق: z.string().min(1, "تاريخ الاستحقاق مطلوب"),
   رقم_الشيك: z.string().trim().optional().nullable(),
+  الاتجاه: z.enum(["INCOMING", "OUTGOING"]).default("INCOMING"),
   الحالة: z.enum(["PENDING", "COLLECTED", "BOUNCED"]).default("PENDING"),
   ملاحظات: z.string().trim().optional().nullable(),
   // الصورة (المرحلة 8): base64 + النوع

@@ -44,11 +44,9 @@ type حركة = {
   الحساب: string;
   البيان: string;
   الطرف: string | null;
-  طريقة_الدفع: string | null;
   الرصيد_بعد_الحركة: number;
   مرتبط: boolean;
 };
-
 
 const اليوم = () => new Date().toISOString().slice(0, 10);
 
@@ -56,12 +54,10 @@ export function شاشة_الخزنة({
   الحسابات,
   الحركات,
   الأطراف,
-  طرق_الدفع,
 }: {
   الحسابات: حساب[];
   الحركات: حركة[];
   الأطراف: { id: number; name: string }[];
-  طرق_الدفع: string[];
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
@@ -75,7 +71,6 @@ export function شاشة_الخزنة({
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
-  // عند تحديد فترة بالتاريخ: الكروت الفوق تعرض صافي الفترة لكل حساب + الإجمالي
   const مفلتر_فترة = !!(من || إلى);
   const بالفترة = الحركات.filter((ح) => {
     const d = ح.التاريخ.slice(0, 10);
@@ -108,7 +103,6 @@ export function شاشة_الخزنة({
     return m;
   }, [الحسابات]);
 
-  // لقطة أرصدة الحسابات الأربعة + الإجمالي بعد كل معاملة (ترتيب زمني)
   const لقطات = React.useMemo(() => {
     const ترتيب = [...الحركات].sort((a, b) =>
       a.التاريخ === b.التاريخ ? a.id - b.id : a.التاريخ < b.التاريخ ? -1 : 1
@@ -312,7 +306,6 @@ export function شاشة_الخزنة({
           الحركة={نموذج.حركة}
           الحسابات={الحسابات}
           الأطراف={الأطراف}
-          طرق_الدفع={طرق_الدفع}
           عند_الإغلاق={() => تعيين_نموذج(null)}
         />
       )}
@@ -337,13 +330,11 @@ function حوار_حركة({
   الحركة,
   الحسابات,
   الأطراف,
-  طرق_الدفع,
   عند_الإغلاق,
 }: {
   الحركة?: حركة;
   الحسابات: حساب[];
   الأطراف: { id: number; name: string }[];
-  طرق_الدفع: string[];
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
@@ -356,8 +347,10 @@ function حوار_حركة({
     String(الحركة?.معرف_الحساب ?? الحسابات[0]?.id ?? "")
   );
   const [بيان, تعيين_بيان] = React.useState(الحركة?.البيان ?? "");
-  const [طرف, تعيين_طرف] = React.useState<string>("");
-  const [طريقة, تعيين_طريقة] = React.useState(الحركة?.طريقة_الدفع ?? "");
+  // نوع الطرف: عميل مسجّل أو اسم خارجي حر
+  const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"customer" | "external">("customer");
+  const [طرف_عميل, تعيين_طرف_عميل] = React.useState<string>("");
+  const [طرف_خارجي, تعيين_طرف_خارجي] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   async function حفظ() {
@@ -368,8 +361,8 @@ function حوار_حركة({
       المبلغ: مبلغ,
       معرف_الحساب: Number(حساب),
       البيان: بيان,
-      معرف_الطرف: طرف ? Number(طرف) : null,
-      طريقة_الدفع: طريقة || null,
+      معرف_الطرف: نوع_الطرف === "customer" && طرف_عميل ? Number(طرف_عميل) : null,
+      اسم_الطرف_الخارجي: نوع_الطرف === "external" && طرف_خارجي.trim() ? طرف_خارجي.trim() : null,
     };
     const r = الحركة
       ? await تعديل_حركة_خزنة(الحركة.id, payload)
@@ -421,28 +414,44 @@ function حوار_حركة({
             <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
             <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <العنوان>{t("treasury.f.party_opt")}</العنوان>
-            <قائمة_اختيار
-              الخيارات={[
-                { القيمة: "", التسمية: t("common.none") },
-                ...الأطراف.map((p) => ({ القيمة: String(p.id), التسمية: p.name })),
-              ]}
-              القيمة={طرف}
-              عند_التغيير={تعيين_طرف}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <العنوان>{t("pay.method")}</العنوان>
-            <قائمة_اختيار
-              الخيارات={[
-                { القيمة: "", التسمية: "—" },
-                ...طرق_الدفع.map((m) => ({ القيمة: m, التسمية: m })),
-              ]}
-              القيمة={طريقة}
-              عند_التغيير={تعيين_طريقة}
-              قابل_للبحث={false}
-            />
+
+          {/* الطرف: عميل مسجّل أو اسم خارجي */}
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <العنوان className="mb-0">{t("treasury.f.party_opt")}</العنوان>
+              <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                <button
+                  type="button"
+                  className={`px-3 py-1 transition-colors ${نوع_الطرف === "customer" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_الطرف("customer"); تعيين_طرف_خارجي(""); }}
+                >
+                  {t("treasury.f.party_customer")}
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1 transition-colors ${نوع_الطرف === "external" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_الطرف("external"); تعيين_طرف_عميل(""); }}
+                >
+                  {t("treasury.f.party_external")}
+                </button>
+              </div>
+            </div>
+            {نوع_الطرف === "customer" ? (
+              <قائمة_اختيار
+                الخيارات={[
+                  { القيمة: "", التسمية: t("common.none") },
+                  ...الأطراف.map((p) => ({ القيمة: String(p.id), التسمية: p.name })),
+                ]}
+                القيمة={طرف_عميل}
+                عند_التغيير={تعيين_طرف_عميل}
+              />
+            ) : (
+              <الحقل
+                placeholder={t("treasury.f.party_name")}
+                value={طرف_خارجي}
+                onChange={(e) => تعيين_طرف_خارجي(e.target.value)}
+              />
+            )}
           </div>
         </div>
         <تذييل_الحوار>

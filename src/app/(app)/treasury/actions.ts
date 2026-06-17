@@ -5,7 +5,7 @@ import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
-import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, اتجاه_الطرف, type اتجاه } from "@/lib/integration";
+import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, type اتجاه } from "@/lib/integration";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مسار_صفحة_الطرف } from "@/lib/paths";
@@ -25,6 +25,37 @@ export async function تسجيل_حركة(مدخلات: unknown): Promise<نتي
   const ب = t.data;
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
+  // إذا كان الطرف عميلاً مسجّلاً → عملية مرتبطة (خزنة + دفتر أستاذ)
+  if (ب.معرف_الطرف) {
+    const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
+    if (!طرف) return فشل("الطرف غير موجود");
+    const الاتجاه: اتجاه = ب.النوع === "INCOME" ? "تحصيل" : "صرف";
+    await prisma.$transaction(async (tx) => {
+      const r = await أنشئ_عملية_مرتبطة(tx, {
+        الاتجاه,
+        معرف_الطرف: طرف.id,
+        اسم_الطرف: طرف.name,
+        المبلغ: ب.المبلغ!,
+        التاريخ: تاريخ,
+        معرف_الحساب: ب.معرف_الحساب,
+        طريقة_الدفع: null,
+        البيان: ب.البيان,
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "حركة_الخزنة",
+        معرف_الكيان: r.معرف_حركة_الخزنة,
+        التفاصيل: { النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب, مرتبط: true },
+      });
+    });
+    revalidatePath("/treasury");
+    revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
+    return نجح(undefined, "تم التسجيل وتحديث حساب العميل/المورد");
+  }
+
+  // بدون طرف مسجّل → حركة خزنة عادية (مع اسم طرف خارجي اختياري)
   const حركة = await prisma.$transaction(async (tx) => {
     const h = await أضف_حركة_خزنة(tx, {
       التاريخ: تاريخ,
@@ -32,8 +63,9 @@ export async function تسجيل_حركة(مدخلات: unknown): Promise<نتي
       المبلغ: ب.المبلغ!,
       معرف_الحساب: ب.معرف_الحساب,
       البيان: ب.البيان,
-      معرف_الطرف: ب.معرف_الطرف ?? null,
-      طريقة_الدفع: ب.طريقة_الدفع ?? null,
+      معرف_الطرف: null,
+      اسم_الطرف_الخارجي: ب.اسم_الطرف_الخارجي ?? null,
+      طريقة_الدفع: null,
       أنشأ: فاعل.id,
     });
     await تسجيل_عملية(tx, {
@@ -66,7 +98,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
 
   // عملية مرتبطة بطرف → عكس وإعادة تطبيق (الجانبان متّسقان)
   if (حالي.ledgerEntry && حالي.party) {
-    const الاتجاه: اتجاه = اتجاه_الطرف(حالي.party.type);
+    const الاتجاه: اتجاه = ب.النوع === "INCOME" ? "تحصيل" : "صرف";
     await prisma.$transaction(async (tx) => {
       await اعكس_عملية_مرتبطة(tx, id);
       const r = await أنشئ_عملية_مرتبطة(tx, {
@@ -76,7 +108,8 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
         المبلغ: ب.المبلغ!,
         التاريخ: تاريخ,
         معرف_الحساب: ب.معرف_الحساب,
-        طريقة_الدفع: ب.طريقة_الدفع ?? null,
+        طريقة_الدفع: null,
+        البيان: ب.البيان,
         أنشأ: فاعل.id,
       });
       await تسجيل_عملية(tx, {
@@ -101,11 +134,11 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
         amount: ب.المبلغ!,
         accountId: ب.معرف_الحساب,
         description: ب.البيان,
-        method: ب.طريقة_الدفع ?? null,
+        externalPartyName: ب.اسم_الطرف_الخارجي ?? null,
+        method: null,
         updatedById: فاعل.id,
       },
     });
-    // إعادة حساب الحساب القديم والجديد (قد تكون الحركة انتقلت بين حسابين)
     if (حالي.accountId !== ب.معرف_الحساب) {
       await أعد_حساب_حساب_الخزنة(tx, حالي.accountId);
     }
