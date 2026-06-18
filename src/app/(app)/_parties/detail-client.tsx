@@ -272,14 +272,19 @@ export function حركات_الطرف({
           }
           if (ص.معرف_خزنة) {
             return (
-              <الزر
-                size="sm"
-                variant="ghost"
-                onClick={() => تعيين_حذف_خزنة(ص)}
-                title="حذف وعكس من الخزنة"
-              >
-                <Trash2 className="size-4 text-danger" />
-              </الزر>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground hidden sm:inline" title="مرتبطة بالخزنة — للتعديل: احذف وأعد الإدخال">
+                  خزنة
+                </span>
+                <الزر
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => تعيين_حذف_خزنة(ص)}
+                  title="حذف وعكس من الخزنة — للتعديل: احذف وأعد الإدخال"
+                >
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </div>
             );
           }
           return (

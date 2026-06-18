@@ -43,6 +43,7 @@ export function نموذج_فاتورة({
   التصنيفات: string[];
   فاتورة?: {
     id: number;
+    الرقم: number;
     معرف_العميل: number;
     الهاتف: string | null;
     التاريخ: string;
@@ -66,7 +67,9 @@ export function نموذج_فاتورة({
   const [بنود, تعيين_بنود] = React.useState<بند[]>(
     فاتورة?.البنود?.length ? فاتورة.البنود : [بند_فارغ()]
   );
-  const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>("");
+  const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>(
+    فاتورة ? String(فاتورة.الرقم) : ""
+  );
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   React.useEffect(() => {
@@ -126,7 +129,7 @@ export function نموذج_فاتورة({
     تعيين_جارٍ(true);
     const رقم_مُحدد = رقم_الفاتورة.trim() ? Number(رقم_الفاتورة.replace(/,/g, "")) : null;
     const payload = {
-      رقم_الفاتورة_المحدد: !فاتورة && رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
+      رقم_الفاتورة_المحدد: رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
       معرف_العميل: Number(عميل),
       الهاتف: هاتف,
       التاريخ: تاريخ,
@@ -159,18 +162,12 @@ export function نموذج_فاتورة({
         {/* رقم الفاتورة */}
         <div className="space-y-1.5">
           <العنوان>{t("inv.col.number")}</العنوان>
-          {فاتورة ? (
-            <div className="flex h-10 items-center rounded-xl border border-border bg-muted px-3 text-sm ltr-nums text-muted-foreground">
-              #{فاتورة.id}
-            </div>
-          ) : (
-            <الحقل
-              className="ltr-nums"
-              value={رقم_الفاتورة}
-              onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)}
-              placeholder="..."
-            />
-          )}
+          <الحقل
+            className="ltr-nums"
+            value={رقم_الفاتورة}
+            onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)}
+            placeholder="..."
+          />
         </div>
         <div className="space-y-1.5">
           <العنوان مطلوب>{t("inv.col.customer")}</العنوان>

@@ -28,6 +28,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
         التصنيفات={تصنيفات.map((c) => c.category)}
         فاتورة={{
           id: فاتورة.id,
+          الرقم: فاتورة.number,
           معرف_العميل: فاتورة.customerId,
           الهاتف: فاتورة.phone,
           التاريخ: فاتورة.date.toISOString(),
