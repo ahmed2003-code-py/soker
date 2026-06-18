@@ -24,6 +24,7 @@ import { استخدام_اللغة } from "@/components/providers/i18n-provider"
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_متعددة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
+import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 
 export type حركة = {
   id: number;
@@ -61,6 +62,7 @@ export function حركات_الطرف({
   const [يدوية, تعيين_يدوية] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
   const [حذف_خزنة, تعيين_حذف_خزنة] = React.useState<حركة | null>(null);
+  const [حذف_فاتورة_مؤكد, تعيين_حذف_فاتورة_مؤكد] = React.useState<حركة | null>(null);
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
@@ -232,14 +234,28 @@ export function حركات_الطرف({
         إجراءات_الصف={(ص) => {
           if (ص.معرف_الفاتورة) {
             return (
-              <Link
-                href={`/invoices/${ص.معرف_الفاتورة}`}
-                className="flex items-center gap-1 text-xs text-primary-blue hover:underline"
-                title="فتح الفاتورة"
-              >
-                <ExternalLink className="size-3" />
-                فاتورة
-              </Link>
+              <div className="flex items-center gap-1">
+                <Link
+                  href={`/invoices/${ص.معرف_الفاتورة}`}
+                  className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-primary-blue hover:bg-appgray"
+                  title="فتح الفاتورة"
+                >
+                  <ExternalLink className="size-3" />
+                </Link>
+                <Link href={`/invoices/${ص.معرف_الفاتورة}/edit`}>
+                  <الزر size="sm" variant="ghost" title="تعديل الفاتورة" asChild={false}>
+                    <Pencil className="size-4 text-primary" />
+                  </الزر>
+                </Link>
+                <الزر
+                  size="sm"
+                  variant="ghost"
+                  title="حذف الفاتورة"
+                  onClick={() => تعيين_حذف_فاتورة_مؤكد(ص)}
+                >
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </div>
             );
           }
           if (ص.معرف_خزنة) {
@@ -312,6 +328,20 @@ export function حركات_الطرف({
           الوصف="سيُحذف هذا القيد وحركة الخزنة المرتبطة به، ويُعاد حساب الرصيدين. لا يمكن التراجع."
           عند_التأكيد={async () => {
             const r = await حذف_حركة_مرتبطة_بخزنة(حذف_خزنة.id);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            if (r.نجاح) router.refresh();
+          }}
+        />
+      )}
+      {حذف_فاتورة_مؤكد && (
+        <حوار_تأكيد
+          مفتوح
+          عند_التغيير={(o) => !o && تعيين_حذف_فاتورة_مؤكد(null)}
+          العنوان="حذف الفاتورة"
+          الوصف={`سيُحذف الفاتورة رقم ${حذف_فاتورة_مؤكد.رقم_المستند ?? ""} وقيدها في الحساب ويُعاد الحساب. لا يمكن التراجع.`}
+          عند_التأكيد={async () => {
+            if (!حذف_فاتورة_مؤكد.معرف_الفاتورة) return;
+            const r = await حذف_فاتورة(حذف_فاتورة_مؤكد.معرف_الفاتورة);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
             if (r.نجاح) router.refresh();
           }}
