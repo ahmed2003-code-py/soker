@@ -44,6 +44,7 @@ export default async function صفحة_عرض_فاتورة({
     إجمالي_الوزن: number;
     إجمالي_المبلغ: number;
     بنود: typeof فاتورة.lines;
+    أسعار: Set<number>;
   };
   const تجميع = new Map<string, مجموعة_تصنيف>();
   for (const بند of فاتورة.lines) {
@@ -53,11 +54,13 @@ export default async function صفحة_عرض_فاتورة({
       إجمالي_الوزن: 0,
       إجمالي_المبلغ: 0,
       بنود: [],
+      أسعار: new Set<number>(),
     };
     مجموعة.بنود.push(بند);
     مجموعة.إجمالي_الكمية += Number(بند.qty);
     مجموعة.إجمالي_الوزن += Number(بند.weight);
     مجموعة.إجمالي_المبلغ += Number(بند.lineTotal);
+    if (Number(بند.price) > 0) مجموعة.أسعار.add(Number(بند.price));
     تجميع.set(بند.category, مجموعة);
   }
   const مجموعات = [...تجميع.values()];
@@ -118,11 +121,14 @@ export default async function صفحة_عرض_فاتورة({
               <th className="px-2 py-2.5 text-start font-bold">
                 {t("inv.v.color_desc")}
               </th>
-              <th className="px-2 py-2.5 text-end font-bold w-16">
+              <th className="px-2 py-2.5 text-end font-bold w-14">
                 {t("inv.v.count")}
               </th>
-              <th className="px-2 py-2.5 text-end font-bold w-24">
+              <th className="px-2 py-2.5 text-end font-bold w-20">
                 {t("inv.v.weight")}
+              </th>
+              <th className="px-2 py-2.5 text-end font-bold w-20">
+                {t("inv.f.price_kg")}
               </th>
               <th className="px-2 py-2.5 text-end font-bold w-28">
                 {t("inv.f.subtotal")}
@@ -152,6 +158,13 @@ export default async function صفحة_عرض_فاتورة({
                     <td className="px-2 py-1.5 text-end ltr-nums">
                       {Number(بند.weight).toFixed(2)}
                     </td>
+                    <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">
+                      {Number(بند.price) > 0
+                        ? Number(بند.price).toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })
+                        : "—"}
+                    </td>
                     <td className="px-2 py-1.5 text-end ltr-nums">
                       {Number(بند.price) > 0
                         ? Number(بند.lineTotal).toLocaleString("en-US", {
@@ -172,6 +185,14 @@ export default async function صفحة_عرض_فاتورة({
                   </td>
                   <td className="px-2 py-1.5 text-end ltr-nums text-sm">
                     {مجموعة.إجمالي_الوزن.toFixed(2)}
+                  </td>
+                  <td className="px-2 py-1.5 text-end ltr-nums text-sm text-muted-foreground font-normal">
+                    {(() => {
+                      const أسعار = [...مجموعة.أسعار];
+                      if (أسعار.length === 1) return أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 });
+                      if (أسعار.length > 1) return `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}`;
+                      return "—";
+                    })()}
                   </td>
                   <td className="px-2 py-1.5 text-end ltr-nums text-sm">
                     {مجموعة.إجمالي_المبلغ > 0
@@ -206,31 +227,43 @@ export default async function صفحة_عرض_فاتورة({
                     <th className="py-1 text-end font-semibold">
                       {t("inv.v.weight")}
                     </th>
+                    <th className="py-1 text-end font-semibold">{t("inv.f.price_kg")}</th>
                     <th className="py-1 text-end font-semibold">المبلغ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {مجموعات.map((م) => (
-                    <tr
-                      key={م.التصنيف}
-                      className="border-b border-foreground/10 print:border-black/10"
-                    >
-                      <td className="py-1">{م.التصنيف}</td>
-                      <td className="py-1 text-end ltr-nums">
-                        {م.إجمالي_الكمية}
-                      </td>
-                      <td className="py-1 text-end ltr-nums">
-                        {م.إجمالي_الوزن.toFixed(2)}
-                      </td>
-                      <td className="py-1 text-end ltr-nums">
-                        {م.إجمالي_المبلغ > 0
-                          ? م.إجمالي_المبلغ.toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                            })
-                          : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                  {مجموعات.map((م) => {
+                    const أسعار_م = [...م.أسعار];
+                    const سعر_نص_م = أسعار_م.length === 1
+                      ? أسعار_م[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                      : أسعار_م.length > 1
+                        ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}`
+                        : "—";
+                    return (
+                      <tr
+                        key={م.التصنيف}
+                        className="border-b border-foreground/10 print:border-black/10"
+                      >
+                        <td className="py-1">{م.التصنيف}</td>
+                        <td className="py-1 text-end ltr-nums">
+                          {م.إجمالي_الكمية}
+                        </td>
+                        <td className="py-1 text-end ltr-nums">
+                          {م.إجمالي_الوزن.toFixed(2)}
+                        </td>
+                        <td className="py-1 text-end ltr-nums text-muted-foreground text-[12px]">
+                          {سعر_نص_م}
+                        </td>
+                        <td className="py-1 text-end ltr-nums">
+                          {م.إجمالي_المبلغ > 0
+                            ? م.إجمالي_المبلغ.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                              })
+                            : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

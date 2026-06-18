@@ -23,7 +23,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
-import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_متعددة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
+import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 
 export type حركة = {
@@ -76,8 +76,6 @@ export function حركات_الطرف({
     return true;
   });
 
-  const قابلة_للحذف = حركات_معروضة.filter((ح) => !ح.مرتبط);
-
   function تبديل_تحديد(id: number) {
     تعيين_محددة((prev) => {
       const next = new Set(prev);
@@ -87,15 +85,15 @@ export function حركات_الطرف({
   }
 
   function تحديد_الكل() {
-    if (محددة.size === قابلة_للحذف.length && قابلة_للحذف.length > 0) {
+    if (محددة.size === حركات_معروضة.length && حركات_معروضة.length > 0) {
       تعيين_محددة(new Set());
     } else {
-      تعيين_محددة(new Set(قابلة_للحذف.map((ح) => ح.id)));
+      تعيين_محددة(new Set(حركات_معروضة.map((ح) => ح.id)));
     }
   }
 
   const كل_محدد =
-    قابلة_للحذف.length > 0 && محددة.size === قابلة_للحذف.length;
+    حركات_معروضة.length > 0 && محددة.size === حركات_معروضة.length;
 
   const أعمدة: عمود<حركة>[] = [
     {
@@ -109,15 +107,14 @@ export function حركات_الطرف({
           title="تحديد الكل"
         />
       ) as unknown as string,
-      خلية: (ص) =>
-        ص.مرتبط ? null : (
-          <input
-            type="checkbox"
-            checked={محددة.has(ص.id)}
-            onChange={() => تبديل_تحديد(ص.id)}
-            className="size-4 cursor-pointer"
-          />
-        ),
+      خلية: (ص) => (
+        <input
+          type="checkbox"
+          checked={محددة.has(ص.id)}
+          onChange={() => تبديل_تحديد(ص.id)}
+          className="size-4 cursor-pointer"
+        />
+      ),
       مخفي_موبايل: false,
     },
     {
@@ -232,6 +229,21 @@ export function حركات_الطرف({
         بحث={false}
         رسالة_فراغ={t("ledger.empty")}
         إجراءات_الصف={(ص) => {
+          // في وضع التحديد الجماعي (أكثر من صف) → زر حذف فقط لكل صف
+          if (محددة.size > 1) {
+            const على_الحذف = () => {
+              if (ص.معرف_الفاتورة) تعيين_حذف_فاتورة_مؤكد(ص);
+              else if (ص.معرف_خزنة) تعيين_حذف_خزنة(ص);
+              else تعيين_حذف(ص);
+            };
+            return (
+              <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف">
+                <Trash2 className="size-4 text-danger" />
+              </الزر>
+            );
+          }
+
+          // الوضع العادي — أزرار كاملة حسب نوع الصف
           if (ص.معرف_الفاتورة) {
             return (
               <div className="flex items-center gap-1">
@@ -354,7 +366,7 @@ export function حركات_الطرف({
           العنوان={`حذف ${محددة.size} حركة`}
           الوصف="سيُعاد حساب رصيد الطرف بعد الحذف. لا يمكن التراجع."
           عند_التأكيد={async () => {
-            const r = await حذف_حركات_متعددة([...محددة]);
+            const r = await حذف_حركات_مختلطة([...محددة]);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
             if (r.نجاح) {
               تعيين_محددة(new Set());
