@@ -38,6 +38,7 @@ export async function تفاصيل_الطرف({
           balanceAfter: true,
           invoiceId: true,
           treasuryTxnId: true,
+          treasuryTxn: { select: { accountId: true } },
         },
       },
     },
@@ -74,6 +75,7 @@ export async function تفاصيل_الطرف({
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
     معرف_الفاتورة: ح.invoiceId,
     معرف_خزنة: ح.treasuryTxnId,
+    معرف_حساب_خزنة: ح.treasuryTxn?.accountId ?? null,
     مرتبط: ح.invoiceId != null || ح.treasuryTxnId != null,
   }));
 

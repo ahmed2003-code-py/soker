@@ -70,6 +70,14 @@ export function نموذج_فاتورة({
   const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>(
     فاتورة ? String(فاتورة.الرقم) : ""
   );
+  // أسعار مجمّعة حسب التصنيف — يُدخلها المستخدم في ملخص التصنيف
+  const [أسعار_تصنيفات, تعيين_أسعار] = React.useState<Record<string, string>>(() => {
+    const م: Record<string, string> = {};
+    for (const ب of فاتورة?.البنود ?? []) {
+      if (ب.التصنيف && ب.السعر && !م[ب.التصنيف]) م[ب.التصنيف] = ب.السعر;
+    }
+    return م;
+  });
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   React.useEffect(() => {
@@ -80,8 +88,25 @@ export function نموذج_فاتورة({
   }, []);
 
   function حدّث(i: number, مفتاح: keyof بند, قيمة: string) {
+    if (مفتاح === "التصنيف") {
+      // عند تغيير التصنيف: ضع سعر التصنيف المخزّن في البند تلقائياً
+      تعيين_بنود((س) =>
+        س.map((ب, j) =>
+          j === i ? { ...ب, التصنيف: قيمة, السعر: أسعار_تصنيفات[قيمة] ?? "" } : ب
+        )
+      );
+      return;
+    }
     تعيين_بنود((س) =>
       س.map((ب, j) => (j === i ? { ...ب, [مفتاح]: قيمة } : ب))
+    );
+  }
+
+  function حدّث_سعر_تصنيف(تصنيف: string, سعر: string) {
+    تعيين_أسعار((prev) => ({ ...prev, [تصنيف]: سعر }));
+    // حدّث سعر كل البنود بنفس التصنيف
+    تعيين_بنود((س) =>
+      س.map((ب) => (ب.التصنيف === تصنيف ? { ...ب, السعر: سعر } : ب))
     );
   }
   function أضف_بند() {
@@ -91,24 +116,22 @@ export function نموذج_فاتورة({
     تعيين_بنود((س) => (س.length > 1 ? س.filter((_, j) => j !== i) : س));
   }
 
-  // إجماليات حيّة
+  // إجماليات حيّة — السعر يُؤخذ من أسعار_تصنيفات
   const إجمالي_الكمية = بنود.reduce((س, ب) => س + ع(ب.الكمية), 0);
   const إجمالي_الوزن = بنود.reduce((س, ب) => س + ع(ب.الوزن), 0);
-  const الإجمالي_المالي = بنود.reduce(
-    (س, ب) => س + ع(ب.السعر) * ع(ب.الوزن),
-    0
-  );
+  const الإجمالي_المالي = بنود.reduce((س, ب) => {
+    const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
+    return س + سعر * ع(ب.الوزن);
+  }, 0);
 
   // تجميع حسب التصنيف
   const تجميع = React.useMemo(() => {
-    const م = new Map<string, { كمية: number; وزن: number; مبلغ: number; أسعار: Set<number> }>();
+    const م = new Map<string, { كمية: number; وزن: number }>();
     for (const ب of بنود) {
       if (!ب.التصنيف) continue;
-      const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0, مبلغ: 0, أسعار: new Set() };
+      const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0 };
       ح.كمية += ع(ب.الكمية);
       ح.وزن += ع(ب.الوزن);
-      ح.مبلغ += ع(ب.السعر) * ع(ب.الوزن);
-      if (ع(ب.السعر) > 0) ح.أسعار.add(ع(ب.السعر));
       م.set(ب.التصنيف, ح);
     }
     return [...م.entries()];
@@ -218,7 +241,6 @@ export function نموذج_فاتورة({
                 <th className="p-2 text-start">{t("inv.f.category")}</th>
                 <th className="p-2 text-end">{t("inv.f.qty_count")}</th>
                 <th className="p-2 text-end">{t("inv.f.weight_kg")}</th>
-                <th className="p-2 text-end">{t("inv.f.price_kg")}</th>
                 <th className="p-2 text-end">{t("inv.f.subtotal")}</th>
                 <th className="p-2"></th>
               </tr>
@@ -276,15 +298,6 @@ export function نموذج_فاتورة({
                       selectOnFocus
                       value={ب.الوزن}
                       onChange={(e) => حدّث(i, "الوزن", e.target.value)}
-                      placeholder="0.00"
-                    />
-                  </td>
-                  <td className="p-1.5">
-                    <الحقل
-                      className="ltr-nums text-end"
-                      selectOnFocus
-                      value={ب.السعر}
-                      onChange={(e) => حدّث(i, "السعر", e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && i === بنود.length - 1)
                           أضف_بند();
@@ -292,11 +305,13 @@ export function نموذج_فاتورة({
                       placeholder="0.00"
                     />
                   </td>
-                  <td className="p-1.5 text-end ltr-nums tabular-nums">
-                    {(ع(ب.السعر) * ع(ب.الوزن)).toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                  <td className="p-1.5 text-end ltr-nums tabular-nums text-muted-foreground text-sm">
+                    {(() => {
+                      const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
+                      return سعر > 0
+                        ? (سعر * ع(ب.الوزن)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : "—";
+                    })()}
                   </td>
                   <td className="p-1.5 text-center">
                     {بنود.length > 1 && (
@@ -338,22 +353,28 @@ export function نموذج_فاتورة({
               </thead>
               <tbody>
                 {تجميع.map(([ت, ح]) => {
-                  const أسعار = [...ح.أسعار];
-                  const سعر_نص = أسعار.length === 1
-                    ? أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
-                    : أسعار.length > 1
-                      ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}`
-                      : "—";
+                  const سعر_التصنيف = أسعار_تصنيفات[ت] ?? "";
+                  const مبلغ_التصنيف = ع(سعر_التصنيف) * ح.وزن;
                   return (
                     <tr key={ت} className="border-b border-border/60">
-                      <td className="p-2">{ت}</td>
+                      <td className="p-2 font-medium">{ت}</td>
                       <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
                       <td className="p-2 text-end ltr-nums">
                         {ح.وزن.toFixed(2)} {t("inv.kg")}
                       </td>
-                      <td className="p-2 text-end ltr-nums text-muted-foreground text-xs">{سعر_نص}</td>
-                      <td className="p-2 text-end ltr-nums">
-                        {ح.مبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      <td className="p-1.5">
+                        <الحقل
+                          className="ltr-nums text-end w-24"
+                          selectOnFocus
+                          value={سعر_التصنيف}
+                          onChange={(e) => حدّث_سعر_تصنيف(ت, e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td className="p-2 text-end ltr-nums font-medium">
+                        {مبلغ_التصنيف > 0
+                          ? مبلغ_التصنيف.toLocaleString("en-US", { minimumFractionDigits: 2 })
+                          : "—"}
                       </td>
                     </tr>
                   );

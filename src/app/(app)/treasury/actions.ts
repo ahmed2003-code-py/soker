@@ -91,69 +91,91 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
   const ب = t.data;
   const حالي = await prisma.treasuryTxn.findUnique({
     where: { id },
-    include: { ledgerEntry: true, party: true },
+    include: { party: true },
   });
   if (!حالي) return فشل("الحركة غير موجودة");
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
+  // تحقق مباشر من وجود قيد مرتبط (أكثر موثوقية من back-relation)
+  const قيد_مرتبط = await prisma.ledgerEntry.findFirst({
+    where: { treasuryTxnId: id },
+    select: { id: true },
+  });
+
   // عملية مرتبطة بطرف → عكس وإعادة تطبيق (الجانبان متّسقان)
-  if (حالي.ledgerEntry && حالي.party) {
+  if (قيد_مرتبط && حالي.party) {
     const الاتجاه: اتجاه = ب.النوع === "INCOME" ? "تحصيل" : "صرف";
-    await prisma.$transaction(async (tx) => {
-      await اعكس_عملية_مرتبطة(tx, id);
-      const r = await أنشئ_عملية_مرتبطة(tx, {
-        الاتجاه,
-        معرف_الطرف: حالي.party!.id,
-        اسم_الطرف: حالي.party!.name,
-        المبلغ: ب.المبلغ!,
-        التاريخ: تاريخ,
-        معرف_الحساب: ب.معرف_الحساب,
-        طريقة_الدفع: null,
-        البيان: ب.البيان,
-        أنشأ: فاعل.id,
-      });
-      await تسجيل_عملية(tx, {
-        المستخدم: فاعل.id,
-        العملية: "UPDATE",
-        نوع_الكيان: "حركة_الخزنة",
-        معرف_الكيان: r.معرف_حركة_الخزنة,
-        التفاصيل: { عملية_مرتبطة: true, عكس_وإعادة_تطبيق: true, المبلغ: ب.المبلغ },
-      });
-    });
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await اعكس_عملية_مرتبطة(tx, id);
+          const r = await أنشئ_عملية_مرتبطة(tx, {
+            الاتجاه,
+            معرف_الطرف: حالي.party!.id,
+            اسم_الطرف: حالي.party!.name,
+            المبلغ: ب.المبلغ!,
+            التاريخ: تاريخ,
+            معرف_الحساب: ب.معرف_الحساب,
+            طريقة_الدفع: null,
+            البيان: ب.البيان,
+            أنشأ: فاعل.id,
+          });
+          await تسجيل_عملية(tx, {
+            المستخدم: فاعل.id,
+            العملية: "UPDATE",
+            نوع_الكيان: "حركة_الخزنة",
+            معرف_الكيان: r.معرف_حركة_الخزنة,
+            التفاصيل: { عملية_مرتبطة: true, عكس_وإعادة_تطبيق: true, المبلغ: ب.المبلغ?.toString() },
+          });
+        },
+        { timeout: 30000 }
+      );
+    } catch (e) {
+      const رسالة = e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة";
+      return فشل(رسالة);
+    }
     revalidatePath("/treasury");
     revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
     return نجح(undefined, "تم تعديل العملية المرتبطة (عكس وإعادة تطبيق)");
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.treasuryTxn.update({
-      where: { id },
-      data: {
-        date: تاريخ,
-        kind: ب.النوع,
-        amount: ب.المبلغ!,
-        accountId: ب.معرف_الحساب,
-        description: ب.البيان,
-        externalPartyName: ب.اسم_الطرف_الخارجي ?? null,
-        method: null,
-        updatedById: فاعل.id,
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.treasuryTxn.update({
+          where: { id },
+          data: {
+            date: تاريخ,
+            kind: ب.النوع,
+            amount: ب.المبلغ!,
+            accountId: ب.معرف_الحساب,
+            description: ب.البيان,
+            externalPartyName: ب.اسم_الطرف_الخارجي ?? null,
+            method: null,
+            updatedById: فاعل.id,
+          },
+        });
+        if (حالي.accountId !== ب.معرف_الحساب) {
+          await أعد_حساب_حساب_الخزنة(tx, حالي.accountId);
+        }
+        await أعد_حساب_حساب_الخزنة(tx, ب.معرف_الحساب);
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "UPDATE",
+          نوع_الكيان: "حركة_الخزنة",
+          معرف_الكيان: id,
+          التفاصيل: {
+            قبل: { النوع: حالي.kind, المبلغ: حالي.amount.toString(), الحساب: حالي.accountId },
+            بعد: { النوع: ب.النوع, المبلغ: ب.المبلغ?.toString(), الحساب: ب.معرف_الحساب },
+          },
+        });
       },
-    });
-    if (حالي.accountId !== ب.معرف_الحساب) {
-      await أعد_حساب_حساب_الخزنة(tx, حالي.accountId);
-    }
-    await أعد_حساب_حساب_الخزنة(tx, ب.معرف_الحساب);
-    await تسجيل_عملية(tx, {
-      المستخدم: فاعل.id,
-      العملية: "UPDATE",
-      نوع_الكيان: "حركة_الخزنة",
-      معرف_الكيان: id,
-      التفاصيل: {
-        قبل: { النوع: حالي.kind, المبلغ: حالي.amount, الحساب: حالي.accountId },
-        بعد: { النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب },
-      },
-    });
-  });
+      { timeout: 30000 }
+    );
+  } catch (e) {
+    const رسالة = e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة";
+    return فشل(رسالة);
+  }
   revalidatePath("/treasury");
   return نجح(undefined, "تم تعديل الحركة وإعادة حساب الأرصدة");
 }
@@ -161,41 +183,48 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
 export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "حذف");
+
   const حالي = await prisma.treasuryTxn.findUnique({
     where: { id },
-    include: { ledgerEntry: true, party: true },
+    include: { party: true },
   });
   if (!حالي) return فشل("الحركة غير موجودة");
 
-  // عملية مرتبطة بطرف → عكس كامل للجانبين
-  if (حالي.ledgerEntry) {
-    await prisma.$transaction(async (tx) => {
-      await اعكس_عملية_مرتبطة(tx, id);
-      await تسجيل_عملية(tx, {
-        المستخدم: فاعل.id,
-        العملية: "DELETE",
-        نوع_الكيان: "حركة_الخزنة",
-        معرف_الكيان: id,
-        التفاصيل: { عملية_مرتبطة: true, عكس_كامل: true, المبلغ: حالي.amount },
-      });
-    });
-    revalidatePath("/treasury");
-    if (حالي.party)
-      revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
-    return نجح(undefined, "تم حذف العملية المرتبطة وعكس الجانبين");
+  // تحقق مباشر من وجود قيد مرتبط (أكثر موثوقية من back-relation)
+  const قيد_مرتبط = await prisma.ledgerEntry.findFirst({
+    where: { treasuryTxnId: id },
+    select: { id: true },
+  });
+
+  try {
+    // اعكس_عملية_مرتبطة تتعامل مع الحالتين (مرتبط/غير مرتبط)
+    await prisma.$transaction(
+      async (tx) => {
+        await اعكس_عملية_مرتبطة(tx, id);
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "DELETE",
+          نوع_الكيان: "حركة_الخزنة",
+          معرف_الكيان: id,
+          التفاصيل: {
+            النوع: حالي.kind,
+            المبلغ: حالي.amount.toString(),
+            الحساب: حالي.accountId,
+            ...(قيد_مرتبط ? { عكس_كامل: true } : {}),
+          },
+        });
+      },
+      { timeout: 30000 }
+    );
+  } catch (e) {
+    const رسالة = e instanceof Error ? e.message : "خطأ أثناء حذف الحركة";
+    return فشل(رسالة);
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.treasuryTxn.delete({ where: { id } });
-    await أعد_حساب_حساب_الخزنة(tx, حالي.accountId);
-    await تسجيل_عملية(tx, {
-      المستخدم: فاعل.id,
-      العملية: "DELETE",
-      نوع_الكيان: "حركة_الخزنة",
-      معرف_الكيان: id,
-      التفاصيل: { النوع: حالي.kind, المبلغ: حالي.amount, الحساب: حالي.accountId },
-    });
-  });
   revalidatePath("/treasury");
-  return نجح(undefined, "تم حذف الحركة وإعادة حساب الرصيد");
+  if (حالي.party) revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
+  return نجح(
+    undefined,
+    قيد_مرتبط ? "تم حذف العملية وعكس قيدها من حساب الطرف" : "تم حذف الحركة وإعادة حساب الرصيد"
+  );
 }

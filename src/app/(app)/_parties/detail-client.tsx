@@ -25,6 +25,7 @@ import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
+import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 
 export type حركة = {
   id: number;
@@ -39,6 +40,7 @@ export type حركة = {
   الرصيد_بعد_الحركة: number;
   معرف_الفاتورة: number | null;
   معرف_خزنة: number | null;
+  معرف_حساب_خزنة: number | null;
   مرتبط: boolean;
 };
 
@@ -64,6 +66,7 @@ export function حركات_الطرف({
   const [حذف_خزنة, تعيين_حذف_خزنة] = React.useState<حركة | null>(null);
   const [حذف_فاتورة_مؤكد, تعيين_حذف_فاتورة_مؤكد] = React.useState<حركة | null>(null);
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
+  const [تعديل_خزنة, تعيين_تعديل_خزنة] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
   const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
@@ -273,14 +276,14 @@ export function حركات_الطرف({
           if (ص.معرف_خزنة) {
             return (
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-muted-foreground hidden sm:inline" title="مرتبطة بالخزنة — للتعديل: احذف وأعد الإدخال">
-                  خزنة
-                </span>
+                <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_خزنة(ص)} title="تعديل">
+                  <Pencil className="size-4 text-primary" />
+                </الزر>
                 <الزر
                   size="sm"
                   variant="ghost"
                   onClick={() => تعيين_حذف_خزنة(ص)}
-                  title="حذف وعكس من الخزنة — للتعديل: احذف وأعد الإدخال"
+                  title="حذف وعكس من الخزنة"
                 >
                   <Trash2 className="size-4 text-danger" />
                 </الزر>
@@ -319,6 +322,13 @@ export function حركات_الطرف({
           الحركة={تعديل}
           الطرف={الطرف}
           عند_الإغلاق={() => تعيين_تعديل(null)}
+        />
+      )}
+      {تعديل_خزنة && (
+        <حوار_تعديل_حركة_خزنة
+          الحركة={تعديل_خزنة}
+          حسابات_الخزنة={حسابات_الخزنة}
+          عند_الإغلاق={() => تعيين_تعديل_خزنة(null)}
         />
       )}
       {حذف && (
@@ -562,6 +572,102 @@ function حوار_حركة_يدوية({
               value={دائن}
               onChange={(e) => تعيين_دائن(e.target.value)}
               placeholder="0.00"
+            />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? t("common.saving") : t("common.save")}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>
+            {t("common.cancel")}
+          </الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+function حوار_تعديل_حركة_خزنة({
+  الحركة,
+  حسابات_الخزنة,
+  عند_الإغلاق,
+}: {
+  الحركة: حركة;
+  حسابات_الخزنة: { id: number; التسمية: string }[];
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
+  const القيمة = الحركة.مدين || الحركة.دائن;
+  const [تاريخ, تعيين_تاريخ] = React.useState(الحركة.التاريخ.slice(0, 10));
+  const [مبلغ, تعيين_مبلغ] = React.useState(String(القيمة));
+  const [بيان, تعيين_بيان] = React.useState(الحركة.البيان);
+  const [حساب, تعيين_حساب] = React.useState(
+    String(الحركة.معرف_حساب_خزنة ?? حسابات_الخزنة[0]?.id ?? "")
+  );
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  // نوع الحركة: إذا دائن > 0 → إيراد (تحصيل من عميل)؛ وإلا → مصروف (صرف لمورد)
+  const النوع = الحركة.دائن > 0 ? "INCOME" : "EXPENSE";
+
+  async function حفظ() {
+    if (!الحركة.معرف_خزنة) return;
+    تعيين_جارٍ(true);
+    const r = await تعديل_حركة_خزنة(الحركة.معرف_خزنة, {
+      التاريخ: تاريخ,
+      النوع,
+      المبلغ: مبلغ,
+      معرف_الحساب: Number(حساب),
+      البيان: بيان,
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار>
+        <رأس_الحوار>
+          <عنوان_الحوار>تعديل حركة الخزنة</عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("common.date")}</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("pay.amount")}</العنوان>
+            <الحقل
+              autoFocus
+              selectOnFocus
+              className="ltr-nums"
+              value={مبلغ}
+              onChange={(e) => تعيين_مبلغ(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>{t("pay.account")}</العنوان>
+            <قائمة_اختيار
+              الخيارات={حسابات_الخزنة.map((a) => ({
+                القيمة: String(a.id),
+                التسمية: a.التسمية,
+              }))}
+              القيمة={حساب}
+              عند_التغيير={تعيين_حساب}
+              قابل_للبحث={false}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
+            <الحقل
+              value={بيان}
+              onChange={(e) => تعيين_بيان(e.target.value)}
             />
           </div>
         </div>
