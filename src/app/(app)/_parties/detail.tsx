@@ -72,6 +72,8 @@ export async function تفاصيل_الطرف({
     مدين: Number(ح.debit),
     دائن: Number(ح.credit),
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
+    معرف_الفاتورة: ح.invoiceId,
+    معرف_خزنة: ح.treasuryTxnId,
     مرتبط: ح.invoiceId != null || ح.treasuryTxnId != null,
   }));
 

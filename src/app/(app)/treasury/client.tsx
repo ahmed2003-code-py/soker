@@ -48,7 +48,7 @@ type حركة = {
   مرتبط: boolean;
 };
 
-const اليوم = () => new Date().toISOString().slice(0, 10);
+const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
 export function شاشة_الخزنة({
   الحسابات,

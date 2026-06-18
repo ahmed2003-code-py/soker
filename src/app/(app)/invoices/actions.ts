@@ -15,6 +15,14 @@ import {
 } from "@/lib/invoice";
 import { مخطط_فاتورة } from "@/lib/schemas/invoice";
 
+/** يُرجع رقم الفاتورة التالي دون تعديل العدّاد (للعرض المبدئي في النموذج) */
+export async function احصل_رقم_الفاتورة_التالي(): Promise<number> {
+  const r = await prisma.$queryRaw<{ value: string }[]>`
+    SELECT (value::int + 1)::text AS value FROM settings WHERE key = 'عداد_الفواتير'
+  `;
+  return r[0] ? Number(r[0].value) : 1;
+}
+
 export async function إنشاء_فاتورة(مدخلات: unknown): Promise<نتيجة<{ id: number; الرقم: number }>> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
@@ -27,7 +35,17 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
   const { إجمالي_الكمية, إجمالي_الوزن, الإجمالي_المالي, بنود_محسوبة } = احسب_إجماليات(ب.البنود);
 
   const فاتورة = await prisma.$transaction(async (tx) => {
-    const رقم = await احصل_رقم_فاتورة_جديد(tx);
+    let رقم: number;
+    if (ب.رقم_الفاتورة_المحدد) {
+      // رقم يدوي → نستخدمه مباشرة ونحدّث العدّاد إن كان أكبر
+      رقم = ب.رقم_الفاتورة_المحدد;
+      await tx.$executeRaw`
+        UPDATE settings SET value = ${String(رقم)}
+        WHERE key = 'عداد_الفواتير' AND value::int < ${رقم}
+      `;
+    } else {
+      رقم = await احصل_رقم_فاتورة_جديد(tx);
+    }
     const f = await tx.invoice.create({
       data: {
         number: رقم,

@@ -1,7 +1,8 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, HandCoins, Trash2, Pencil } from "lucide-react";
+import Link from "next/link";
+import { Plus, HandCoins, Trash2, Pencil, ExternalLink } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -22,7 +23,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
-import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_متعددة } from "./actions";
+import { سجل_دفعة, أضف_حركة_يدوية, حذف_حركة, تعديل_حركة, حذف_حركات_متعددة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
 
 export type حركة = {
   id: number;
@@ -35,10 +36,12 @@ export type حركة = {
   مدين: number;
   دائن: number;
   الرصيد_بعد_الحركة: number;
-  مرتبط: boolean; // مرتبط بفاتورة/خزنة → لا يُحذف/يُعدّل يدوياً
+  معرف_الفاتورة: number | null;
+  معرف_خزنة: number | null;
+  مرتبط: boolean;
 };
 
-const اليوم = () => new Date().toISOString().slice(0, 10);
+const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
 export function حركات_الطرف({
   الطرف,
@@ -57,6 +60,7 @@ export function حركات_الطرف({
   const [دفعة, تعيين_دفعة] = React.useState(false);
   const [يدوية, تعيين_يدوية] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
+  const [حذف_خزنة, تعيين_حذف_خزنة] = React.useState<حركة | null>(null);
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
@@ -124,7 +128,18 @@ export function حركات_الطرف({
     {
       المفتاح: "رقم_المستند",
       العنوان: t("ledger.col.doc"),
-      خلية: (ص) => <span className="ltr-nums">{ص.رقم_المستند || "—"}</span>,
+      خلية: (ص) =>
+        ص.معرف_الفاتورة ? (
+          <Link
+            href={`/invoices/${ص.معرف_الفاتورة}`}
+            className="flex items-center gap-1 ltr-nums text-primary-blue hover:underline"
+          >
+            {ص.رقم_المستند}
+            <ExternalLink className="size-3 opacity-60" />
+          </Link>
+        ) : (
+          <span className="ltr-nums">{ص.رقم_المستند || "—"}</span>
+        ),
       مخفي_موبايل: true,
     },
     { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
@@ -214,32 +229,42 @@ export function حركات_الطرف({
         مفتاح_الصف={(ص) => ص.id}
         بحث={false}
         رسالة_فراغ={t("ledger.empty")}
-        إجراءات_الصف={(ص) =>
-          ص.مرتبط ? (
-            <span className="text-xs text-muted-foreground">
-              {t("ledger.linked")}
-            </span>
-          ) : (
-            <div className="flex items-center gap-1">
-              <الزر
-                size="sm"
-                variant="ghost"
-                onClick={() => تعيين_تعديل(ص)}
-                title="تعديل"
+        إجراءات_الصف={(ص) => {
+          if (ص.معرف_الفاتورة) {
+            return (
+              <Link
+                href={`/invoices/${ص.معرف_الفاتورة}`}
+                className="flex items-center gap-1 text-xs text-primary-blue hover:underline"
+                title="فتح الفاتورة"
               >
-                <Pencil className="size-4 text-primary" />
-              </الزر>
+                <ExternalLink className="size-3" />
+                فاتورة
+              </Link>
+            );
+          }
+          if (ص.معرف_خزنة) {
+            return (
               <الزر
                 size="sm"
                 variant="ghost"
-                onClick={() => تعيين_حذف(ص)}
-                title="حذف"
+                onClick={() => تعيين_حذف_خزنة(ص)}
+                title="حذف وعكس من الخزنة"
               >
                 <Trash2 className="size-4 text-danger" />
               </الزر>
+            );
+          }
+          return (
+            <div className="flex items-center gap-1">
+              <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل(ص)} title="تعديل">
+                <Pencil className="size-4 text-primary" />
+              </الزر>
+              <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)} title="حذف">
+                <Trash2 className="size-4 text-danger" />
+              </الزر>
             </div>
-          )
-        }
+          );
+        }}
       />
 
       {دفعة && (
@@ -273,13 +298,22 @@ export function حركات_الطرف({
             const r = await حذف_حركة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
             if (r.نجاح) {
-              تعيين_محددة((prev) => {
-                const next = new Set(prev);
-                next.delete(حذف.id);
-                return next;
-              });
+              تعيين_محددة((prev) => { const next = new Set(prev); next.delete(حذف.id); return next; });
               router.refresh();
             }
+          }}
+        />
+      )}
+      {حذف_خزنة && (
+        <حوار_تأكيد
+          مفتوح
+          عند_التغيير={(o) => !o && تعيين_حذف_خزنة(null)}
+          العنوان="حذف وعكس الحركة"
+          الوصف="سيُحذف هذا القيد وحركة الخزنة المرتبطة به، ويُعاد حساب الرصيدين. لا يمكن التراجع."
+          عند_التأكيد={async () => {
+            const r = await حذف_حركة_مرتبطة_بخزنة(حذف_خزنة.id);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            if (r.نجاح) router.refresh();
           }}
         />
       )}

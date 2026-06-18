@@ -22,6 +22,7 @@ export const مخطط_بند = z.object({
 });
 
 export const مخطط_فاتورة = z.object({
+  رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
   معرف_العميل: z.number().int().positive("اختر العميل"),
   الهاتف: z.string().trim().optional().nullable(),
   التاريخ: z.string().min(1, "التاريخ مطلوب"),

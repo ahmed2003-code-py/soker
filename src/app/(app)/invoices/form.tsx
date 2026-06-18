@@ -10,7 +10,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { نص_مبلغ } from "@/components/money-text";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
-import { إنشاء_فاتورة, تعديل_فاتورة } from "./actions";
+import { إنشاء_فاتورة, تعديل_فاتورة, احصل_رقم_الفاتورة_التالي } from "./actions";
 import { إنشاء_طرف } from "../_parties/actions";
 
 type بند = {
@@ -31,7 +31,7 @@ const بند_فارغ = (): بند => ({
   السعر: "",
   ملاحظات: "",
 });
-const اليوم = () => new Date().toISOString().slice(0, 10);
+const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 const ع = (s: string) => Number(s.replace(/,/g, "")) || 0;
 
 export function نموذج_فاتورة({
@@ -66,7 +66,15 @@ export function نموذج_فاتورة({
   const [بنود, تعيين_بنود] = React.useState<بند[]>(
     فاتورة?.البنود?.length ? فاتورة.البنود : [بند_فارغ()]
   );
+  const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!فاتورة) {
+      احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function حدّث(i: number, مفتاح: keyof بند, قيمة: string) {
     تعيين_بنود((س) =>
@@ -90,13 +98,14 @@ export function نموذج_فاتورة({
 
   // تجميع حسب التصنيف
   const تجميع = React.useMemo(() => {
-    const م = new Map<string, { كمية: number; وزن: number; مبلغ: number }>();
+    const م = new Map<string, { كمية: number; وزن: number; مبلغ: number; أسعار: Set<number> }>();
     for (const ب of بنود) {
       if (!ب.التصنيف) continue;
-      const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0, مبلغ: 0 };
+      const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0, مبلغ: 0, أسعار: new Set() };
       ح.كمية += ع(ب.الكمية);
       ح.وزن += ع(ب.الوزن);
       ح.مبلغ += ع(ب.السعر) * ع(ب.الوزن);
+      if (ع(ب.السعر) > 0) ح.أسعار.add(ع(ب.السعر));
       م.set(ب.التصنيف, ح);
     }
     return [...م.entries()];
@@ -115,7 +124,9 @@ export function نموذج_فاتورة({
   async function احفظ() {
     if (!عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
     تعيين_جارٍ(true);
+    const رقم_مُحدد = رقم_الفاتورة.trim() ? Number(رقم_الفاتورة.replace(/,/g, "")) : null;
     const payload = {
+      رقم_الفاتورة_المحدد: !فاتورة && رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
       معرف_العميل: Number(عميل),
       الهاتف: هاتف,
       التاريخ: تاريخ,
@@ -144,7 +155,23 @@ export function نموذج_فاتورة({
   return (
     <div className="space-y-6">
       {/* الترويسة */}
-      <div className="card-soft grid gap-4 p-5 sm:grid-cols-3">
+      <div className="card-soft grid gap-4 p-5 sm:grid-cols-4">
+        {/* رقم الفاتورة */}
+        <div className="space-y-1.5">
+          <العنوان>{t("inv.col.number")}</العنوان>
+          {فاتورة ? (
+            <div className="flex h-10 items-center rounded-xl border border-border bg-muted px-3 text-sm ltr-nums text-muted-foreground">
+              #{فاتورة.id}
+            </div>
+          ) : (
+            <الحقل
+              className="ltr-nums"
+              value={رقم_الفاتورة}
+              onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)}
+              placeholder="..."
+            />
+          )}
+        </div>
         <div className="space-y-1.5">
           <العنوان مطلوب>{t("inv.col.customer")}</العنوان>
           <قائمة_اختيار
@@ -308,24 +335,32 @@ export function نموذج_فاتورة({
                   <th className="p-2 text-start">{t("inv.f.category")}</th>
                   <th className="p-2 text-end">{t("inv.f.total_count")}</th>
                   <th className="p-2 text-end">{t("inv.col.total_weight")}</th>
+                  <th className="p-2 text-end">{t("inv.f.price_kg")}</th>
                   <th className="p-2 text-end">{t("inv.f.subtotal")}</th>
                 </tr>
               </thead>
               <tbody>
-                {تجميع.map(([ت, ح]) => (
-                  <tr key={ت} className="border-b border-border/60">
-                    <td className="p-2">{ت}</td>
-                    <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
-                    <td className="p-2 text-end ltr-nums">
-                      {ح.وزن.toFixed(2)} {t("inv.kg")}
-                    </td>
-                    <td className="p-2 text-end ltr-nums">
-                      {ح.مبلغ.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                  </tr>
-                ))}
+                {تجميع.map(([ت, ح]) => {
+                  const أسعار = [...ح.أسعار];
+                  const سعر_نص = أسعار.length === 1
+                    ? أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                    : أسعار.length > 1
+                      ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}`
+                      : "—";
+                  return (
+                    <tr key={ت} className="border-b border-border/60">
+                      <td className="p-2">{ت}</td>
+                      <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
+                      <td className="p-2 text-end ltr-nums">
+                        {ح.وزن.toFixed(2)} {t("inv.kg")}
+                      </td>
+                      <td className="p-2 text-end ltr-nums text-muted-foreground text-xs">{سعر_نص}</td>
+                      <td className="p-2 text-end ltr-nums">
+                        {ح.مبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
