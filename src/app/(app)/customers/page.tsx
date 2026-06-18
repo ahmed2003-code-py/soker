@@ -9,7 +9,7 @@ export default async function صفحة_العملاء() {
   const { t } = مترجم_الخادم();
   const أطراف = await prisma.party.findMany({
     where: { type: "CUSTOMER" },
-    orderBy: { name: "asc" },
+    orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
   });
   const بيانات = أطراف.map((p) => ({
     id: p.id,
@@ -19,6 +19,7 @@ export default async function صفحة_العملاء() {
     الرصيد: Number(p.balance),
     حد_الائتمان: p.creditLimit != null ? Number(p.creditLimit) : null,
     ملاحظات: p.notes,
+    آخر_تحديث: p.updatedAt.toISOString(),
   }));
   return (
     <div>

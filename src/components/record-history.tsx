@@ -25,6 +25,64 @@ type سجل = {
   التفاصيل: unknown;
 };
 
+/** عرض قيمة واحدة بشكل مقروء */
+function قيمة_مقروءة(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "نعم" : "لا";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/** مكوّن عرض تفاصيل العملية بشكل مقروء بدلاً من JSON خام */
+function عرض_تفاصيل_العملية({ التفاصيل }: { التفاصيل: Record<string, unknown> }) {
+  const { قبل, بعد, ...باقي } = التفاصيل as {
+    قبل?: Record<string, unknown>;
+    بعد?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+
+  // إذا كان تعديلاً بـ قبل/بعد → عرض diff
+  if (قبل || بعد) {
+    const المفاتيح = new Set([...Object.keys(قبل ?? {}), ...Object.keys(بعد ?? {})]);
+    const التغييرات = [...المفاتيح].filter(
+      (k) => قيمة_مقروءة((قبل ?? {})[k]) !== قيمة_مقروءة((بعد ?? {})[k])
+    );
+    if (التغييرات.length === 0 && Object.keys(باقي).length === 0) return null;
+    return (
+      <div className="space-y-1">
+        {التغييرات.map((k) => (
+          <div key={k} className="text-xs leading-relaxed">
+            <span className="font-medium text-foreground">{k}:</span>{" "}
+            <span className="text-muted-foreground line-through">{قيمة_مقروءة((قبل ?? {})[k])}</span>
+            <span className="mx-1 text-muted-foreground">←</span>
+            <span className="font-medium text-foreground">{قيمة_مقروءة((بعد ?? {})[k])}</span>
+          </div>
+        ))}
+        {Object.entries(باقي).map(([k, v]) => (
+          <div key={k} className="text-xs">
+            <span className="text-muted-foreground">{k}:</span>{" "}
+            <span className="font-medium">{قيمة_مقروءة(v)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // بيانات مسطّحة → شبكة مفتاح / قيمة
+  const المدخلات = Object.entries(التفاصيل).filter(([, v]) => v !== null && v !== undefined && v !== "");
+  if (المدخلات.length === 0) return null;
+  return (
+    <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded bg-appgray p-2">
+      {المدخلات.map(([k, v]) => (
+        <div key={k} className="text-xs">
+          <span className="text-muted-foreground">{k}: </span>
+          <span className="font-medium ltr-nums">{قيمة_مقروءة(v)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** زر + حوار يعرض المسار الزمني (audit trail) لأي سجل */
 export function سجل_التغييرات({
   النوع,
@@ -80,9 +138,9 @@ export function سجل_التغييرات({
                 </span>
               </div>
               {س.التفاصيل != null && Object.keys(س.التفاصيل as object).length > 0 && (
-                <pre className="mt-2 overflow-x-auto rounded bg-appgray p-2 text-xs ltr-nums">
-                  {JSON.stringify(س.التفاصيل, null, 1)}
-                </pre>
+                <div className="mt-2">
+                  <عرض_تفاصيل_العملية التفاصيل={س.التفاصيل as Record<string, unknown>} />
+                </div>
               )}
             </div>
           ))}

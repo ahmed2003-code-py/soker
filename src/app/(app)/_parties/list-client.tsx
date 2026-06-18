@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { نص_مبلغ } from "@/components/money-text";
+import { نص_تاريخ } from "@/components/date-text";
 import { الشارة } from "@/components/ui/badge";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
@@ -31,6 +32,7 @@ export type صف_طرف = {
   الرصيد: number;
   حد_الائتمان: number | null;
   ملاحظات: string | null;
+  آخر_تحديث?: string;
 };
 
 /** تسمية الرصيد للعرض (نسخة عميل من منطق lib/ledger) */
@@ -63,6 +65,16 @@ export function قائمة_الأطراف({
 
   const أعمدة: عمود<صف_طرف>[] = [
     { المفتاح: "الاسم", العنوان: t("party.col.name"), قابل_للفرز: true },
+    {
+      المفتاح: "آخر_تحديث",
+      العنوان: "آخر نشاط",
+      قابل_للفرز: true,
+      قيمة: (ص) => ص.آخر_تحديث ?? "",
+      خلية: (ص) => ص.آخر_تحديث
+        ? <نص_تاريخ القيمة={ص.آخر_تحديث} مع_الوقت className="text-xs text-muted-foreground" />
+        : <span>—</span>,
+      مخفي_موبايل: true,
+    },
     {
       المفتاح: "الهاتف",
       العنوان: t("party.col.phone"),
