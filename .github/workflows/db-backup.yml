@@ -1,0 +1,111 @@
+name: PostgreSQL Backup
+
+on:
+  # Daily at 02:00 UTC — adjusts automatically to Egyptian time (02:00 UTC = 04:00 EET / 05:00 EEST)
+  schedule:
+    - cron: "0 2 * * *"
+
+  # Manual trigger: allows choosing a specific backup key for restore tests,
+  # or forcing a run outside the schedule
+  workflow_dispatch:
+    inputs:
+      run_restore_test:
+        description: "Also run the automated restore test after backup?"
+        type: boolean
+        default: false
+      restore_backup_key:
+        description: "(test-restore only) Specific R2 key to test. Leave blank for latest."
+        type: string
+        required: false
+
+# Only one backup job at a time — prevents parallel uploads on overlapping schedules
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup PostgreSQL → R2
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies (including devDeps for tsx + @aws-sdk)
+        run: npm ci
+
+      - name: Install PostgreSQL 16 client tools (pg_dump, psql)
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/postgresql.asc > /dev/null
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-client-16
+
+      - name: Verify toolchain
+        run: |
+          pg_dump --version
+          gpg --version | head -1
+
+      - name: Run backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+          BACKUP_ALERT_WEBHOOK_URL: ${{ secrets.BACKUP_ALERT_WEBHOOK_URL }}
+          BACKUP_RETENTION_DAILY: "7"
+          BACKUP_RETENTION_WEEKLY: "4"
+          BACKUP_RETENTION_MONTHLY: "12"
+          BACKUP_TEMP_DIR: "/tmp"
+        run: npx tsx scripts/backup/backup.ts
+
+  restore-test:
+    name: Automated Restore Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Run after backup, only when explicitly requested via workflow_dispatch
+    needs: backup
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_restore_test == true }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL 16 client tools
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release-cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/postgresql.asc > /dev/null
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-client-16
+
+      - name: Run restore integrity test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+          RESTORE_BACKUP_KEY: ${{ inputs.restore_backup_key }}
+          TEST_MIN_PARTIES: "1"
+          TEST_MIN_TREASURY: "1"
+        run: npx tsx scripts/backup/test-restore.ts
