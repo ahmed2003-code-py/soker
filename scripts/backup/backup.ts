@@ -3,9 +3,9 @@
  * Soker ERP — automated PostgreSQL backup
  *
  * Flow (plain format):
- *   pg_dump → gzip → .sql.gz
+ *   pg_dump → gzip → .sql.gz  (temp)
  *   gunzip -t (integrity check)
- *   gpg AES-256 → .sql.gz.gpg
+ *   gpg AES-256 → sokkar-daily-YYYY-MM-DD-HHmm.sql.gpg  (temp)
  *   upload to R2 (daily/ + weekly/ + monthly/ as applicable)
  *   verify R2 object size
  *   cleanup local temp files
@@ -24,7 +24,6 @@ import { spawn } from "child_process";
 import { createGzip } from "zlib";
 import { createReadStream, createWriteStream } from "fs";
 import { unlink, stat } from "fs/promises";
-import { join } from "path";
 import { pipeline } from "stream/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -36,21 +35,13 @@ import { encryptFile } from "./lib/encrypt.js";
 import { notify } from "./lib/notify.js";
 import { withRetry } from "./lib/retry.js";
 import { applyRetention, determineCategories, PREFIXES } from "./lib/retention.js";
+import {
+  buildBackupFilename,
+  buildTempDumpPath,
+  buildTempEncPath,
+} from "./lib/filename.js";
 
 const execFileAsync = promisify(execFile);
-
-// --------------------------------------------------------------------------
-// Helpers
-// --------------------------------------------------------------------------
-
-function nowTag(): string {
-  const d = new Date();
-  const pad = (n: number, len = 2) => String(n).padStart(len, "0");
-  return (
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
-    `-${pad(d.getUTCHours())}-${pad(d.getUTCMinutes())}`
-  );
-}
 
 async function safeUnlink(...paths: string[]): Promise<void> {
   for (const p of paths) {
@@ -198,15 +189,14 @@ async function main(): Promise<void> {
     secretAccessKey: config.r2SecretAccessKey,
   });
 
-  const tag = nowTag();
   const categories = determineCategories(now);
-  logger.info("backup.categories", { categories, tag });
+  logger.info("backup.categories", { categories });
 
   // 2. File paths (all in tempDir)
   const isPlain = config.format === "plain";
-  const dumpExt = isPlain ? "sql.gz" : "dump";
-  const dumpPath = join(config.tempDir, `backup-${tag}.${dumpExt}`);
-  const encPath = `${dumpPath}.gpg`;
+  const format = isPlain ? "plain" : "custom";
+  const dumpPath = buildTempDumpPath(config.tempDir, now, format);
+  const encPath = buildTempEncPath(config.tempDir, now, format);
 
   let uploadedBytes = 0;
   let firstKey = "";
@@ -235,7 +225,7 @@ async function main(): Promise<void> {
 
     // 7. Upload to each applicable R2 prefix (with retry)
     for (const cat of categories) {
-      const key = `${PREFIXES[cat]}backup-${tag}.${dumpExt}.gpg`;
+      const key = `${PREFIXES[cat]}${buildBackupFilename(cat, now, format)}`;
       if (!firstKey) firstKey = key;
 
       await withRetry(

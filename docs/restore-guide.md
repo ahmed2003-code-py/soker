@@ -42,7 +42,7 @@ export RESTORE_TARGET_DB="postgresql://user:pass@host:5432/soker_restored"
 npx tsx scripts/backup/restore.ts
 
 # Restore a specific backup
-export RESTORE_BACKUP_KEY="daily/backup-2026-06-18-02-00.sql.gz.gpg"
+export RESTORE_BACKUP_KEY="daily/sokkar-daily-2026-06-18-0200.sql.gpg"
 npx tsx scripts/backup/restore.ts
 ```
 
@@ -67,17 +67,17 @@ aws s3 ls s3://${R2_BUCKET_NAME}/daily/ \
 ```
 
 Pick the backup filename you want to restore, e.g.:
-`backup-2026-06-18-02-00.sql.gz.gpg`
+`sokkar-daily-2026-06-18-0200.sql.gpg`
 
 ### Step 2: Download from R2
 
 ```bash
-BACKUP_KEY="daily/backup-2026-06-18-02-00.sql.gz.gpg"
+BACKUP_KEY="daily/sokkar-daily-2026-06-18-0200.sql.gpg"
 WORK_DIR="/tmp/soker-restore"
 mkdir -p "$WORK_DIR"
 
 aws s3 cp "s3://${R2_BUCKET_NAME}/${BACKUP_KEY}" \
-  "$WORK_DIR/backup.sql.gz.gpg" \
+  "$WORK_DIR/backup.gpg" \
   --endpoint-url="$R2_ENDPOINT"
 ```
 
@@ -87,7 +87,7 @@ aws s3 cp "s3://${R2_BUCKET_NAME}/${BACKUP_KEY}" \
 # Interactive (GPG will prompt for passphrase)
 gpg --batch --decrypt \
   --output "$WORK_DIR/backup.sql.gz" \
-  "$WORK_DIR/backup.sql.gz.gpg"
+  "$WORK_DIR/backup.gpg"
 
 # Non-interactive (passphrase from env var)
 echo "$BACKUP_GPG_PASSPHRASE" | \
@@ -96,7 +96,7 @@ echo "$BACKUP_GPG_PASSPHRASE" | \
       --pinentry-mode loopback \
       --decrypt \
       --output "$WORK_DIR/backup.sql.gz" \
-      "$WORK_DIR/backup.sql.gz.gpg"
+      "$WORK_DIR/backup.gpg"
 ```
 
 ### Step 4: Verify integrity before restoring
@@ -166,7 +166,7 @@ rm -rf "$WORK_DIR"
 
 ## Restoring a Custom Format Backup (*.dump.gpg)
 
-If `BACKUP_FORMAT=custom` was in use, the file ends in `.dump.gpg` instead of `.sql.gz.gpg`.
+If `BACKUP_FORMAT=custom` was in use, the file ends in `.dump.gpg` instead of `.sql.gpg`.
 
 ```bash
 # After decrypting to backup.dump:

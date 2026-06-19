@@ -68,7 +68,7 @@ npx tsx scripts/backup/restore.ts
 
 To restore a specific backup (e.g., yesterday's):
 ```bash
-export RESTORE_BACKUP_KEY="daily/backup-2026-06-17-02-00.sql.gz.gpg"
+export RESTORE_BACKUP_KEY="daily/sokkar-daily-2026-06-17-0200.sql.gpg"
 npx tsx scripts/backup/restore.ts
 ```
 

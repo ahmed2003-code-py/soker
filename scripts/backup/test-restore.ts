@@ -14,7 +14,7 @@
  *   npx tsx scripts/backup/test-restore.ts
  *
  *   # Override which backup to test
- *   RESTORE_BACKUP_KEY="daily/backup-2026-06-18-02-00.sql.gz.gpg" \
+ *   RESTORE_BACKUP_KEY="daily/sokkar-daily-2026-06-18-0200.sql.gpg" \
  *   npx tsx scripts/backup/test-restore.ts
  *
  *   # Override minimum expected row counts (defaults are conservative)

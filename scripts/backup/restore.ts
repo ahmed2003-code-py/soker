@@ -10,7 +10,7 @@
  *
  *   # Restore a specific backup key
  *   RESTORE_TARGET_DB="postgresql://..." \
- *   RESTORE_BACKUP_KEY="daily/backup-2026-06-18-02-00.sql.gz.gpg" \
+ *   RESTORE_BACKUP_KEY="daily/sokkar-daily-2026-06-18-0200.sql.gpg" \
  *   npx tsx scripts/backup/restore.ts
  *
  * WARNING: This REPLACES ALL DATA in RESTORE_TARGET_DB.
@@ -34,6 +34,7 @@ import { logger } from "./lib/logger.js";
 import { createR2Client, listObjects, downloadObject } from "./lib/r2.js";
 import { decryptFile } from "./lib/encrypt.js";
 import { PREFIXES } from "./lib/retention.js";
+import { detectDumpFormat } from "./lib/filename.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,12 +80,9 @@ async function main(): Promise<void> {
 
   logger.info("restore.target_key", { key: backupKey });
 
-  // Detect format from key extension
-  const isPlain = backupKey.includes(".sql.gz.gpg");
-  const isCustom = backupKey.includes(".dump.gpg");
-  if (!isPlain && !isCustom) {
-    throw new Error(`Cannot determine format from key: ${backupKey}`);
-  }
+  // Detect format from key extension (supports both new .sql.gpg and legacy .sql.gz.gpg)
+  const fmt = detectDumpFormat(backupKey);
+  const isPlain = fmt === "plain";
 
   const tmpDir = config.tempDir;
   const encFile = join(tmpDir, "restore_download.gpg");
