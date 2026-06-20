@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown } from "lucide-react";
+import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -27,7 +27,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
-import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
+import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 
 type حساب = {
   id: number;
@@ -46,6 +46,7 @@ type حركة = {
   البيان: string;
   الطرف: string | null;
   الرصيد_بعد_الحركة: number;
+  اسم_حساب_فرعي: string | null;
   مرتبط: boolean;
 };
 
@@ -81,8 +82,11 @@ export function شاشة_الخزنة({
   const [إلى, تعيين_إلى] = React.useState("");
   const [تفاصيل_حساب, تعيين_تفاصيل_حساب] = React.useState<حساب | null>(null);
 
-  // حسابات فرعية محلية (تُحدَّث عند الإضافة)
+  // حسابات فرعية محلية — تتزامن مع الخادم بعد كل router.refresh()
   const [حسابات_فرعية_محلية, تعيين_حسابات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
+  React.useEffect(() => {
+    تعيين_حسابات_فرعية_محلية(حسابات_فرعية);
+  }, [حسابات_فرعية]);
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
@@ -160,7 +164,12 @@ export function شاشة_الخزنة({
         return (
           <span className="flex items-center gap-2">
             {ح && <أيقونة_الحساب النوع={ح.النوع} حجم="sm" />}
-            <span>{ص.الحساب}</span>
+            <span className="flex flex-col leading-tight">
+              <span>{ص.الحساب}</span>
+              {ص.اسم_حساب_فرعي && (
+                <span className="text-[11px] text-muted-foreground">{ص.اسم_حساب_فرعي}</span>
+              )}
+            </span>
           </span>
         );
       },
@@ -223,6 +232,20 @@ export function شاشة_الخزنة({
       [النوع]: [...(prev[النوع] ?? []), { id: r.بيانات!.id, الاسم, الرصيد: 0 }],
     }));
     return r.بيانات.id;
+  }
+
+  function تحديث_اسم_فرعي(النوع: TreasuryAccountType, id: number, الاسم_الجديد: string) {
+    تعيين_حسابات_فرعية_محلية((prev) => ({
+      ...prev,
+      [النوع]: (prev[النوع] ?? []).map((h) => h.id === id ? { ...h, الاسم: الاسم_الجديد } : h),
+    }));
+  }
+
+  function حذف_فرعي_محلي(النوع: TreasuryAccountType, id: number) {
+    تعيين_حسابات_فرعية_محلية((prev) => ({
+      ...prev,
+      [النوع]: (prev[النوع] ?? []).filter((h) => h.id !== id),
+    }));
   }
 
   return (
@@ -367,6 +390,9 @@ export function شاشة_الخزنة({
         <حوار_تفاصيل_حساب
           الحساب={تفاصيل_حساب}
           الحسابات_الفرعية={حسابات_فرعية_محلية[تفاصيل_حساب.النوع] ?? []}
+          عند_إضافة_فرعي={async (الاسم) => { await إضافة_حساب_فرعي_جديد(تفاصيل_حساب.النوع, الاسم); }}
+          عند_تعديل_فرعي={(id, الاسم) => تحديث_اسم_فرعي(تفاصيل_حساب.النوع, id, الاسم)}
+          عند_حذف_فرعي={(id) => حذف_فرعي_محلي(تفاصيل_حساب.النوع, id)}
           عند_الإغلاق={() => تعيين_تفاصيل_حساب(null)}
         />
       )}
@@ -374,45 +400,151 @@ export function شاشة_الخزنة({
   );
 }
 
-// ─── حوار تفاصيل الحسابات الفرعية ───────────────────────────────────────────
+// ─── حوار تفاصيل + إدارة الحسابات الفرعية ──────────────────────────────────
 
 function حوار_تفاصيل_حساب({
   الحساب,
   الحسابات_الفرعية,
+  عند_إضافة_فرعي,
+  عند_تعديل_فرعي,
+  عند_حذف_فرعي,
   عند_الإغلاق,
 }: {
   الحساب: حساب;
   الحسابات_الفرعية: حساب_فرعي[];
+  عند_إضافة_فرعي: (الاسم: string) => Promise<void>;
+  عند_تعديل_فرعي: (id: number, الاسم: string) => void;
+  عند_حذف_فرعي: (id: number) => void;
   عند_الإغلاق: () => void;
 }) {
+  const إشعار = useإشعار();
+  const [تعديل_معرف, تعيين_تعديل_معرف] = React.useState<number | null>(null);
+  const [اسم_جديد, تعيين_اسم_جديد] = React.useState("");
+  const [حذف_معرف, تعيين_حذف_معرف] = React.useState<number | null>(null);
+  const [إضافة_جارية, تعيين_إضافة_جارية] = React.useState(false);
+  const [اسم_إضافة, تعيين_اسم_إضافة] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
   const إجمالي = الحسابات_الفرعية.reduce((س, ح) => س + ح.الرصيد, 0);
+
+  async function احفظ_التعديل(id: number) {
+    if (!اسم_جديد.trim()) return;
+    تعيين_جارٍ(true);
+    const r = await عدّل_حساب_فرعي(id, اسم_جديد);
+    تعيين_جارٍ(false);
+    if (!r.نجاح) { إشعار.خطأ(r.رسالة); return; }
+    إشعار.نجاح(r.رسالة!);
+    عند_تعديل_فرعي(id, اسم_جديد.trim());
+    تعيين_تعديل_معرف(null);
+  }
+
+  async function نفّذ_الحذف(id: number) {
+    تعيين_جارٍ(true);
+    const r = await احذف_حساب_فرعي(id);
+    تعيين_جارٍ(false);
+    if (!r.نجاح) { إشعار.خطأ(r.رسالة); return; }
+    إشعار.نجاح(r.رسالة!);
+    عند_حذف_فرعي(id);
+    تعيين_حذف_معرف(null);
+  }
+
+  async function أضف_جديد() {
+    if (!اسم_إضافة.trim()) return;
+    تعيين_جارٍ(true);
+    await عند_إضافة_فرعي(اسم_إضافة.trim());
+    تعيين_جارٍ(false);
+    تعيين_اسم_إضافة("");
+    تعيين_إضافة_جارية(false);
+  }
+
   return (
-    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
-      <محتوى_الحوار className="max-w-sm">
-        <رأس_الحوار>
-          <عنوان_الحوار>تفاصيل {الحساب.التسمية}</عنوان_الحوار>
-        </رأس_الحوار>
-        <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
-          {الحسابات_الفرعية.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد حسابات فرعية</p>
-          ) : (
-            الحسابات_الفرعية.map((ح) => (
-              <div key={ح.id} className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm font-medium">{ح.الاسم}</span>
-                <نص_مبلغ القيمة={ح.الرصيد} className={ح.الرصيد < 0 ? "text-danger font-semibold" : "font-semibold"} />
+    <>
+      <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+        <محتوى_الحوار className="max-w-sm">
+          <رأس_الحوار>
+            <عنوان_الحوار>تفاصيل {الحساب.التسمية}</عنوان_الحوار>
+          </رأس_الحوار>
+          <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+            {الحسابات_الفرعية.length === 0 && !إضافة_جارية ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد حسابات فرعية</p>
+            ) : (
+              الحسابات_الفرعية.map((ح) => (
+                <div key={ح.id} className="flex items-center gap-2 px-4 py-3">
+                  {تعديل_معرف === ح.id ? (
+                    <>
+                      <input
+                        autoFocus
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-primary"
+                        value={اسم_جديد}
+                        onChange={(e) => تعيين_اسم_جديد(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") احفظ_التعديل(ح.id); if (e.key === "Escape") تعيين_تعديل_معرف(null); }}
+                      />
+                      <button type="button" disabled={جارٍ} onClick={() => احفظ_التعديل(ح.id)} className="text-success hover:opacity-75">
+                        <Check className="size-4" />
+                      </button>
+                      <button type="button" onClick={() => تعيين_تعديل_معرف(null)} className="text-muted-foreground hover:opacity-75">
+                        <X className="size-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm font-medium">{ح.الاسم}</span>
+                      <نص_مبلغ القيمة={ح.الرصيد} className={`text-sm ${ح.الرصيد < 0 ? "text-danger font-semibold" : "font-semibold"}`} />
+                      <button type="button" onClick={() => { تعيين_تعديل_معرف(ح.id); تعيين_اسم_جديد(ح.الاسم); }} className="text-muted-foreground hover:text-foreground">
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button type="button" onClick={() => تعيين_حذف_معرف(ح.id)} className="text-muted-foreground hover:text-danger">
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+            {إضافة_جارية && (
+              <div className="flex items-center gap-2 px-4 py-3">
+                <input
+                  autoFocus
+                  placeholder="اسم الحساب الجديد…"
+                  className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-primary"
+                  value={اسم_إضافة}
+                  onChange={(e) => تعيين_اسم_إضافة(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") أضف_جديد(); if (e.key === "Escape") { تعيين_إضافة_جارية(false); تعيين_اسم_إضافة(""); } }}
+                />
+                <button type="button" disabled={جارٍ} onClick={أضف_جديد} className="text-success hover:opacity-75">
+                  <Check className="size-4" />
+                </button>
+                <button type="button" onClick={() => { تعيين_إضافة_جارية(false); تعيين_اسم_إضافة(""); }} className="text-muted-foreground hover:opacity-75">
+                  <X className="size-4" />
+                </button>
               </div>
-            ))
-          )}
-          <div className="flex items-center justify-between bg-appgray px-4 py-3">
-            <span className="text-sm font-semibold text-muted-foreground">الإجمالي</span>
-            <نص_مبلغ القيمة={إجمالي} className="font-bold text-primary" />
+            )}
+            <div className="flex items-center justify-between bg-appgray px-4 py-3">
+              <span className="text-sm font-semibold text-muted-foreground">الإجمالي</span>
+              <نص_مبلغ القيمة={إجمالي} className="font-bold text-primary" />
+            </div>
           </div>
-        </div>
-        <تذييل_الحوار>
-          <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
-        </تذييل_الحوار>
-      </محتوى_الحوار>
-    </الحوار>
+          <تذييل_الحوار>
+            {!إضافة_جارية && (
+              <الزر variant="outline" size="sm" onClick={() => تعيين_إضافة_جارية(true)}>
+                <Plus className="size-3.5 ml-1" /> إضافة
+              </الزر>
+            )}
+            <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+          </تذييل_الحوار>
+        </محتوى_الحوار>
+      </الحوار>
+
+      {حذف_معرف !== null && (
+        <حوار_تأكيد
+          مفتوح
+          عند_التغيير={(o) => !o && تعيين_حذف_معرف(null)}
+          العنوان="حذف الحساب الفرعي"
+          الوصف="سيتم حذف الحساب نهائياً. الحركات المرتبطة به ستفقد ربطها."
+          عند_التأكيد={() => نفّذ_الحذف(حذف_معرف)}
+        />
+      )}
+    </>
   );
 }
 
@@ -458,7 +590,15 @@ function حوار_حركة({
     [حساب, الحسابات]
   );
   const له_فرعية = نوع_الحساب_المختار !== null && نوع_الحساب_المختار !== "CASH";
-  const خيارات_فرعية = له_فرعية ? (خيارات_فرعية_محلية[نوع_الحساب_المختار] ?? []) : [];
+  const خيارات_فرعية = له_فرعية && نوع_الحساب_المختار ? (خيارات_فرعية_محلية[نوع_الحساب_المختار] ?? []) : [];
+
+  // تحديد تلقائي لو فيه خيار واحد بس
+  React.useEffect(() => {
+    if (له_فرعية && خيارات_فرعية.length === 1 && !حساب_فرعي) {
+      تعيين_حساب_فرعي(String(خيارات_فرعية[0].id));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [له_فرعية, خيارات_فرعية.length]);
 
   function تغيير_الحساب(معرف: string) {
     const نوع_الجديد = الحسابات.find((h) => h.id === Number(معرف))?.النوع;
@@ -482,6 +622,9 @@ function حوار_حركة({
   }
 
   async function حفظ() {
+    if (له_فرعية && !حساب_فرعي) {
+      return إشعار.خطأ(`يرجى اختيار ${تسمية_فرعي(نوع_الحساب_المختار!)}`);
+    }
     تعيين_جارٍ(true);
     const payload = {
       التاريخ: تاريخ,
@@ -540,18 +683,12 @@ function حوار_حركة({
             />
           </div>
 
-          {/* الحساب الفرعي — يظهر فقط لغير النقدي */}
+          {/* الحساب الفرعي — إجباري لغير النقدي */}
           {له_فرعية && نوع_الحساب_المختار && (
             <div className="space-y-1.5 sm:col-span-2">
-              <العنوان>
-                {تسمية_فرعي(نوع_الحساب_المختار)}{" "}
-                <span className="font-normal text-muted-foreground">(اختياري)</span>
-              </العنوان>
+              <العنوان مطلوب>{تسمية_فرعي(نوع_الحساب_المختار)}</العنوان>
               <قائمة_اختيار
-                الخيارات={[
-                  { القيمة: "", التسمية: "— بدون تحديد —" },
-                  ...خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم })),
-                ]}
+                الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
                 القيمة={حساب_فرعي}
                 عند_التغيير={تعيين_حساب_فرعي}
                 عند_الإضافة={إضافة_فرعي}

@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
@@ -42,5 +43,30 @@ export async function أنشئ_حساب_فرعي(
   if (موجود) return نجح({ id: موجود.id }, "الحساب موجود بالفعل");
 
   const جديد = await prisma.subAccount.create({ data: { type: النوع, name: اسم } });
+  revalidatePath("/treasury");
   return نجح({ id: جديد.id }, `تمت إضافة "${اسم}"`);
+}
+
+export async function عدّل_حساب_فرعي(id: number, الاسم: string): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const اسم = الاسم.trim();
+  if (!اسم) return فشل("الاسم مطلوب");
+  const موجود = await prisma.subAccount.findUnique({ where: { id } });
+  if (!موجود) return فشل("الحساب غير موجود");
+  const مكرر = await prisma.subAccount.findFirst({ where: { type: موجود.type, name: اسم, NOT: { id } } });
+  if (مكرر) return فشل("يوجد حساب بنفس الاسم");
+  await prisma.subAccount.update({ where: { id }, data: { name: اسم } });
+  revalidatePath("/treasury");
+  return نجح(undefined, "تم تعديل الاسم");
+}
+
+export async function احذف_حساب_فرعي(id: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "حذف");
+  const موجود = await prisma.subAccount.findUnique({ where: { id } });
+  if (!موجود) return فشل("الحساب غير موجود");
+  await prisma.subAccount.delete({ where: { id } });
+  revalidatePath("/treasury");
+  return نجح(undefined, "تم الحذف");
 }
