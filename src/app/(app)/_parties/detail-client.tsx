@@ -399,6 +399,7 @@ function حوار_دفعة({
   const [حساب, تعيين_حساب] = React.useState<string>(
     حسابات_الخزنة[0] ? String(حسابات_الخزنة[0].id) : ""
   );
+  const [بيان, تعيين_بيان] = React.useState("");
   const [رقم, تعيين_رقم] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
@@ -410,6 +411,7 @@ function حوار_دفعة({
       مبلغ_له: مبلغ_له || null,
       مبلغ_عليه: مبلغ_عليه || null,
       معرف_حساب_الخزنة: حساب ? Number(حساب) : 0,
+      البيان: بيان || null,
       رقم_الفاتورة: رقم || null,
     });
     تعيين_جارٍ(false);
@@ -463,6 +465,14 @@ function حوار_دفعة({
               value={مبلغ_عليه}
               onChange={(e) => { تعيين_مبلغ_عليه(e.target.value); if (e.target.value) تعيين_مبلغ_له(""); }}
               placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>{t("ledger.col.statement")}</العنوان>
+            <الحقل
+              value={بيان}
+              onChange={(e) => تعيين_بيان(e.target.value)}
+              placeholder="تفاصيل اختيارية..."
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">

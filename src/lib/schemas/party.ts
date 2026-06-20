@@ -25,6 +25,7 @@ export const مخطط_دفعة = z
     مبلغ_له: مبلغ_اختياري,
     مبلغ_عليه: مبلغ_اختياري,
     معرف_حساب_الخزنة: z.number().int().positive("اختر حساب الخزنة"),
+    البيان: z.string().trim().optional().nullable(),
     رقم_الفاتورة: z.string().trim().optional().nullable(),
   })
   .refine(
