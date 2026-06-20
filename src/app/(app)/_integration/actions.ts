@@ -59,7 +59,7 @@ export async function سجّل_عملية_مرتبطة(مدخلات: unknown): P
       التفاصيل: { الاتجاه, الطرف: طرف.name, المبلغ, حساب: ب.معرف_حساب_الخزنة },
     });
     return r;
-  });
+  }, { timeout: 20000, maxWait: 10000 });
 
   revalidatePath("/treasury");
   revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
@@ -111,7 +111,7 @@ export async function عدّل_عملية_مرتبطة(
       معرف_الكيان: r.معرف_حركة_الخزنة,
       التفاصيل: { عكس_وإعادة_تطبيق: true, المبلغ_الجديد: المبلغ, الطرف: طرف.name },
     });
-  });
+  }, { timeout: 20000, maxWait: 10000 });
   revalidatePath("/treasury");
   revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
   return نجح(undefined, "تم تعديل العملية (عكس وإعادة تطبيق) — الجانبان متّسقان");
@@ -133,7 +133,7 @@ export async function احذف_عملية_مرتبطة(معرف_حركة: number
       معرف_الكيان: معرف_حركة,
       التفاصيل: { عكس_كامل: true, الاتجاه: م.الاتجاه, المبلغ: م.المبلغ },
     });
-  });
+  }, { timeout: 20000, maxWait: 10000 });
   revalidatePath("/treasury");
   if (حركة.partyId) {
     const ط = await prisma.party.findUnique({ where: { id: حركة.partyId } });
