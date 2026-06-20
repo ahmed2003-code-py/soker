@@ -63,6 +63,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
     where: { partyId: معرف_الطرف, ...(نطاق ? { date: نطاق } : {}) },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
+  // نحسب الرصيد تصاعدياً ثم نعكس للعرض (الأحدث أولاً)
 
   // الرصيد الافتتاحي = حاصل ما قبل تاريخ "من"
   let رصيد_افتتاحي = 0;
@@ -99,7 +100,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
   return {
     الطرف: { id: طرف.id, الاسم: طرف.name, النوع: طرف.type, الهاتف: طرف.phone ?? "" },
     رصيد_افتتاحي,
-    الصفوف,
+    الصفوف: [...الصفوف].reverse(),
     مجموع_مدين,
     مجموع_دائن,
     الرصيد_الختامي: رصيد,
@@ -120,7 +121,7 @@ export async function تقرير_خزنة_حركات(النوع: TxnKind, ف: ف
       ...(ف.معرف_الحساب ? { accountId: ف.معرف_الحساب } : {}),
     },
     include: { account: true, party: { select: { name: true } } },
-    orderBy: [{ date: "asc" }, { id: "asc" }],
+    orderBy: [{ date: "desc" }, { id: "desc" }],
   });
 
   const الصفوف = حركات.map((t) => ({

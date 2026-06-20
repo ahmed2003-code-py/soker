@@ -46,14 +46,7 @@ export async function تفاصيل_الطرف({
   if (!طرف || طرف.type !== النوع) notFound();
   const { t } = مترجم_الخادم();
 
-  const [حسابات, إعداد_طرق] = await Promise.all([
-    prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
-    prisma.setting.findUnique({ where: { key: "طرق_الدفع" } }),
-  ]);
-  let طرق_الدفع: string[] = ["نقدي", "إنستا باي", "بنك", "فودافون كاش"];
-  try {
-    if (إعداد_طرق?.value) طرق_الدفع = JSON.parse(إعداد_طرق.value);
-  } catch {}
+  const حسابات = await prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } });
 
   const عميل = النوع === PartyType.CUSTOMER;
   const Σمدين = طرف.ledgerEntries.reduce((س, ح) => س + Number(ح.debit), 0);
@@ -146,7 +139,6 @@ export async function تفاصيل_الطرف({
           id: h.id,
           التسمية: تسمية_حساب_الخزنة[h.type],
         }))}
-        طرق_الدفع={طرق_الدفع}
       />
     </div>
   );

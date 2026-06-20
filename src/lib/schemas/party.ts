@@ -18,18 +18,19 @@ export const مخطط_طرف = z.object({
 
 export type مدخلات_طرف = z.infer<typeof مخطط_طرف>;
 
-export const مخطط_دفعة = z.object({
-  معرف_الطرف: z.number().int().positive(),
-  التاريخ: z.string().min(1, "التاريخ مطلوب"),
-  المبلغ: z
-    .union([z.string(), z.number()])
-    .transform((v) => تحليل_مبلغ(v))
-    .refine((v) => v !== null, { message: "المبلغ غير صالح" })
-    .refine((v) => Number(v) > 0, { message: "المبلغ يجب أن يكون أكبر من صفر" }),
-  طريقة_الدفع: z.string().min(1, "طريقة الدفع مطلوبة"),
-  معرف_حساب_الخزنة: z.number().int().positive().optional().nullable(),
-  رقم_الفاتورة: z.string().trim().optional().nullable(),
-});
+export const مخطط_دفعة = z
+  .object({
+    معرف_الطرف: z.number().int().positive(),
+    التاريخ: z.string().min(1, "التاريخ مطلوب"),
+    مبلغ_له: مبلغ_اختياري,
+    مبلغ_عليه: مبلغ_اختياري,
+    معرف_حساب_الخزنة: z.number().int().positive("اختر حساب الخزنة"),
+    رقم_الفاتورة: z.string().trim().optional().nullable(),
+  })
+  .refine(
+    (d) => Number(d.مبلغ_له ?? 0) > 0 || Number(d.مبلغ_عليه ?? 0) > 0,
+    { message: "أدخل مبلغاً في خانة له أو عليه" }
+  );
 
 export const مخطط_حركة_يدوية = z.object({
   معرف_الطرف: z.number().int().positive(),
