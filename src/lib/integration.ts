@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { TxnKind, PartyType } from "@prisma/client";
-import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
-import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
+import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
+import { أضف_قيد, احذف_قيد_ناعم } from "@/lib/ledger";
 
 type عميل_معاملة = Prisma.TransactionClient;
 export type اتجاه = "تحصيل" | "صرف"; // تحصيل من عميل / صرف لمورد
@@ -76,16 +76,13 @@ export async function اعكس_عملية_مرتبطة(tx: عميل_معاملة
   const حركة = await tx.treasuryTxn.findUnique({ where: { id: معرف_حركة_الخزنة } });
   if (!حركة) throw new Error("حركة الخزنة غير موجودة");
   const قيد = await tx.ledgerEntry.findFirst({
-    where: { treasuryTxnId: معرف_حركة_الخزنة },
+    where: { treasuryTxnId: معرف_حركة_الخزنة, deletedAt: null },
   });
 
   const معرف_الطرف = حركة.partyId ?? قيد?.partyId ?? null;
-  // نحذف القيد أولاً (يشير إلى حركة الخزنة) ثم الحركة
-  if (قيد) await tx.ledgerEntry.delete({ where: { id: قيد.id } });
-  await tx.treasuryTxn.delete({ where: { id: معرف_حركة_الخزنة } });
-
-  if (معرف_الطرف) await أعد_حساب_سلسلة_الطرف(tx, معرف_الطرف);
-  await أعد_حساب_حساب_الخزنة(tx, حركة.accountId);
+  // حذف ناعم + دلتا بدل full recompute → O(k) بدل O(n)
+  if (قيد) await احذف_قيد_ناعم(tx, قيد.id);
+  await احذف_حركة_خزنة_ناعم(tx, معرف_حركة_الخزنة);
 
   return {
     الاتجاه: (حركة.kind === TxnKind.INCOME ? "تحصيل" : "صرف") as اتجاه,

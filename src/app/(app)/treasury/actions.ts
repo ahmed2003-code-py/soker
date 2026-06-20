@@ -99,7 +99,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
 
   // تحقق مباشر من وجود قيد مرتبط (أكثر موثوقية من back-relation)
   const قيد_مرتبط = await prisma.ledgerEntry.findFirst({
-    where: { treasuryTxnId: id },
+    where: { treasuryTxnId: id, deletedAt: null },
     select: { id: true },
   });
 
@@ -193,7 +193,7 @@ export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> 
 
   // تحقق مباشر من وجود قيد مرتبط (أكثر موثوقية من back-relation)
   const قيد_مرتبط = await prisma.ledgerEntry.findFirst({
-    where: { treasuryTxnId: id },
+    where: { treasuryTxnId: id, deletedAt: null },
     select: { id: true },
   });
 

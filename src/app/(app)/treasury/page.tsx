@@ -18,6 +18,7 @@ export default async function صفحة_الخزنة() {
   const [حسابات, حركات, أطراف, حسابات_فرعية] = await Promise.all([
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
     prisma.treasuryTxn.findMany({
+      where: { deletedAt: null },
       orderBy: [{ date: "desc" }, { id: "desc" }],
       include: {
         account: { select: { type: true } },

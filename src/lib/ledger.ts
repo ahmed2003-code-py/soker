@@ -40,7 +40,7 @@ export async function أعد_حساب_سلسلة_الطرف(
       WITH running AS (
         SELECT id,
           SUM(debit - credit) OVER (ORDER BY date ASC, id ASC) AS nb
-        FROM ledger_entries WHERE party_id = ${معرف_الطرف}
+        FROM ledger_entries WHERE party_id = ${معرف_الطرف} AND deleted_at IS NULL
       )
       UPDATE ledger_entries le SET balance_after = running.nb
       FROM running WHERE le.id = running.id
@@ -51,7 +51,7 @@ export async function أعد_حساب_سلسلة_الطرف(
       WITH running AS (
         SELECT id,
           SUM(credit - debit) OVER (ORDER BY date ASC, id ASC) AS nb
-        FROM ledger_entries WHERE party_id = ${معرف_الطرف}
+        FROM ledger_entries WHERE party_id = ${معرف_الطرف} AND deleted_at IS NULL
       )
       UPDATE ledger_entries le SET balance_after = running.nb
       FROM running WHERE le.id = running.id
@@ -60,7 +60,7 @@ export async function أعد_حساب_سلسلة_الطرف(
   }
 
   const آخر = await tx.ledgerEntry.findFirst({
-    where: { partyId: معرف_الطرف },
+    where: { partyId: معرف_الطرف, deletedAt: null },
     orderBy: [{ date: "desc" }, { id: "desc" }],
     select: { balanceAfter: true },
   });
@@ -106,7 +106,7 @@ export async function أضف_قيد(
   });
   // آخر حركة في السلسلة (الأحدث زمنياً) قبل إضافة القيد الجديد
   const الأخيرة = await tx.ledgerEntry.findFirst({
-    where: { partyId: بيانات.معرف_الطرف },
+    where: { partyId: بيانات.معرف_الطرف, deletedAt: null },
     orderBy: [{ date: "desc" }, { id: "desc" }],
     select: { date: true, balanceAfter: true },
   });
@@ -148,6 +148,49 @@ export async function أضف_قيد(
     await أعد_حساب_سلسلة_الطرف(tx, بيانات.معرف_الطرف);
   }
   return قيد;
+}
+
+/**
+ * حذف ناعم لقيد دفتر الأستاذ + تحديث دلتا للأرصدة التالية.
+ * O(k) حيث k = عدد القيود بعد المحذوف (عادةً ≈ 0 عند حذف الأحدث).
+ */
+export async function احذف_قيد_ناعم(
+  tx: عميل_معاملة,
+  معرف_القيد: number
+): Promise<void> {
+  const قيد = await tx.ledgerEntry.findUnique({
+    where: { id: معرف_القيد },
+    select: { date: true, debit: true, credit: true, partyId: true },
+  });
+  if (!قيد) return;
+
+  const طرف = await tx.party.findUniqueOrThrow({
+    where: { id: قيد.partyId },
+    select: { type: true },
+  });
+
+  // الخطوة 1: حذف ناعم
+  await tx.ledgerEntry.update({ where: { id: معرف_القيد }, data: { deletedAt: new Date() } });
+
+  // الخطوة 2: دلتا معاكسة (عميل: مدين−دائن؛ مورد: دائن−مدين)
+  const دلتا = طرف.type === PartyType.CUSTOMER
+    ? طرح(قيد.credit, قيد.debit)
+    : طرح(قيد.debit, قيد.credit);
+
+  // الخطوة 3: تعديل أرصدة القيود اللاحقة
+  await tx.$executeRaw`
+    UPDATE ledger_entries
+    SET balance_after = balance_after + ${دلتا}
+    WHERE party_id = ${قيد.partyId}
+      AND deleted_at IS NULL
+      AND (date > ${قيد.date} OR (date = ${قيد.date} AND id > ${معرف_القيد}))
+  `;
+
+  // الخطوة 4: تعديل رصيد الطرف
+  await tx.party.update({
+    where: { id: قيد.partyId },
+    data: { balance: { increment: دلتا } },
+  });
 }
 
 /** تسمية الرصيد حسب نوع الطرف (مديونية/مستحق + دائن/مدين) */

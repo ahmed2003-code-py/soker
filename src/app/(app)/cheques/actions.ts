@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
-import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
+import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مخطط_شيك } from "@/lib/schemas/cheque";
@@ -156,14 +156,7 @@ export async function تغيير_حالة_شيك(
 
     // شيك صادر: العودة من COLLECTED → عكس خصم البنك
     if (شيك.direction === "OUTGOING" && شيك.status === "COLLECTED" && الحالة !== "COLLECTED" && شيك.collectedTxnId) {
-      const معرف_الحساب_المؤثر = await tx.treasuryTxn.findUnique({
-        where: { id: شيك.collectedTxnId },
-        select: { accountId: true },
-      });
-      await tx.treasuryTxn.delete({ where: { id: شيك.collectedTxnId } });
-      if (معرف_الحساب_المؤثر) {
-        await أعد_حساب_حساب_الخزنة(tx, معرف_الحساب_المؤثر.accountId);
-      }
+      await احذف_حركة_خزنة_ناعم(tx, شيك.collectedTxnId);
       await tx.cheque.update({
         where: { id },
         data: { status: الحالة, collectedTxnId: null, updatedById: فاعل.id },
@@ -202,14 +195,7 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
   await prisma.$transaction(async (tx) => {
     // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً
     if (ش.direction === "OUTGOING" && ش.collectedTxnId) {
-      const معرف_الحساب_المؤثر = await tx.treasuryTxn.findUnique({
-        where: { id: ش.collectedTxnId },
-        select: { accountId: true },
-      });
-      await tx.treasuryTxn.delete({ where: { id: ش.collectedTxnId } });
-      if (معرف_الحساب_المؤثر) {
-        await أعد_حساب_حساب_الخزنة(tx, معرف_الحساب_المؤثر.accountId);
-      }
+      await احذف_حركة_خزنة_ناعم(tx, ش.collectedTxnId);
     }
     await tx.cheque.delete({ where: { id } });
     await تسجيل_عملية(tx, {

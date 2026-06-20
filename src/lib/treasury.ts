@@ -25,7 +25,7 @@ export async function أعد_حساب_حساب_الخزنة(
       SELECT id,
         SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END)
         OVER (ORDER BY date ASC, id ASC) AS nb
-      FROM treasury_txns WHERE account_id = ${معرف_الحساب}
+      FROM treasury_txns WHERE account_id = ${معرف_الحساب} AND deleted_at IS NULL
     )
     UPDATE treasury_txns tt SET balance_after = running.nb
     FROM running WHERE tt.id = running.id
@@ -33,7 +33,7 @@ export async function أعد_حساب_حساب_الخزنة(
   `;
 
   const آخر = await tx.treasuryTxn.findFirst({
-    where: { accountId: معرف_الحساب },
+    where: { accountId: معرف_الحساب, deletedAt: null },
     orderBy: [{ date: "desc" }, { id: "desc" }],
     select: { balanceAfter: true },
   });
@@ -50,7 +50,7 @@ export async function أعد_حساب_حساب_الخزنة(
       SELECT sub_account_id,
         SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END) AS bal
       FROM treasury_txns
-      WHERE account_id = ${معرف_الحساب} AND sub_account_id IS NOT NULL
+      WHERE account_id = ${معرف_الحساب} AND sub_account_id IS NOT NULL AND deleted_at IS NULL
       GROUP BY sub_account_id
     )
     UPDATE sub_accounts sa
@@ -88,7 +88,7 @@ export async function أضف_حركة_خزنة(
 ) {
   // آخر حركة في سلسلة الحساب (الأحدث زمنياً) قبل الإضافة
   const الأخيرة = await tx.treasuryTxn.findFirst({
-    where: { accountId: بيانات.معرف_الحساب },
+    where: { accountId: بيانات.معرف_الحساب, deletedAt: null },
     orderBy: [{ date: "desc" }, { id: "desc" }],
     select: { date: true, balanceAfter: true },
   });
@@ -136,6 +136,52 @@ export async function أضف_حركة_خزنة(
     await أعد_حساب_حساب_الخزنة(tx, بيانات.معرف_الحساب);
   }
   return حركة;
+}
+
+/**
+ * حذف ناعم لحركة خزنة + تحديث دلتا للأرصدة التالية.
+ * O(k) حيث k = عدد الحركات بعد المحذوفة (عادةً ≈ 0 عند حذف الأحدث).
+ */
+export async function احذف_حركة_خزنة_ناعم(
+  tx: عميل_معاملة,
+  معرف_الحركة: number
+): Promise<void> {
+  const حركة = await tx.treasuryTxn.findUnique({
+    where: { id: معرف_الحركة },
+    select: { date: true, kind: true, amount: true, accountId: true, subAccountId: true },
+  });
+  if (!حركة) return;
+
+  // الخطوة 1: حذف ناعم (فوري)
+  await tx.treasuryTxn.update({ where: { id: معرف_الحركة }, data: { deletedAt: new Date() } });
+
+  // الخطوة 2: دلتا الأثر المعاكس للحركة المحذوفة
+  const دلتا = حركة.kind === "INCOME"
+    ? د(حركة.amount).negated()
+    : د(حركة.amount);
+
+  // الخطوة 3: تعديل أرصدة الحركات اللاحقة فقط
+  await tx.$executeRaw`
+    UPDATE treasury_txns
+    SET balance_after = balance_after + ${دلتا}
+    WHERE account_id = ${حركة.accountId}
+      AND deleted_at IS NULL
+      AND (date > ${حركة.date} OR (date = ${حركة.date} AND id > ${معرف_الحركة}))
+  `;
+
+  // الخطوة 4: تعديل رصيد الحساب
+  await tx.treasuryAccount.update({
+    where: { id: حركة.accountId },
+    data: { balance: { increment: دلتا } },
+  });
+
+  // الخطوة 5: تعديل رصيد الحساب الفرعي إن وُجد
+  if (حركة.subAccountId) {
+    await tx.subAccount.update({
+      where: { id: حركة.subAccountId },
+      data: { balance: { increment: دلتا } },
+    });
+  }
 }
 
 /** إجمالي رصيد الخزنة (مجموع الحسابات الأربعة) */

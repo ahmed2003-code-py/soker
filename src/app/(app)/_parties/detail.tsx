@@ -31,6 +31,7 @@ export async function تفاصيل_الطرف({
       createdBy: { select: { name: true } },
       updatedBy: { select: { name: true } },
       ledgerEntries: {
+        where: { deletedAt: null },
         orderBy: [{ date: "desc" }, { id: "desc" }],
         select: {
           id: true,
