@@ -18,21 +18,26 @@ export async function أعد_حساب_حساب_الخزنة(
   tx: عميل_معاملة,
   معرف_الحساب: number
 ): Promise<Prisma.Decimal> {
-  const حركات = await tx.treasuryTxn.findMany({
+  // تحديث جميع الأرصدة في استعلام واحد بدلاً من N تحديثات متسلسلة
+  await tx.$executeRaw`
+    WITH running AS (
+      SELECT id,
+        SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END)
+        OVER (ORDER BY date ASC, id ASC) AS nb
+      FROM treasury_txns WHERE account_id = ${معرف_الحساب}
+    )
+    UPDATE treasury_txns tt SET balance_after = running.nb
+    FROM running WHERE tt.id = running.id
+      AND tt.balance_after IS DISTINCT FROM running.nb
+  `;
+
+  const آخر = await tx.treasuryTxn.findFirst({
     where: { accountId: معرف_الحساب },
-    orderBy: [{ date: "asc" }, { id: "asc" }],
-    select: { id: true, kind: true, amount: true, balanceAfter: true },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    select: { balanceAfter: true },
   });
-  let تراكمي = د(0);
-  for (const ح of حركات) {
-    تراكمي = جمع(تراكمي, أثر(ح.kind, ح.amount));
-    if (!تراكمي.equals(ح.balanceAfter)) {
-      await tx.treasuryTxn.update({
-        where: { id: ح.id },
-        data: { balanceAfter: تراكمي },
-      });
-    }
-  }
+  const تراكمي = آخر?.balanceAfter ?? د(0);
+
   await tx.treasuryAccount.update({
     where: { id: معرف_الحساب },
     data: { balance: تراكمي },

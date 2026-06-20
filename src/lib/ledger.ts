@@ -33,22 +33,38 @@ export async function أعد_حساب_سلسلة_الطرف(
     where: { id: معرف_الطرف },
     select: { type: true },
   });
-  const حركات = await tx.ledgerEntry.findMany({
-    where: { partyId: معرف_الطرف },
-    orderBy: [{ date: "asc" }, { id: "asc" }],
-    select: { id: true, debit: true, credit: true, balanceAfter: true },
-  });
 
-  let تراكمي = د(0);
-  for (const ح of حركات) {
-    تراكمي = جمع(تراكمي, أثر_الحركة(طرف.type, ح.debit, ح.credit));
-    if (!تراكمي.equals(ح.balanceAfter)) {
-      await tx.ledgerEntry.update({
-        where: { id: ح.id },
-        data: { balanceAfter: تراكمي },
-      });
-    }
+  // تحديث جميع الأرصدة في استعلام واحد بدلاً من N تحديثات متسلسلة
+  if (طرف.type === PartyType.CUSTOMER) {
+    await tx.$executeRaw`
+      WITH running AS (
+        SELECT id,
+          SUM(debit - credit) OVER (ORDER BY date ASC, id ASC) AS nb
+        FROM ledger_entries WHERE party_id = ${معرف_الطرف}
+      )
+      UPDATE ledger_entries le SET balance_after = running.nb
+      FROM running WHERE le.id = running.id
+        AND le.balance_after IS DISTINCT FROM running.nb
+    `;
+  } else {
+    await tx.$executeRaw`
+      WITH running AS (
+        SELECT id,
+          SUM(credit - debit) OVER (ORDER BY date ASC, id ASC) AS nb
+        FROM ledger_entries WHERE party_id = ${معرف_الطرف}
+      )
+      UPDATE ledger_entries le SET balance_after = running.nb
+      FROM running WHERE le.id = running.id
+        AND le.balance_after IS DISTINCT FROM running.nb
+    `;
   }
+
+  const آخر = await tx.ledgerEntry.findFirst({
+    where: { partyId: معرف_الطرف },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    select: { balanceAfter: true },
+  });
+  const تراكمي = آخر?.balanceAfter ?? د(0);
 
   await tx.party.update({
     where: { id: معرف_الطرف },
