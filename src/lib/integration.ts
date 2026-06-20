@@ -25,6 +25,7 @@ export async function أنشئ_عملية_مرتبطة(
     المبلغ: Prisma.Decimal.Value;
     التاريخ: Date;
     معرف_الحساب: number;
+    معرف_حساب_فرعي?: number | null;
     طريقة_الدفع?: string | null;
     رقم_الفاتورة?: string | null;
     معرف_الفاتورة?: number | null;
@@ -44,6 +45,7 @@ export async function أنشئ_عملية_مرتبطة(
     النوع: تحصيل ? TxnKind.INCOME : TxnKind.EXPENSE,
     المبلغ: ب.المبلغ,
     معرف_الحساب: ب.معرف_الحساب,
+    معرف_حساب_فرعي: ب.معرف_حساب_فرعي ?? null,
     البيان: بيان,
     معرف_الطرف: ب.معرف_الطرف,
     معرف_الفاتورة: ب.معرف_الفاتورة ?? null,

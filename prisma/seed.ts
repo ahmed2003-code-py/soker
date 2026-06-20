@@ -1,5 +1,7 @@
 /** بذر البيانات الأساسية: مالكان (مدير)، 4 حسابات خزنة، إعدادات أساسية. */
 import { PrismaClient, TreasuryAccountType } from "@prisma/client";
+
+type SubAccountSeed = { type: TreasuryAccountType; name: string };
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -49,6 +51,23 @@ async function main() {
     });
   }
   console.log("✓ حسابات الخزنة: إنستا باي / نقدي / بنك / فودافون كاش");
+
+  // ===== الحسابات الفرعية (محافظ / حسابات إنستا / بنوك) =====
+  const حسابات_فرعية_مبدئية: SubAccountSeed[] = [
+    { type: "INSTAPAY", name: "أحمد سكر" },
+    { type: "VODAFONE", name: "أحمد سكر" },
+    { type: "BANK",     name: "التجاري الدولي" },
+    { type: "BANK",     name: "قطر الوطني" },
+    { type: "BANK",     name: "مصر" },
+  ];
+  for (const ح of حسابات_فرعية_مبدئية) {
+    await prisma.subAccount.upsert({
+      where: { type_name: { type: ح.type, name: ح.name } },
+      update: {},
+      create: { type: ح.type, name: ح.name },
+    });
+  }
+  console.log("✓ الحسابات الفرعية: أحمد سكر (إنستا+فودافون) / التجاري الدولي / قطر الوطني / مصر");
 
   // ===== الإعدادات الأساسية =====
   const إعدادات: Record<string, string> = {

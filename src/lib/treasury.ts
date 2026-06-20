@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { TxnKind } from "@prisma/client";
 import { د, جمع } from "@/lib/decimal";
+import { Decimal } from "@prisma/client/runtime/library";
 
 type عميل_معاملة = Prisma.TransactionClient;
 
@@ -42,6 +43,22 @@ export async function أعد_حساب_حساب_الخزنة(
     where: { id: معرف_الحساب },
     data: { balance: تراكمي },
   });
+
+  // إعادة حساب أرصدة الحسابات الفرعية المرتبطة بهذا الحساب
+  await tx.$executeRaw`
+    WITH sub_balances AS (
+      SELECT sub_account_id,
+        SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END) AS bal
+      FROM treasury_txns
+      WHERE account_id = ${معرف_الحساب} AND sub_account_id IS NOT NULL
+      GROUP BY sub_account_id
+    )
+    UPDATE sub_accounts sa
+    SET balance = COALESCE(sb.bal, 0)
+    FROM sub_balances sb
+    WHERE sa.id = sb.sub_account_id
+  `;
+
   return تراكمي;
 }
 
@@ -65,6 +82,7 @@ export async function أضف_حركة_خزنة(
     اسم_الطرف_الخارجي?: string | null;
     معرف_الفاتورة?: number | null;
     طريقة_الدفع?: string | null;
+    معرف_حساب_فرعي?: number | null;
     أنشأ: number;
   }
 ) {
@@ -91,6 +109,7 @@ export async function أضف_حركة_خزنة(
       externalPartyName: بيانات.اسم_الطرف_الخارجي ?? null,
       invoiceId: بيانات.معرف_الفاتورة ?? null,
       method: بيانات.طريقة_الدفع ?? null,
+      subAccountId: بيانات.معرف_حساب_فرعي ?? null,
       balanceAfter: رصيد_جديد,
       createdById: بيانات.أنشأ,
     },
@@ -102,8 +121,18 @@ export async function أضف_حركة_خزنة(
       where: { id: بيانات.معرف_الحساب },
       data: { balance: رصيد_جديد },
     });
+    // تحديث رصيد الحساب الفرعي تزايدياً
+    if (بيانات.معرف_حساب_فرعي) {
+      const delta = بيانات.النوع === TxnKind.INCOME
+        ? new Decimal(String(بيانات.المبلغ))
+        : new Decimal(String(بيانات.المبلغ)).negated();
+      await tx.subAccount.update({
+        where: { id: بيانات.معرف_حساب_فرعي },
+        data: { balance: { increment: delta } },
+      });
+    }
   } else {
-    // حركة بتاريخ سابق → أعد حساب الحساب كاملاً لتصحيح ما يليها
+    // حركة بتاريخ سابق → أعد حساب الحساب كاملاً (يشمل الحسابات الفرعية)
     await أعد_حساب_حساب_الخزنة(tx, بيانات.معرف_الحساب);
   }
   return حركة;

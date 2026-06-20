@@ -10,6 +10,13 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { حركات_الطرف } from "./detail-client";
+import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
+import { TreasuryAccountType } from "@prisma/client";
+
+/** نقدي أولاً */
+const ترتيب_الأنواع: Record<TreasuryAccountType, number> = {
+  CASH: 0, VODAFONE: 1, INSTAPAY: 2, BANK: 3,
+};
 
 export async function تفاصيل_الطرف({
   المعرف,
@@ -46,7 +53,13 @@ export async function تفاصيل_الطرف({
   if (!طرف || طرف.type !== النوع) notFound();
   const { t } = مترجم_الخادم();
 
-  const حسابات = await prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } });
+  const [حسابات_خام, حسابات_فرعية] = await Promise.all([
+    prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
+    اجلب_خريطة_حسابات_فرعية(),
+  ]);
+  const حسابات = [...حسابات_خام].sort(
+    (a, b) => ترتيب_الأنواع[a.type] - ترتيب_الأنواع[b.type]
+  );
 
   const عميل = النوع === PartyType.CUSTOMER;
   const Σمدين = طرف.ledgerEntries.reduce((س, ح) => س + Number(ح.debit), 0);
@@ -137,8 +150,10 @@ export async function تفاصيل_الطرف({
         الحركات={حركات}
         حسابات_الخزنة={حسابات.map((h) => ({
           id: h.id,
+          النوع: h.type,
           التسمية: تسمية_حساب_الخزنة[h.type],
         }))}
+        حسابات_فرعية={حسابات_فرعية}
       />
     </div>
   );

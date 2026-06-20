@@ -26,6 +26,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
 import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك } from "./actions";
+import { أنشئ_حساب_فرعي } from "@/app/(app)/treasury/sub-account-actions";
 
 const حالات_الشيك = ["PENDING", "COLLECTED", "BOUNCED"] as const;
 const لون_الحالة: Record<ChequeStatus, "warning" | "success" | "danger"> = {
@@ -50,7 +51,13 @@ export type شيك = {
   متأخر: boolean;
 };
 
-export function شاشة_الشيكات({ البيانات }: { البيانات: شيك[] }) {
+export function شاشة_الشيكات({
+  البيانات,
+  بنوك,
+}: {
+  البيانات: شيك[];
+  بنوك: { id: number; الاسم: string }[];
+}) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t, لغة } = استخدام_اللغة();
@@ -58,6 +65,8 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
   const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك; اتجاه_افتراضي?: ChequeDirection } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
   const [تبويب, تعيين_تبويب] = React.useState<ChequeDirection>("INCOMING");
+  const [تحصيل_شيك, تعيين_تحصيل_شيك] = React.useState<شيك | null>(null);
+  const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
@@ -147,7 +156,12 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
             القيمة={ص.الحالة}
             قابل_للبحث={false}
             عند_التغيير={async (v) => {
-              const r = await تغيير_حالة_شيك(ص.id, v as ChequeStatus);
+              const حالة_جديدة = v as ChequeStatus;
+              if (ص.الاتجاه === "OUTGOING" && حالة_جديدة === "COLLECTED" && ص.الحالة !== "COLLECTED") {
+                تعيين_تحصيل_شيك(ص);
+                return;
+              }
+              const r = await تغيير_حالة_شيك(ص.id, حالة_جديدة);
               r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
               if (r.نجاح) router.refresh();
             }}
@@ -261,6 +275,22 @@ export function شاشة_الشيكات({ البيانات }: { البيانات
           شيك={نموذج.شيك}
           اتجاه_افتراضي={نموذج.اتجاه_افتراضي ?? "INCOMING"}
           عند_الإغلاق={() => تعيين_نموذج(null)}
+        />
+      )}
+      {تحصيل_شيك && (
+        <حوار_تحصيل_بنك
+          الشيك={تحصيل_شيك}
+          بنوك={خيارات_بنوك_محلية}
+          عند_الإلغاء={() => تعيين_تحصيل_شيك(null)}
+          عند_إضافة_بنك={(بنك_جديد) =>
+            تعيين_خيارات_بنوك_محلية((س) => [...س, بنك_جديد])
+          }
+          عند_التأكيد={async (معرف_بنك) => {
+            const r = await تغيير_حالة_شيك(تحصيل_شيك.id, "COLLECTED", معرف_بنك ?? null);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            تعيين_تحصيل_شيك(null);
+            if (r.نجاح) router.refresh();
+          }}
         />
       )}
       {حذف && (
@@ -398,6 +428,76 @@ export function حوار_شيك({
             {جارٍ ? t("common.saving") : t("common.save")}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>{t("common.cancel")}</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+function حوار_تحصيل_بنك({
+  الشيك,
+  بنوك,
+  عند_الإلغاء,
+  عند_إضافة_بنك,
+  عند_التأكيد,
+}: {
+  الشيك: شيك;
+  بنوك: { id: number; الاسم: string }[];
+  عند_الإلغاء: () => void;
+  عند_إضافة_بنك: (بنك: { id: number; الاسم: string }) => void;
+  عند_التأكيد: (معرف_بنك: number | null) => Promise<void>;
+}) {
+  const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
+  const [بنك_محدد, تعيين_بنك_محدد] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  const خيارات = بنوك.map((b) => ({ القيمة: String(b.id), التسمية: b.الاسم }));
+
+  async function أضف_بنك_جديد(الاسم: string) {
+    const r = await أنشئ_حساب_فرعي("BANK", الاسم);
+    if (!r.نجاح || !r.بيانات) { إشعار.خطأ(r.رسالة ?? "خطأ"); return; }
+    const بنك_جديد = { id: r.بيانات.id, الاسم };
+    عند_إضافة_بنك(بنك_جديد);
+    تعيين_بنك_محدد(String(r.بيانات.id));
+  }
+
+  async function أكّد() {
+    تعيين_جارٍ(true);
+    await عند_التأكيد(بنك_محدد ? Number(بنك_محدد) : null);
+    تعيين_جارٍ(false);
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإلغاء()}>
+      <محتوى_الحوار className="max-w-sm">
+        <رأس_الحوار>
+          <عنوان_الحوار>تحصيل شيك صادر</عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            تحصيل شيك{الشيك.رقم_الشيك ? ` رقم ${الشيك.رقم_الشيك}` : ""} —{" "}
+            <span className="font-medium text-foreground">{الشيك.اسم_المدين}</span>
+            {" "}بمبلغ{" "}
+            <span className="ltr-nums font-semibold">{الشيك.المبلغ.toLocaleString("ar-EG")}</span>
+          </p>
+          <div className="space-y-1.5">
+            <العنوان>البنك</العنوان>
+            <قائمة_اختيار
+              الخيارات={خيارات}
+              القيمة={بنك_محدد}
+              عند_التغيير={تعيين_بنك_محدد}
+              نص_بديل="اختر بنك"
+              عند_الإضافة={أضف_بنك_جديد}
+              تسمية_الإضافة="إضافة بنك جديد"
+            />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={أكّد} disabled={جارٍ}>
+            {جارٍ ? t("common.saving") : "تأكيد التحصيل"}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإلغاء}>{t("common.cancel")}</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>

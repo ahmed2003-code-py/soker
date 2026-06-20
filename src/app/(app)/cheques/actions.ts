@@ -20,7 +20,7 @@ function فكّ_base64(صورة?: string | null): Buffer | null {
   }
 }
 
-/** ابحث عن حساب البنك، أو أول حساب خزنة كاحتياط */
+/** ابحث عن حساب البنك */
 async function حساب_البنك(): Promise<number | null> {
   const بنك = await prisma.treasuryAccount.findFirst({
     where: { type: TreasuryAccountType.BANK },
@@ -116,7 +116,8 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
 
 export async function تغيير_حالة_شيك(
   id: number,
-  الحالة: "PENDING" | "COLLECTED" | "BOUNCED"
+  الحالة: "PENDING" | "COLLECTED" | "BOUNCED",
+  معرف_حساب_فرعي?: number | null
 ): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
@@ -134,6 +135,7 @@ export async function تغيير_حالة_شيك(
           النوع: TxnKind.EXPENSE,
           المبلغ: شيك.amount,
           معرف_الحساب: معرف_البنك,
+          معرف_حساب_فرعي: معرف_حساب_فرعي ?? null,
           البيان: `صرف شيك صادر${شيك.chequeNumber ? " رقم " + شيك.chequeNumber : ""} — ${شيك.drawerName}`,
           أنشأ: فاعل.id,
         });

@@ -5,12 +5,13 @@ import { نص_مبلغ } from "@/components/money-text";
 import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الشيكات } from "./client";
+import { prisma as db } from "@/lib/prisma";
 
 export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
@@ -20,6 +21,11 @@ export default async function صفحة_الشيكات() {
       },
     }),
     تنبيهات_الشيكات(),
+    db.subAccount.findMany({
+      where: { type: "BANK", isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   const بيانات = شيكات.map((c) => ({
@@ -47,7 +53,10 @@ export default async function صفحة_الشيكات() {
         <بطاقة_مؤشر العنوان={t("cheque.kpi.overdue")} القيمة={تنبيهات.عدد_متأخر} لون="danger" />
         <بطاقة_مؤشر العنوان={t("cheque.kpi.total_due")} القيمة={<نص_مبلغ القيمة={تنبيهات.إجمالي_المستحق} />} لون="navy" />
       </div>
-      <شاشة_الشيكات البيانات={بيانات} />
+      <شاشة_الشيكات
+        البيانات={بيانات}
+        بنوك={بنوك.map((b) => ({ id: b.id, الاسم: b.name }))}
+      />
     </div>
   );
 }

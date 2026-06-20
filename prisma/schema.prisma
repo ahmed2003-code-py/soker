@@ -206,6 +206,22 @@ model LedgerEntry {
   @@map("ledger_entries")
 }
 
+// ==================== SubAccount (حساب فرعي: محفظة / حساب إنستا / بنك) ====================
+model SubAccount {
+  id        Int                 @id @default(autoincrement())
+  type      TreasuryAccountType @map("type")
+  name      String              @map("name")
+  balance   Decimal             @default(0) @map("balance") @db.Decimal(18, 4)
+  isActive  Boolean             @default(true) @map("is_active")
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  txns TreasuryTxn[]
+
+  @@unique([type, name])
+  @@index([type])
+  @@map("sub_accounts")
+}
+
 // ==================== TreasuryAccount (حساب الخزنة) ====================
 model TreasuryAccount {
   id           Int                 @id @default(autoincrement())
@@ -236,6 +252,9 @@ model TreasuryTxn {
   invoice      Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   method       String?         @map("method")
   balanceAfter Decimal         @default(0) @map("balance_after") @db.Decimal(18, 4)
+
+  subAccountId Int?        @map("sub_account_id")
+  subAccount   SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: SetNull)
 
   // الجهة المقابلة في دفتر الأستاذ (تحصيل/صرف)
   ledgerEntry LedgerEntry? @relation

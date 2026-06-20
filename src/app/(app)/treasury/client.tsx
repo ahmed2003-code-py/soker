@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
+import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
+import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 
 type حساب = {
   id: number;
@@ -50,14 +51,24 @@ type حركة = {
 
 const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
+/** تسمية الحساب الفرعي حسب نوع الحساب */
+function تسمية_فرعي(النوع: TreasuryAccountType): string {
+  if (النوع === "VODAFONE") return "المحفظة";
+  if (النوع === "INSTAPAY") return "حساب إنستا";
+  if (النوع === "BANK") return "البنك";
+  return "الحساب الفرعي";
+}
+
 export function شاشة_الخزنة({
   الحسابات,
   الحركات,
   الأطراف,
+  حسابات_فرعية,
 }: {
   الحسابات: حساب[];
   الحركات: حركة[];
   الأطراف: { id: number; name: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
@@ -68,6 +79,10 @@ export function شاشة_الخزنة({
   const [فلتر_نوع, تعيين_فلتر_نوع] = React.useState("");
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
+  const [تفاصيل_حساب, تعيين_تفاصيل_حساب] = React.useState<حساب | null>(null);
+
+  // حسابات فرعية محلية (تُحدَّث عند الإضافة)
+  const [حسابات_فرعية_محلية, تعيين_حسابات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
@@ -200,6 +215,16 @@ export function شاشة_الخزنة({
     },
   ];
 
+  async function إضافة_حساب_فرعي_جديد(النوع: TreasuryAccountType, الاسم: string): Promise<number | null> {
+    const r = await أنشئ_حساب_فرعي(النوع, الاسم);
+    if (!r.نجاح || !r.بيانات) return null;
+    تعيين_حسابات_فرعية_محلية((prev) => ({
+      ...prev,
+      [النوع]: [...(prev[النوع] ?? []), { id: r.بيانات!.id, الاسم, الرصيد: 0 }],
+    }));
+    return r.بيانات.id;
+  }
+
   return (
     <div className="space-y-6">
       {/* البطاقات */}
@@ -208,11 +233,19 @@ export function شاشة_الخزنة({
           const تحت_الحد = !مفلتر_فترة && ح.الحد_الأدنى != null && ح.الرصيد < ح.الحد_الأدنى;
           const ملخص = مفلتر_فترة ? ملخص_حساب(ح.id) : null;
           const قيمة = ملخص ? ملخص.صافي : ح.الرصيد;
+          const له_فرعية = ح.النوع !== "CASH" && (حسابات_فرعية_محلية[ح.النوع]?.length ?? 0) > 0;
           return (
-            <div key={ح.id} className="card-soft card-hover p-5">
+            <div
+              key={ح.id}
+              className={`card-soft p-5 ${له_فرعية ? "card-hover cursor-pointer" : ""}`}
+              onClick={له_فرعية ? () => تعيين_تفاصيل_حساب(ح) : undefined}
+            >
               <div className="flex items-start justify-between">
                 <p className="text-sm text-muted-foreground">{ح.التسمية}</p>
-                <أيقونة_الحساب النوع={ح.النوع} />
+                <div className="flex items-center gap-1">
+                  {له_فرعية && <ChevronDown className="size-3.5 text-muted-foreground" />}
+                  <أيقونة_الحساب النوع={ح.النوع} />
+                </div>
               </div>
               <div className={`mt-2 text-xl font-bold ${قيمة < 0 ? "text-danger" : "text-foreground"}`}>
                 <نص_مبلغ القيمة={قيمة} />
@@ -225,6 +258,10 @@ export function شاشة_الخزنة({
               ) : تحت_الحد ? (
                 <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                   <AlertTriangle className="size-3.5" /> {t("dash.under_threshold")}
+                </p>
+              ) : له_فرعية ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {حسابات_فرعية_محلية[ح.النوع]?.length} {ح.النوع === "BANK" ? "بنك" : "حساب"}
                 </p>
               ) : null}
             </div>
@@ -306,6 +343,8 @@ export function شاشة_الخزنة({
           الحركة={نموذج.حركة}
           الحسابات={الحسابات}
           الأطراف={الأطراف}
+          حسابات_فرعية={حسابات_فرعية_محلية}
+          عند_إضافة_فرعي={إضافة_حساب_فرعي_جديد}
           عند_الإغلاق={() => تعيين_نموذج(null)}
         />
       )}
@@ -322,36 +361,125 @@ export function شاشة_الخزنة({
           }}
         />
       )}
+
+      {/* بوب أب تفاصيل الحسابات الفرعية */}
+      {تفاصيل_حساب && (
+        <حوار_تفاصيل_حساب
+          الحساب={تفاصيل_حساب}
+          الحسابات_الفرعية={حسابات_فرعية_محلية[تفاصيل_حساب.النوع] ?? []}
+          عند_الإغلاق={() => تعيين_تفاصيل_حساب(null)}
+        />
+      )}
     </div>
   );
 }
+
+// ─── حوار تفاصيل الحسابات الفرعية ───────────────────────────────────────────
+
+function حوار_تفاصيل_حساب({
+  الحساب,
+  الحسابات_الفرعية,
+  عند_الإغلاق,
+}: {
+  الحساب: حساب;
+  الحسابات_الفرعية: حساب_فرعي[];
+  عند_الإغلاق: () => void;
+}) {
+  const إجمالي = الحسابات_الفرعية.reduce((س, ح) => س + ح.الرصيد, 0);
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-sm">
+        <رأس_الحوار>
+          <عنوان_الحوار>تفاصيل {الحساب.التسمية}</عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+          {الحسابات_الفرعية.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد حسابات فرعية</p>
+          ) : (
+            الحسابات_الفرعية.map((ح) => (
+              <div key={ح.id} className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-medium">{ح.الاسم}</span>
+                <نص_مبلغ القيمة={ح.الرصيد} className={ح.الرصيد < 0 ? "text-danger font-semibold" : "font-semibold"} />
+              </div>
+            ))
+          )}
+          <div className="flex items-center justify-between bg-appgray px-4 py-3">
+            <span className="text-sm font-semibold text-muted-foreground">الإجمالي</span>
+            <نص_مبلغ القيمة={إجمالي} className="font-bold text-primary" />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+// ─── حوار إضافة/تعديل حركة ───────────────────────────────────────────────────
 
 function حوار_حركة({
   الحركة,
   الحسابات,
   الأطراف,
+  حسابات_فرعية,
+  عند_إضافة_فرعي,
   عند_الإغلاق,
 }: {
   الحركة?: حركة;
   الحسابات: حساب[];
   الأطراف: { id: number; name: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  عند_إضافة_فرعي: (النوع: TreasuryAccountType, الاسم: string) => Promise<number | null>;
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
+
+  // الحساب الأول هو النقدي (بعد الترتيب)
+  const الأول = الحسابات[0];
   const [تاريخ, تعيين_تاريخ] = React.useState(الحركة ? الحركة.التاريخ.slice(0, 10) : اليوم());
   const [نوع, تعيين_نوع] = React.useState<TxnKind>(الحركة?.النوع ?? "INCOME");
   const [مبلغ, تعيين_مبلغ] = React.useState(الحركة ? String(الحركة.المبلغ) : "");
   const [حساب, تعيين_حساب] = React.useState<string>(
-    String(الحركة?.معرف_الحساب ?? الحسابات[0]?.id ?? "")
+    String(الحركة?.معرف_الحساب ?? الأول?.id ?? "")
   );
+  const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState<string>("");
   const [بيان, تعيين_بيان] = React.useState(الحركة?.البيان ?? "");
-  // نوع الطرف: عميل مسجّل أو اسم خارجي حر
   const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"customer" | "external">("customer");
   const [طرف_عميل, تعيين_طرف_عميل] = React.useState<string>("");
   const [طرف_خارجي, تعيين_طرف_خارجي] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const [خيارات_فرعية_محلية, تعيين_خيارات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
+
+  const نوع_الحساب_المختار = React.useMemo(
+    () => الحسابات.find((h) => h.id === Number(حساب))?.النوع ?? null,
+    [حساب, الحسابات]
+  );
+  const له_فرعية = نوع_الحساب_المختار !== null && نوع_الحساب_المختار !== "CASH";
+  const خيارات_فرعية = له_فرعية ? (خيارات_فرعية_محلية[نوع_الحساب_المختار] ?? []) : [];
+
+  function تغيير_الحساب(معرف: string) {
+    const نوع_الجديد = الحسابات.find((h) => h.id === Number(معرف))?.النوع;
+    const نوع_القديم = الحسابات.find((h) => h.id === Number(حساب))?.النوع;
+    if (نوع_الجديد !== نوع_القديم) تعيين_حساب_فرعي("");
+    تعيين_حساب(معرف);
+  }
+
+  async function إضافة_فرعي(الاسم: string) {
+    if (!نوع_الحساب_المختار || نوع_الحساب_المختار === "CASH") return;
+    const معرف = await عند_إضافة_فرعي(نوع_الحساب_المختار, الاسم);
+    if (!معرف) return;
+    تعيين_خيارات_فرعية_محلية((prev) => ({
+      ...prev,
+      [نوع_الحساب_المختار]: [
+        ...(prev[نوع_الحساب_المختار] ?? []),
+        { id: معرف, الاسم, الرصيد: 0 },
+      ],
+    }));
+    تعيين_حساب_فرعي(String(معرف));
+  }
 
   async function حفظ() {
     تعيين_جارٍ(true);
@@ -360,6 +488,7 @@ function حوار_حركة({
       النوع: نوع,
       المبلغ: مبلغ,
       معرف_الحساب: Number(حساب),
+      معرف_حساب_فرعي: حساب_فرعي ? Number(حساب_فرعي) : null,
       البيان: بيان,
       معرف_الطرف: نوع_الطرف === "customer" && طرف_عميل ? Number(طرف_عميل) : null,
       اسم_الطرف_الخارجي: نوع_الطرف === "external" && طرف_خارجي.trim() ? طرف_خارجي.trim() : null,
@@ -406,10 +535,32 @@ function حوار_حركة({
             <قائمة_اختيار
               الخيارات={الحسابات.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }))}
               القيمة={حساب}
-              عند_التغيير={تعيين_حساب}
+              عند_التغيير={تغيير_الحساب}
               قابل_للبحث={false}
             />
           </div>
+
+          {/* الحساب الفرعي — يظهر فقط لغير النقدي */}
+          {له_فرعية && نوع_الحساب_المختار && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <العنوان>
+                {تسمية_فرعي(نوع_الحساب_المختار)}{" "}
+                <span className="font-normal text-muted-foreground">(اختياري)</span>
+              </العنوان>
+              <قائمة_اختيار
+                الخيارات={[
+                  { القيمة: "", التسمية: "— بدون تحديد —" },
+                  ...خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم })),
+                ]}
+                القيمة={حساب_فرعي}
+                عند_التغيير={تعيين_حساب_فرعي}
+                عند_الإضافة={إضافة_فرعي}
+                تسمية_الإضافة={`إضافة ${تسمية_فرعي(نوع_الحساب_المختار)}`}
+                نص_بديل={`اختر ${تسمية_فرعي(نوع_الحساب_المختار)}…`}
+              />
+            </div>
+          )}
+
           <div className="space-y-1.5 sm:col-span-2">
             <العنوان مطلوب>{t("ledger.col.statement")}</العنوان>
             <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />

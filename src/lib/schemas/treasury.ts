@@ -12,6 +12,7 @@ export const مخطط_حركة_خزنة = z.object({
   النوع: z.enum(["INCOME", "EXPENSE"]),
   المبلغ: مبلغ_موجب,
   معرف_الحساب: z.number().int().positive("اختر الحساب"),
+  معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
   البيان: z.string().trim().min(1, "البيان مطلوب"),
   معرف_الطرف: z.number().int().positive().optional().nullable(),
   اسم_الطرف_الخارجي: z.string().trim().optional().nullable(),
