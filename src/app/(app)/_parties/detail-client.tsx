@@ -476,7 +476,7 @@ function حوار_دفعة({
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>{t("pay.invoice_opt")}</العنوان>
+            <العنوان>رقم الفاتورة <span className="text-muted-foreground font-normal">(اختياري)</span></العنوان>
             <الحقل
               className="ltr-nums"
               value={رقم}
