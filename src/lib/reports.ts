@@ -163,7 +163,7 @@ export async function تقرير_فواتير_يومية(ف: فلاتر) {
       ...(ف.معرف_الطرف ? { customerId: ف.معرف_الطرف } : {}),
     },
     include: { customer: { select: { name: true } } },
-    orderBy: [{ date: "asc" }, { number: "asc" }],
+    orderBy: [{ date: "desc" }, { number: "desc" }],
   });
 
   const الصفوف = فواتير.map((f) => ({
@@ -200,7 +200,7 @@ export async function تقرير_فواتير_شهرية(ف: فلاتر) {
     م.set(k, ح);
   }
   const الصفوف = [...م.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([_, v]) => ({ الشهر: v.الاسم, عدد: v.عدد, الإجمالي: v.الإجمالي }));
   const الإجمالي_العام = الصفوف.reduce((س, r) => س + r.الإجمالي, 0);
   return { الصفوف, الإجمالي_العام };
@@ -242,7 +242,7 @@ export async function تقرير_شيكات_مستحقة(ف: فلاتر) {
       status: ChequeStatus.PENDING,
       ...(نطاق ? { dueDate: نطاق } : {}),
     },
-    orderBy: { dueDate: "asc" },
+    orderBy: { dueDate: "desc" },
   });
 
   const الصفوف = شيكات.map((c) => ({
@@ -265,7 +265,7 @@ export async function تقرير_شيكات_متأخرة() {
   const الآن = اليوم();
   const شيكات = await prisma.cheque.findMany({
     where: { status: ChequeStatus.PENDING, dueDate: { lt: الآن } },
-    orderBy: { dueDate: "asc" },
+    orderBy: { dueDate: "desc" },
   });
 
   const الصفوف = شيكات.map((c) => ({
@@ -299,7 +299,7 @@ export async function تقرير_شيكات_شهرية(ف: فلاتر) {
     م.set(k, ح);
   }
   const الصفوف = [...م.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([_, v]) => ({ الشهر: v.الاسم, عدد: v.عدد, الإجمالي: v.الإجمالي }));
   const الإجمالي = الصفوف.reduce((س, r) => س + r.الإجمالي, 0);
   return { الصفوف, الإجمالي };
