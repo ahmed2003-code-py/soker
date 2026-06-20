@@ -449,7 +449,7 @@ function حوار_دفعة({
             />
           </div>
           <div className="space-y-1.5">
-            <العنوان>{t("ledger.col.credit")} (له)</العنوان>
+            <العنوان>له</العنوان>
             <الحقل
               autoFocus
               selectOnFocus
@@ -459,7 +459,7 @@ function حوار_دفعة({
             />
           </div>
           <div className="space-y-1.5">
-            <العنوان>{t("ledger.col.debit")} (عليه)</العنوان>
+            <العنوان>عليه</العنوان>
             <الحقل
               selectOnFocus
               value={مبلغ_عليه}
@@ -468,11 +468,11 @@ function حوار_دفعة({
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <العنوان>{t("ledger.col.statement")}</العنوان>
+            <العنوان>التفاصيل <span className="text-muted-foreground font-normal">(اختياري)</span></العنوان>
             <الحقل
               value={بيان}
               onChange={(e) => تعيين_بيان(e.target.value)}
-              placeholder="تفاصيل اختيارية..."
+              placeholder="تفاصيل..."
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
