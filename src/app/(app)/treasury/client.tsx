@@ -26,7 +26,7 @@ import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
-import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة } from "./actions";
+import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة } from "./actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 
 type حساب = {
@@ -48,6 +48,7 @@ type حركة = {
   الرصيد_بعد_الحركة: number;
   اسم_حساب_فرعي: string | null;
   مرتبط: boolean;
+  أنشأ_بواسطة: string;
 };
 
 const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
@@ -88,6 +89,10 @@ export function شاشة_الخزنة({
     تعيين_حسابات_فرعية_محلية(حسابات_فرعية);
   }, [حسابات_فرعية]);
 
+  // Multi-select
+  const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
+  const [حذف_جماعي, تعيين_حذف_جماعي] = React.useState(false);
+
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
   const مفلتر_فترة = !!(من || إلى);
@@ -122,23 +127,67 @@ export function شاشة_الخزنة({
     return m;
   }, [الحسابات]);
 
+  /**
+   * Balance snapshots: computed by starting from the CURRENT actual balances
+   * and working BACKWARDS through transactions (newest → oldest).
+   * This avoids the bug where starting from 0 gives wrong values if accounts
+   * were seeded with initial balances outside the transaction history.
+   */
   const لقطات = React.useMemo(() => {
-    const ترتيب = [...الحركات].sort((a, b) =>
-      a.التاريخ === b.التاريخ ? a.id - b.id : a.التاريخ < b.التاريخ ? -1 : 1
-    );
     const جارٍ: Record<number, number> = {};
-    for (const ح of الحسابات) جارٍ[ح.id] = 0;
+    for (const ح of الحسابات) جارٍ[ح.id] = ح.الرصيد;
+
+    // Sort newest first
+    const ترتيب = [...الحركات].sort((a, b) =>
+      a.التاريخ === b.التاريخ ? b.id - a.id : a.التاريخ > b.التاريخ ? -1 : 1
+    );
+
     const map = new Map<number, { أرصدة: { النوع: TreasuryAccountType; التسمية: string; رصيد: number }[]; إجمالي: number }>();
     for (const t of ترتيب) {
-      جارٍ[t.معرف_الحساب] = (جارٍ[t.معرف_الحساب] ?? 0) + (t.النوع === "INCOME" ? t.المبلغ : -t.المبلغ);
+      // Capture snapshot BEFORE reversing — this is "balances after this transaction"
       const أرصدة = الحسابات.map((ح) => ({ النوع: ح.النوع, التسمية: ح.التسمية, رصيد: جارٍ[ح.id] ?? 0 }));
-      const إجمالي = أرصدة.reduce((س, a) => س + a.رصيد, 0);
-      map.set(t.id, { أرصدة, إجمالي });
+      map.set(t.id, { أرصدة, إجمالي: أرصدة.reduce((س, a) => س + a.رصيد, 0) });
+      // Reverse this transaction to recover the state before it happened
+      جارٍ[t.معرف_الحساب] = (جارٍ[t.معرف_الحساب] ?? 0) - (t.النوع === "INCOME" ? t.المبلغ : -t.المبلغ);
     }
     return map;
   }, [الحركات, الحسابات]);
 
+  // Multi-select helpers
+  const كل_محدد = حركات_مصفّاة.length > 0 && محددة.size === حركات_مصفّاة.length;
+  function تبديل_تحديد(id: number) {
+    تعيين_محددة((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function تحديد_الكل() {
+    if (كل_محدد) تعيين_محددة(new Set());
+    else تعيين_محددة(new Set(حركات_مصفّاة.map((ح) => ح.id)));
+  }
+
   const أعمدة: عمود<حركة>[] = [
+    {
+      المفتاح: "_select",
+      العنوان: (
+        <input
+          type="checkbox"
+          checked={كل_محدد}
+          onChange={تحديد_الكل}
+          className="size-4 cursor-pointer"
+          title="تحديد الكل"
+        />
+      ) as unknown as string,
+      خلية: (ص) => (
+        <input
+          type="checkbox"
+          checked={محددة.has(ص.id)}
+          onChange={() => تبديل_تحديد(ص.id)}
+          className="size-4 cursor-pointer"
+        />
+      ),
+    },
     {
       المفتاح: "التاريخ",
       العنوان: t("common.date"),
@@ -174,7 +223,16 @@ export function شاشة_الخزنة({
         );
       },
     },
-    { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
+    {
+      المفتاح: "البيان",
+      العنوان: t("ledger.col.statement"),
+      خلية: (ص) => (
+        <div>
+          <div>{ص.البيان}</div>
+          <div className="text-[10px] text-muted-foreground">{ص.أنشأ_بواسطة}</div>
+        </div>
+      ),
+    },
     {
       المفتاح: "الطرف",
       العنوان: t("treasury.col.party"),
@@ -310,6 +368,11 @@ export function شاشة_الخزنة({
         <الزر onClick={() => تعيين_نموذج({})}>
           <Plus className="size-4" /> {t("treasury.record")}
         </الزر>
+        {محددة.size > 0 && (
+          <الزر variant="danger" size="sm" onClick={() => تعيين_حذف_جماعي(true)}>
+            <Trash2 className="size-4" /> حذف المحدد ({محددة.size})
+          </الزر>
+        )}
         <div className="min-w-40 space-y-1.5">
           <العنوان>{t("treasury.filter_account")}</العنوان>
           <قائمة_اختيار
@@ -351,9 +414,11 @@ export function شاشة_الخزنة({
         إجراءات_الصف={(ص) => (
           <div className="flex items-center justify-end gap-1">
             {ص.مرتبط && <الشارة variant="navy">{t("ledger.linked")}</الشارة>}
-            <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
-              <Pencil className="size-4" />
-            </الزر>
+            {محددة.size <= 1 && (
+              <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
+                <Pencil className="size-4" />
+              </الزر>
+            )}
             <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
               <Trash2 className="size-4 text-danger" />
             </الزر>
@@ -380,7 +445,26 @@ export function شاشة_الخزنة({
           عند_التأكيد={async () => {
             const r = await حذف_حركة_خزنة(حذف.id);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) router.refresh();
+            if (r.نجاح) {
+              تعيين_محددة((prev) => { const next = new Set(prev); next.delete(حذف.id); return next; });
+              router.refresh();
+            }
+          }}
+        />
+      )}
+      {حذف_جماعي && (
+        <حوار_تأكيد
+          مفتوح
+          عند_التغيير={(o) => !o && تعيين_حذف_جماعي(false)}
+          العنوان={`حذف ${محددة.size} حركة`}
+          الوصف="سيُعاد حساب أرصدة الخزنة وأي أطراف مرتبطة. لا يمكن التراجع."
+          عند_التأكيد={async () => {
+            const r = await حذف_حركات_خزنة_متعددة([...محددة]);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            if (r.نجاح) {
+              تعيين_محددة(new Set());
+              router.refresh();
+            }
           }}
         />
       )}
@@ -742,6 +826,14 @@ function حوار_حركة({
             )}
           </div>
         </div>
+
+        {/* معلومات المسؤول (عرض فقط في وضع التعديل) */}
+        {الحركة && (
+          <p className="mt-3 rounded-lg bg-appgray px-3 py-2 text-[11px] text-muted-foreground">
+            أُضيف بواسطة: <span className="font-medium text-foreground">{الحركة.أنشأ_بواسطة}</span>
+          </p>
+        )}
+
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
             {جارٍ ? t("common.saving") : t("common.save")}

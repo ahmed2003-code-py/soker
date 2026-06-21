@@ -24,6 +24,7 @@ export default async function صفحة_الخزنة() {
         account: { select: { type: true } },
         party: { select: { name: true } },
         subAccount: { select: { name: true } },
+        createdBy: { select: { name: true } },
       },
     }),
     prisma.party.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
@@ -52,6 +53,7 @@ export default async function صفحة_الخزنة() {
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
     اسم_حساب_فرعي: ح.subAccount?.name ?? null,
     مرتبط: ح.partyId != null,
+    أنشأ_بواسطة: ح.createdBy.name,
   }));
 
   return (

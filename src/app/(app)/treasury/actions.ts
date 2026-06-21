@@ -181,6 +181,44 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
   return نجح(undefined, "تم تعديل الحركة وإعادة حساب الأرصدة");
 }
 
+export async function حذف_حركات_خزنة_متعددة(ids: number[]): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "حذف");
+  if (!ids.length) return فشل("لم تُحدد أي حركات");
+
+  const أطراف_متأثرة = new Set<string>();
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        for (const id of ids) {
+          const حالي = await tx.treasuryTxn.findUnique({
+            where: { id },
+            include: { party: { select: { type: true, id: true } } },
+          });
+          if (!حالي) continue;
+          if (حالي.party) أطراف_متأثرة.add(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
+          await اعكس_عملية_مرتبطة(tx, id);
+          await تسجيل_عملية(tx, {
+            المستخدم: فاعل.id,
+            العملية: "DELETE",
+            نوع_الكيان: "حركة_الخزنة",
+            معرف_الكيان: id,
+            التفاصيل: { حذف_جماعي: true, النوع: حالي.kind, المبلغ: حالي.amount.toString() },
+          });
+        }
+      },
+      { timeout: 60000 }
+    );
+  } catch (e) {
+    const رسالة = e instanceof Error ? e.message : "خطأ أثناء الحذف الجماعي";
+    return فشل(رسالة);
+  }
+
+  revalidatePath("/treasury");
+  for (const مسار of أطراف_متأثرة) revalidatePath(مسار);
+  return نجح(undefined, `تم حذف ${ids.length} حركة وإعادة حساب الأرصدة`);
+}
+
 export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "حذف");
