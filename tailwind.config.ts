@@ -57,13 +57,15 @@ const config: Config = {
         sans: ["var(--font-cairo)", "system-ui", "sans-serif"],
       },
       keyframes: {
-        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+        "fade-in": { from: { opacity: "0", transform: "translateY(8px)" }, to: { opacity: "1", transform: "translateY(0)" } },
+        "fade-out": { from: { opacity: "1", transform: "translateY(0)" }, to: { opacity: "0", transform: "translateY(8px)" } },
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
       },
       animation: {
         "fade-in": "fade-in 0.2s ease-out",
+        "fade-out": "fade-out 0.25s ease-in forwards",
       },
     },
   },
