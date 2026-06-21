@@ -46,6 +46,7 @@ type حركة = {
   البيان: string;
   الطرف: string | null;
   الرصيد_بعد_الحركة: number;
+  معرف_حساب_فرعي: number | null;
   اسم_حساب_فرعي: string | null;
   مرتبط: boolean;
   أنشأ_بواسطة: string;
@@ -661,7 +662,9 @@ function حوار_حركة({
   const [حساب, تعيين_حساب] = React.useState<string>(
     String(الحركة?.معرف_الحساب ?? الأول?.id ?? "")
   );
-  const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState<string>("");
+  const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState<string>(
+    الحركة?.معرف_حساب_فرعي ? String(الحركة.معرف_حساب_فرعي) : ""
+  );
   const [بيان, تعيين_بيان] = React.useState(الحركة?.البيان ?? "");
   const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"customer" | "external">("customer");
   const [طرف_عميل, تعيين_طرف_عميل] = React.useState<string>("");

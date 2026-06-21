@@ -51,6 +51,7 @@ export default async function صفحة_الخزنة() {
     البيان: ح.description,
     الطرف: ح.party?.name ?? ح.externalPartyName ?? null,
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
+    معرف_حساب_فرعي: ح.subAccountId ?? null,
     اسم_حساب_فرعي: ح.subAccount?.name ?? null,
     مرتبط: ح.partyId != null,
     أنشأ_بواسطة: ح.createdBy.name,

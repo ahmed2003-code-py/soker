@@ -44,19 +44,17 @@ export async function أعد_حساب_حساب_الخزنة(
     data: { balance: تراكمي },
   });
 
-  // إعادة حساب أرصدة الحسابات الفرعية المرتبطة بهذا الحساب
+  // إعادة حساب أرصدة جميع الحسابات الفرعية لهذا النوع (بما فيها التي صارت صفراً)
   await tx.$executeRaw`
-    WITH sub_balances AS (
-      SELECT sub_account_id,
-        SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END) AS bal
+    UPDATE sub_accounts
+    SET balance = COALESCE((
+      SELECT SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END)
       FROM treasury_txns
-      WHERE account_id = ${معرف_الحساب} AND sub_account_id IS NOT NULL AND deleted_at IS NULL
-      GROUP BY sub_account_id
-    )
-    UPDATE sub_accounts sa
-    SET balance = COALESCE(sb.bal, 0)
-    FROM sub_balances sb
-    WHERE sa.id = sb.sub_account_id
+      WHERE account_id = ${معرف_الحساب}
+        AND sub_account_id = sub_accounts.id
+        AND deleted_at IS NULL
+    ), 0)
+    WHERE type = (SELECT type FROM treasury_accounts WHERE id = ${معرف_الحساب})
   `;
 
   return تراكمي;
