@@ -34,7 +34,7 @@ export default async function صفحة_عرض_فاتورة({
 
   const اسم_الشركة =
     إعدادات.find((s) => s.key === "اسم_الشركة")?.value || "مؤسسة سكر";
-  const شعار = إعدادات.find((s) => s.key === "شعار_الشركة")?.value || "";
+  const لها_شعار = !!(إعدادات.find((s) => s.key === "شعار_الشركة")?.value);
   const رقم = String(فاتورة.number).padStart(7, "0");
 
   // تجميع البنود حسب التصنيف مع الإجماليات
@@ -75,10 +75,10 @@ export default async function صفحة_عرض_فاتورة({
         {/* الرأس */}
         <div className="flex items-start justify-between gap-4 border-b-2 border-foreground/80 pb-4 print:border-black">
           <div className="flex items-center gap-3">
-            {شعار ? (
+            {لها_شعار ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={شعار}
+                src="/api/logo"
                 alt={t("inv.v.logo_alt")}
                 className="h-14 w-14 object-contain"
               />
