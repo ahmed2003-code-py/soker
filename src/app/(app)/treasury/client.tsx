@@ -48,6 +48,7 @@ type حركة = {
   الرصيد_بعد_الحركة: number;
   معرف_حساب_فرعي: number | null;
   اسم_حساب_فرعي: string | null;
+  معرف_الطرف: number | null;
   مرتبط: boolean;
   أنشأ_بواسطة: string;
 };
@@ -666,9 +667,15 @@ function حوار_حركة({
     الحركة?.معرف_حساب_فرعي ? String(الحركة.معرف_حساب_فرعي) : ""
   );
   const [بيان, تعيين_بيان] = React.useState(الحركة?.البيان ?? "");
-  const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"customer" | "external">("customer");
-  const [طرف_عميل, تعيين_طرف_عميل] = React.useState<string>("");
-  const [طرف_خارجي, تعيين_طرف_خارجي] = React.useState("");
+  const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"customer" | "external">(
+    الحركة?.مرتبط ? "customer" : (الحركة?.الطرف && !الحركة.مرتبط ? "external" : "customer")
+  );
+  const [طرف_عميل, تعيين_طرف_عميل] = React.useState<string>(
+    الحركة?.معرف_الطرف ? String(الحركة.معرف_الطرف) : ""
+  );
+  const [طرف_خارجي, تعيين_طرف_خارجي] = React.useState(
+    !الحركة?.مرتبط && الحركة?.الطرف ? الحركة.الطرف : ""
+  );
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [خيارات_فرعية_محلية, تعيين_خيارات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
 

@@ -98,23 +98,25 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
   if (!حالي) return فشل("الحركة غير موجودة");
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
-  // تحقق مباشر من وجود قيد مرتبط (أكثر موثوقية من back-relation)
-  const قيد_مرتبط = await prisma.ledgerEntry.findFirst({
-    where: { treasuryTxnId: id, deletedAt: null },
-    select: { id: true },
-  });
+  // هل الحركة الحالية مرتبطة بطرف؟
+  const حالياً_مرتبط = !!حالي.partyId;
+  // هل يريد المستخدم الربط بطرف (جديد أو نفس القديم)؟
+  const مطلوب_ربط = !!ب.معرف_الطرف;
 
-  // عملية مرتبطة بطرف → عكس وإعادة تطبيق (الجانبان متّسقان)
-  if (قيد_مرتبط && حالي.party) {
+  // ─── الحالة 1 و 2: المستخدم يريد ربط الحركة بطرف (إضافة أو تغيير) ───────
+  if (مطلوب_ربط) {
+    const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف! } });
+    if (!طرف) return فشل("الطرف غير موجود");
     const الاتجاه: اتجاه = ب.النوع === "INCOME" ? "تحصيل" : "صرف";
     try {
       await prisma.$transaction(
         async (tx) => {
+          // اعكس_عملية_مرتبطة تعمل على كلا الحالتين: مرتبطة (تحذف القيد والحركة) أو عادية (تحذف الحركة فقط)
           await اعكس_عملية_مرتبطة(tx, id);
           const r = await أنشئ_عملية_مرتبطة(tx, {
             الاتجاه,
-            معرف_الطرف: حالي.party!.id,
-            اسم_الطرف: حالي.party!.name,
+            معرف_الطرف: طرف.id,
+            اسم_الطرف: طرف.name,
             المبلغ: ب.المبلغ!,
             التاريخ: تاريخ,
             معرف_الحساب: ب.معرف_الحساب,
@@ -134,14 +136,54 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
         { timeout: 30000 }
       );
     } catch (e) {
-      const رسالة = e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة";
-      return فشل(رسالة);
+      return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
     }
     revalidatePath("/treasury");
-    revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
-    return نجح(undefined, "تم تعديل العملية المرتبطة (عكس وإعادة تطبيق)");
+    revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
+    // لو تغيّر الطرف → revalidate الطرف القديم كمان
+    if (حالياً_مرتبط && حالي.party && حالي.party.id !== طرف.id) {
+      revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
+    }
+    return نجح(undefined, "تم تعديل العملية وتحديث حساب العميل/المورد");
   }
 
+  // ─── الحالة 3: كانت مرتبطة والآن بدون طرف → فك الربط وإنشاء حركة عادية ───
+  if (حالياً_مرتبط) {
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await اعكس_عملية_مرتبطة(tx, id);
+          const h = await أضف_حركة_خزنة(tx, {
+            التاريخ: تاريخ,
+            النوع: ب.النوع,
+            المبلغ: ب.المبلغ!,
+            معرف_الحساب: ب.معرف_الحساب,
+            معرف_حساب_فرعي: ب.معرف_حساب_فرعي ?? null,
+            البيان: ب.البيان,
+            معرف_الطرف: null,
+            اسم_الطرف_الخارجي: ب.اسم_الطرف_الخارجي ?? null,
+            طريقة_الدفع: null,
+            أنشأ: فاعل.id,
+          });
+          await تسجيل_عملية(tx, {
+            المستخدم: فاعل.id,
+            العملية: "UPDATE",
+            نوع_الكيان: "حركة_الخزنة",
+            معرف_الكيان: h.id,
+            التفاصيل: { فك_ربط: true, المبلغ: ب.المبلغ?.toString(), من: id },
+          });
+        },
+        { timeout: 30000 }
+      );
+    } catch (e) {
+      return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
+    }
+    revalidatePath("/treasury");
+    if (حالي.party) revalidatePath(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
+    return نجح(undefined, "تم تعديل الحركة وإزالة ربطها بالطرف");
+  }
+
+  // ─── الحالة 4: بدون طرف قبل وبدون طرف بعد → تعديل بسيط ─────────────────
   try {
     await prisma.$transaction(
       async (tx) => {
@@ -177,8 +219,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
       { timeout: 30000 }
     );
   } catch (e) {
-    const رسالة = e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة";
-    return فشل(رسالة);
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
   }
   revalidatePath("/treasury");
   return نجح(undefined, "تم تعديل الحركة وإعادة حساب الأرصدة");
