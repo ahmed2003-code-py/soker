@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, RotateCcw } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
@@ -34,13 +34,28 @@ const بند_فارغ = (): بند => ({
 const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 const ع = (s: string) => Number(s.replace(/,/g, "")) || 0;
 
+const مفتاح_المسودة = "soker_invoice_draft_new";
+
+type مسودة = {
+  عميل: string;
+  هاتف: string;
+  تاريخ: string;
+  ملاحظات: string;
+  بنود: بند[];
+  أسعار_تصنيفات: Record<string, string>;
+  رقم_الفاتورة: string;
+  وقت_الحفظ: number;
+};
+
 export function نموذج_فاتورة({
   العملاء: عملاء0,
   التصنيفات: تصنيفات0,
+  الشركات: شركات0,
   فاتورة,
 }: {
   العملاء: { id: number; name: string; phone: string | null }[];
   التصنيفات: string[];
+  الشركات: string[];
   فاتورة?: {
     id: number;
     الرقم: number;
@@ -56,6 +71,7 @@ export function نموذج_فاتورة({
   const { t } = استخدام_اللغة();
   const [عملاء, تعيين_عملاء] = React.useState(عملاء0);
   const [تصنيفات, تعيين_تصنيفات] = React.useState(تصنيفات0);
+  const [شركات, تعيين_شركات] = React.useState(شركات0);
   const [عميل, تعيين_عميل] = React.useState<string>(
     فاتورة ? String(فاتورة.معرف_العميل) : ""
   );
@@ -70,7 +86,6 @@ export function نموذج_فاتورة({
   const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>(
     فاتورة ? String(فاتورة.الرقم) : ""
   );
-  // أسعار مجمّعة حسب التصنيف — يُدخلها المستخدم في ملخص التصنيف
   const [أسعار_تصنيفات, تعيين_أسعار] = React.useState<Record<string, string>>(() => {
     const م: Record<string, string> = {};
     for (const ب of فاتورة?.البنود ?? []) {
@@ -79,17 +94,84 @@ export function نموذج_فاتورة({
     return م;
   });
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  // حالة بانر المسودة (للفواتير الجديدة فقط)
+  const [مسودة_معلقة, تعيين_مسودة_معلقة] = React.useState(false);
 
+  // استرداد رقم الفاتورة + المسودة عند التحميل
   React.useEffect(() => {
-    if (!فاتورة) {
-      احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
+    if (فاتورة) return; // وضع التعديل: لا مسودة
+
+    // تحقق من وجود مسودة محفوظة
+    try {
+      const محفوظة = localStorage.getItem(مفتاح_المسودة);
+      if (محفوظة) {
+        const م: مسودة = JSON.parse(محفوظة);
+        // استرداد البيانات من المسودة
+        if (م.عميل) تعيين_عميل(م.عميل);
+        if (م.هاتف) تعيين_هاتف(م.هاتف);
+        if (م.تاريخ) تعيين_تاريخ(م.تاريخ);
+        if (م.ملاحظات) تعيين_ملاحظات(م.ملاحظات);
+        if (م.بنود?.length) تعيين_بنود(م.بنود);
+        if (م.أسعار_تصنيفات) تعيين_أسعار(م.أسعار_تصنيفات);
+        if (م.رقم_الفاتورة) {
+          تعيين_رقم_الفاتورة(م.رقم_الفاتورة);
+          تعيين_مسودة_معلقة(true);
+          return; // لا نجلب رقم جديد لأن المسودة تحتوي على رقم
+        }
+      }
+    } catch {
+      // تجاهل أخطاء القراءة
     }
+
+    // لا مسودة — اجلب الرقم التالي
+    احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // حفظ المسودة تلقائياً عند أي تغيير (للفواتير الجديدة فقط)
+  const مؤقت_الحفظ = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    if (فاتورة) return;
+
+    if (مؤقت_الحفظ.current) clearTimeout(مؤقت_الحفظ.current);
+    مؤقت_الحفظ.current = setTimeout(() => {
+      const م: مسودة = {
+        عميل,
+        هاتف,
+        تاريخ,
+        ملاحظات,
+        بنود,
+        أسعار_تصنيفات,
+        رقم_الفاتورة,
+        وقت_الحفظ: Date.now(),
+      };
+      try {
+        localStorage.setItem(مفتاح_المسودة, JSON.stringify(م));
+      } catch {
+        // تجاهل (وضع خاص / امتلاء)
+      }
+    }, 800);
+
+    return () => {
+      if (مؤقت_الحفظ.current) clearTimeout(مؤقت_الحفظ.current);
+    };
+  }, [عميل, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, فاتورة]);
+
+  function تجاهل_المسودة() {
+    localStorage.removeItem(مفتاح_المسودة);
+    تعيين_مسودة_معلقة(false);
+    // إعادة تعيين كل شيء
+    تعيين_عميل("");
+    تعيين_هاتف("");
+    تعيين_تاريخ(اليوم());
+    تعيين_ملاحظات("");
+    تعيين_بنود([بند_فارغ()]);
+    تعيين_أسعار({});
+    احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
+  }
+
   function حدّث(i: number, مفتاح: keyof بند, قيمة: string) {
     if (مفتاح === "التصنيف") {
-      // عند تغيير التصنيف: ضع سعر التصنيف المخزّن في البند تلقائياً
       تعيين_بنود((س) =>
         س.map((ب, j) =>
           j === i ? { ...ب, التصنيف: قيمة, السعر: أسعار_تصنيفات[قيمة] ?? "" } : ب
@@ -104,7 +186,6 @@ export function نموذج_فاتورة({
 
   function حدّث_سعر_تصنيف(تصنيف: string, سعر: string) {
     تعيين_أسعار((prev) => ({ ...prev, [تصنيف]: سعر }));
-    // حدّث سعر كل البنود بنفس التصنيف
     تعيين_بنود((س) =>
       س.map((ب) => (ب.التصنيف === تصنيف ? { ...ب, السعر: سعر } : ب))
     );
@@ -116,7 +197,7 @@ export function نموذج_فاتورة({
     تعيين_بنود((س) => (س.length > 1 ? س.filter((_, j) => j !== i) : س));
   }
 
-  // إجماليات حيّة — السعر يُؤخذ من أسعار_تصنيفات
+  // إجماليات حيّة
   const إجمالي_الكمية = بنود.reduce((س, ب) => س + ع(ب.الكمية), 0);
   const إجمالي_الوزن = بنود.reduce((س, ب) => س + ع(ب.الوزن), 0);
   const الإجمالي_المالي = بنود.reduce((س, ب) => {
@@ -172,6 +253,8 @@ export function نموذج_فاتورة({
       : await إنشاء_فاتورة(payload);
     تعيين_جارٍ(false);
     if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    // مسح المسودة عند الحفظ الناجح
+    if (!فاتورة) localStorage.removeItem(مفتاح_المسودة);
     إشعار.نجاح(r.رسالة!);
     const id = فاتورة ? فاتورة.id : (r.بيانات as { id: number }).id;
     router.push(`/invoices/${id}`);
@@ -180,6 +263,24 @@ export function نموذج_فاتورة({
 
   return (
     <div className="space-y-6">
+      {/* بانر استرداد المسودة */}
+      {مسودة_معلقة && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+          <div className="flex items-center gap-2">
+            <RotateCcw className="size-4 shrink-0" />
+            <span>تم استرداد مسودة محفوظة — يمكنك الاستمرار من حيث توقفت.</span>
+          </div>
+          <الزر
+            size="sm"
+            variant="outline"
+            className="border-amber-400 text-amber-700 hover:bg-amber-100"
+            onClick={تجاهل_المسودة}
+          >
+            تجاهل المسودة
+          </الزر>
+        </div>
+      )}
+
       {/* الترويسة */}
       <div className="card-soft grid gap-4 p-5 sm:grid-cols-4">
         {/* رقم الفاتورة */}
@@ -255,11 +356,21 @@ export function نموذج_فاتورة({
                       placeholder={t("inv.f.color")}
                     />
                   </td>
-                  <td className="p-1.5 min-w-28">
-                    <الحقل
-                      value={ب.الشركة}
-                      onChange={(e) => حدّث(i, "الشركة", e.target.value)}
-                      placeholder="الشركة"
+                  <td className="p-1.5 min-w-36">
+                    <قائمة_اختيار
+                      الخيارات={شركات.map((s) => ({
+                        القيمة: s,
+                        التسمية: s,
+                      }))}
+                      القيمة={ب.الشركة || null}
+                      عند_التغيير={(v) => حدّث(i, "الشركة", v)}
+                      عند_الإضافة={(جديد) => {
+                        if (!شركات.includes(جديد))
+                          تعيين_شركات((s) => [...s, جديد]);
+                        حدّث(i, "الشركة", جديد);
+                      }}
+                      تسمية_الإضافة="إضافة شركة"
+                      نص_بديل="الشركة"
                     />
                   </td>
                   <td className="p-1.5 min-w-36">

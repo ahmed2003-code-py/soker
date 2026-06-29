@@ -9,7 +9,7 @@ export const metadata = { title: "تعديل فاتورة — سُكر" };
 export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   const { t } = مترجم_الخادم();
-  const [فاتورة, عملاء, تصنيفات] = await Promise.all([
+  const [فاتورة, عملاء, تصنيفات, شركات] = await Promise.all([
     prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
@@ -17,6 +17,12 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       orderBy: { name: "asc" },
     }),
     prisma.invoiceLine.findMany({ distinct: ["category"], select: { category: true }, take: 100 }),
+    prisma.invoiceLine.findMany({
+      distinct: ["company"],
+      select: { company: true },
+      where: { company: { not: null } },
+      take: 100,
+    }),
   ]);
   if (!فاتورة) notFound();
 
@@ -26,6 +32,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       <نموذج_فاتورة
         العملاء={عملاء}
         التصنيفات={تصنيفات.map((c) => c.category)}
+        الشركات={شركات.map((c) => c.company as string)}
         فاتورة={{
           id: فاتورة.id,
           الرقم: فاتورة.number,
