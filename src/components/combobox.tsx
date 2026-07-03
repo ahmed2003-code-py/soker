@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Check, ChevronsUpDown, Plus, Search } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Search, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { منبثقة, مشغل_منبثقة, محتوى_منبثقة } from "@/components/ui/popover";
 import { الحقل } from "@/components/ui/input";
@@ -14,14 +14,20 @@ type الخصائص = {
   نص_بديل?: string;
   نص_البحث?: string;
   قابل_للبحث?: boolean;
-  /** إتاحة "إضافة جديد" داخل القائمة */
   عند_الإضافة?: (نص: string) => void | Promise<void>;
   تسمية_الإضافة?: string;
+  /** callback بعد اختيار خيار — يُستخدم للانتقال للحقل التالي */
+  عند_الاختيار?: () => void;
+  /** ref للزر المُشغِّل — للتركيز الخارجي */
+  triggerRef?: React.RefCallback<HTMLButtonElement>;
+  /** تعديل خيار موجود: (قديم، جديد) */
+  عند_التعديل?: (قديم: string, جديد: string) => void;
+  /** حذف خيار موجود */
+  عند_الحذف?: (قيمة: string) => void;
   className?: string;
   disabled?: boolean;
 };
 
-/** قائمة منسدلة قابلة للبحث مع خيار إضافة عنصر جديد */
 export function قائمة_اختيار({
   الخيارات,
   القيمة,
@@ -31,11 +37,17 @@ export function قائمة_اختيار({
   قابل_للبحث = true,
   عند_الإضافة,
   تسمية_الإضافة = "إضافة",
+  عند_الاختيار,
+  triggerRef,
+  عند_التعديل,
+  عند_الحذف,
   className,
   disabled,
 }: الخصائص) {
   const [مفتوح, تعيين_مفتوح] = React.useState(false);
   const [بحث, تعيين_بحث] = React.useState("");
+  const [تعديل_نشط, تعيين_تعديل_نشط] = React.useState<string | null>(null);
+  const [نص_التعديل, تعيين_نص_التعديل] = React.useState("");
 
   const المختار = الخيارات.find((x) => x.القيمة === القيمة);
   const مُصفّاة = بحث
@@ -47,11 +59,34 @@ export function قائمة_اختيار({
     بحث.trim() &&
     !الخيارات.some((x) => x.التسمية.trim() === بحث.trim());
 
+  function اختر(x: خيار) {
+    عند_التغيير(x.القيمة);
+    تعيين_مفتوح(false);
+    تعيين_بحث("");
+    // أبلغ الأب بعد إغلاق القائمة
+    setTimeout(() => عند_الاختيار?.(), 20);
+  }
+
+  function ابدأ_التعديل(x: خيار) {
+    تعيين_تعديل_نشط(x.القيمة);
+    تعيين_نص_التعديل(x.التسمية);
+  }
+
+  function أكمل_التعديل(قيمة_قديمة: string) {
+    const جديد = نص_التعديل.trim();
+    if (جديد && عند_التعديل) عند_التعديل(قيمة_قديمة, جديد);
+    تعيين_تعديل_نشط(null);
+    تعيين_نص_التعديل("");
+  }
+
+  const يملك_أدوات = !!(عند_التعديل || عند_الحذف);
+
   return (
     <منبثقة open={مفتوح} onOpenChange={تعيين_مفتوح}>
       <مشغل_منبثقة asChild>
         <button
           type="button"
+          ref={triggerRef}
           disabled={disabled}
           className={cn(
             "flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
@@ -64,6 +99,7 @@ export function قائمة_اختيار({
           <ChevronsUpDown className="size-4 opacity-60" />
         </button>
       </مشغل_منبثقة>
+
       <محتوى_منبثقة className="w-[--radix-popover-trigger-width] min-w-56 p-0">
         {قابل_للبحث && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -77,30 +113,89 @@ export function قائمة_اختيار({
             />
           </div>
         )}
+
         <div
           className="max-h-60 overflow-y-auto overscroll-contain p-1"
           onWheel={(e) => e.stopPropagation()}
         >
           {مُصفّاة.length === 0 && !يمكن_الإضافة && (
-            <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-              لا نتائج
-            </p>
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">لا نتائج</p>
           )}
-          {مُصفّاة.map((x) => (
-            <button
-              key={x.القيمة}
-              type="button"
-              onClick={() => {
-                عند_التغيير(x.القيمة);
-                تعيين_مفتوح(false);
-                تعيين_بحث("");
-              }}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-appgray"
-            >
-              <span>{x.التسمية}</span>
-              {x.القيمة === القيمة && <Check className="size-4 text-primary-blue" />}
-            </button>
-          ))}
+
+          {مُصفّاة.map((x) =>
+            تعديل_نشط === x.القيمة ? (
+              /* وضع التعديل */
+              <div
+                key={x.القيمة}
+                className="flex items-center gap-1 rounded-lg px-2 py-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  autoFocus
+                  value={نص_التعديل}
+                  onChange={(e) => تعيين_نص_التعديل(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") { e.preventDefault(); أكمل_التعديل(x.القيمة); }
+                    if (e.key === "Escape") تعيين_تعديل_نشط(null);
+                  }}
+                  className="h-7 flex-1 rounded border border-ring bg-card px-2 text-sm outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => أكمل_التعديل(x.القيمة)}
+                  className="size-6 flex items-center justify-center rounded text-success hover:bg-success/10"
+                >
+                  <Check className="size-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => تعيين_تعديل_نشط(null)}
+                  className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-appgray"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ) : (
+              /* الوضع العادي */
+              <div key={x.القيمة} className="group flex items-center gap-0.5 rounded-lg hover:bg-appgray">
+                <button
+                  type="button"
+                  onClick={() => اختر(x)}
+                  className="flex flex-1 items-center justify-between px-3 py-2 text-sm"
+                >
+                  <span>{x.التسمية}</span>
+                  {x.القيمة === القيمة && <Check className="size-4 text-primary-blue" />}
+                </button>
+
+                {يملك_أدوات && (
+                  <div className="flex items-center gap-0.5 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {عند_التعديل && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); ابدأ_التعديل(x); }}
+                        className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-border"
+                        title="تعديل"
+                      >
+                        <Pencil className="size-3" />
+                      </button>
+                    )}
+                    {عند_الحذف && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); عند_الحذف(x.القيمة); }}
+                        className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-danger hover:bg-danger/10"
+                        title="حذف"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
           {يمكن_الإضافة && (
             <button
               type="button"
@@ -108,6 +203,7 @@ export function قائمة_اختيار({
                 await عند_الإضافة!(بحث.trim());
                 تعيين_مفتوح(false);
                 تعيين_بحث("");
+                setTimeout(() => عند_الاختيار?.(), 20);
               }}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary-blue hover:bg-appgray"
             >

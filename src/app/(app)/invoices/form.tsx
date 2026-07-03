@@ -47,6 +47,16 @@ type مسودة = {
   وقت_الحفظ: number;
 };
 
+// ─── refs للتنقل بـ Enter ───────────────────────────────────
+type مراجع_صف = {
+  اللون: HTMLInputElement | null;
+  شركة: HTMLButtonElement | null;
+  تصنيف: HTMLButtonElement | null;
+  الكمية: HTMLInputElement | null;
+  الوزن: HTMLInputElement | null;
+};
+const ترتيب: (keyof مراجع_صف)[] = ["اللون", "شركة", "تصنيف", "الكمية", "الوزن"];
+
 export function نموذج_فاتورة({
   العملاء: عملاء0,
   التصنيفات: تصنيفات0,
@@ -94,19 +104,42 @@ export function نموذج_فاتورة({
     return م;
   });
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
-  // حالة بانر المسودة (للفواتير الجديدة فقط)
   const [مسودة_معلقة, تعيين_مسودة_معلقة] = React.useState(false);
 
-  // استرداد رقم الفاتورة + المسودة عند التحميل
-  React.useEffect(() => {
-    if (فاتورة) return; // وضع التعديل: لا مسودة
+  // ─── refs للتنقل ───────────────────────────────────────────
+  const مراجع = React.useRef<مراجع_صف[]>([]);
 
-    // تحقق من وجود مسودة محفوظة
+  function صف(i: number): مراجع_صف {
+    if (!مراجع.current[i]) {
+      مراجع.current[i] = { اللون: null, شركة: null, تصنيف: null, الكمية: null, الوزن: null };
+    }
+    return مراجع.current[i];
+  }
+
+  function انتقل(i: number, حقل: keyof مراجع_صف) {
+    const idx = ترتيب.indexOf(حقل);
+    const refs = مراجع.current[i];
+    if (!refs) return;
+    if (idx < ترتيب.length - 1) {
+      refs[ترتيب[idx + 1]]?.focus();
+    } else {
+      // آخر حقل في السطر → أضف سطراً جديداً وانتقل إليه
+      if (i === بنود.length - 1) {
+        تعيين_بنود((س) => [...س, بند_فارغ()]);
+        requestAnimationFrame(() => مراجع.current[i + 1]?.اللون?.focus());
+      } else {
+        مراجع.current[i + 1]?.اللون?.focus();
+      }
+    }
+  }
+
+  // ─── استرداد المسودة ──────────────────────────────────────
+  React.useEffect(() => {
+    if (فاتورة) return;
     try {
       const محفوظة = localStorage.getItem(مفتاح_المسودة);
       if (محفوظة) {
         const م: مسودة = JSON.parse(محفوظة);
-        // استرداد البيانات من المسودة
         if (م.عميل) تعيين_عميل(م.عميل);
         if (م.هاتف) تعيين_هاتف(م.هاتف);
         if (م.تاريخ) تعيين_تاريخ(م.تاريخ);
@@ -116,60 +149,58 @@ export function نموذج_فاتورة({
         if (م.رقم_الفاتورة) {
           تعيين_رقم_الفاتورة(م.رقم_الفاتورة);
           تعيين_مسودة_معلقة(true);
-          return; // لا نجلب رقم جديد لأن المسودة تحتوي على رقم
+          return;
         }
       }
-    } catch {
-      // تجاهل أخطاء القراءة
-    }
-
-    // لا مسودة — اجلب الرقم التالي
+    } catch { /* تجاهل */ }
     احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // حفظ المسودة تلقائياً عند أي تغيير (للفواتير الجديدة فقط)
-  const مؤقت_الحفظ = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ─── حفظ تلقائي للمسودة ──────────────────────────────────
+  const مؤقت = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
     if (فاتورة) return;
-
-    if (مؤقت_الحفظ.current) clearTimeout(مؤقت_الحفظ.current);
-    مؤقت_الحفظ.current = setTimeout(() => {
-      const م: مسودة = {
-        عميل,
-        هاتف,
-        تاريخ,
-        ملاحظات,
-        بنود,
-        أسعار_تصنيفات,
-        رقم_الفاتورة,
-        وقت_الحفظ: Date.now(),
-      };
-      try {
-        localStorage.setItem(مفتاح_المسودة, JSON.stringify(م));
-      } catch {
-        // تجاهل (وضع خاص / امتلاء)
-      }
+    if (مؤقت.current) clearTimeout(مؤقت.current);
+    مؤقت.current = setTimeout(() => {
+      const م: مسودة = { عميل, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, وقت_الحفظ: Date.now() };
+      try { localStorage.setItem(مفتاح_المسودة, JSON.stringify(م)); } catch { /* تجاهل */ }
     }, 800);
-
-    return () => {
-      if (مؤقت_الحفظ.current) clearTimeout(مؤقت_الحفظ.current);
-    };
+    return () => { if (مؤقت.current) clearTimeout(مؤقت.current); };
   }, [عميل, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, فاتورة]);
 
   function تجاهل_المسودة() {
     localStorage.removeItem(مفتاح_المسودة);
     تعيين_مسودة_معلقة(false);
-    // إعادة تعيين كل شيء
-    تعيين_عميل("");
-    تعيين_هاتف("");
-    تعيين_تاريخ(اليوم());
-    تعيين_ملاحظات("");
-    تعيين_بنود([بند_فارغ()]);
-    تعيين_أسعار({});
+    تعيين_عميل(""); تعيين_هاتف(""); تعيين_تاريخ(اليوم());
+    تعيين_ملاحظات(""); تعيين_بنود([بند_فارغ()]); تعيين_أسعار({});
     احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
   }
 
+  // ─── تعديل/حذف التصنيفات ─────────────────────────────────
+  function عدّل_تصنيف(قديم: string, جديد: string) {
+    تعيين_تصنيفات((s) => s.map((x) => (x === قديم ? جديد : x)));
+    تعيين_بنود((ب) => ب.map((b) => b.التصنيف === قديم ? { ...b, التصنيف: جديد } : b));
+    تعيين_أسعار((prev) => {
+      const next = { ...prev };
+      if (قديم in next) { next[جديد] = next[قديم]; delete next[قديم]; }
+      return next;
+    });
+  }
+  function احذف_تصنيف(قيمة: string) {
+    تعيين_تصنيفات((s) => s.filter((x) => x !== قيمة));
+  }
+
+  // ─── تعديل/حذف الشركات ───────────────────────────────────
+  function عدّل_شركة(قديم: string, جديد: string) {
+    تعيين_شركات((s) => s.map((x) => (x === قديم ? جديد : x)));
+    تعيين_بنود((ب) => ب.map((b) => b.الشركة === قديم ? { ...b, الشركة: جديد } : b));
+  }
+  function احذف_شركة(قيمة: string) {
+    تعيين_شركات((s) => s.filter((x) => x !== قيمة));
+  }
+
+  // ─── البنود ───────────────────────────────────────────────
   function حدّث(i: number, مفتاح: keyof بند, قيمة: string) {
     if (مفتاح === "التصنيف") {
       تعيين_بنود((س) =>
@@ -179,25 +210,24 @@ export function نموذج_فاتورة({
       );
       return;
     }
-    تعيين_بنود((س) =>
-      س.map((ب, j) => (j === i ? { ...ب, [مفتاح]: قيمة } : ب))
-    );
+    تعيين_بنود((س) => س.map((ب, j) => (j === i ? { ...ب, [مفتاح]: قيمة } : ب)));
   }
 
   function حدّث_سعر_تصنيف(تصنيف: string, سعر: string) {
     تعيين_أسعار((prev) => ({ ...prev, [تصنيف]: سعر }));
-    تعيين_بنود((س) =>
-      س.map((ب) => (ب.التصنيف === تصنيف ? { ...ب, السعر: سعر } : ب))
-    );
+    تعيين_بنود((س) => س.map((ب) => (ب.التصنيف === تصنيف ? { ...ب, السعر: سعر } : ب)));
   }
+
   function أضف_بند() {
     تعيين_بنود((س) => [...س, بند_فارغ()]);
   }
+
   function احذف_بند(i: number) {
     تعيين_بنود((س) => (س.length > 1 ? س.filter((_, j) => j !== i) : س));
+    مراجع.current.splice(i, 1);
   }
 
-  // إجماليات حيّة
+  // ─── إجماليات ─────────────────────────────────────────────
   const إجمالي_الكمية = بنود.reduce((س, ب) => س + ع(ب.الكمية), 0);
   const إجمالي_الوزن = بنود.reduce((س, ب) => س + ع(ب.الوزن), 0);
   const الإجمالي_المالي = بنود.reduce((س, ب) => {
@@ -205,14 +235,12 @@ export function نموذج_فاتورة({
     return س + سعر * ع(ب.الوزن);
   }, 0);
 
-  // تجميع حسب التصنيف
   const تجميع = React.useMemo(() => {
     const م = new Map<string, { كمية: number; وزن: number }>();
     for (const ب of بنود) {
       if (!ب.التصنيف) continue;
       const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0 };
-      ح.كمية += ع(ب.الكمية);
-      ح.وزن += ع(ب.الوزن);
+      ح.كمية += ع(ب.الكمية); ح.وزن += ع(ب.الوزن);
       م.set(ب.التصنيف, ح);
     }
     return [...م.entries()];
@@ -220,8 +248,7 @@ export function نموذج_فاتورة({
 
   async function أضف_عميل(الاسم: string) {
     const r = await إنشاء_طرف({ الاسم, النوع: "CUSTOMER" });
-    if (!r.نجاح || !r.بيانات)
-      return إشعار.خطأ(r.رسالة || t("inv.f.customer_add_err"));
+    if (!r.نجاح || !r.بيانات) return إشعار.خطأ(r.رسالة || t("inv.f.customer_add_err"));
     const جديد = { id: r.بيانات.id, name: الاسم, phone: null };
     تعيين_عملاء((س) => [...س, جديد]);
     تعيين_عميل(String(جديد.id));
@@ -253,7 +280,6 @@ export function نموذج_فاتورة({
       : await إنشاء_فاتورة(payload);
     تعيين_جارٍ(false);
     if (!r.نجاح) return إشعار.خطأ(r.رسالة);
-    // مسح المسودة عند الحفظ الناجح
     if (!فاتورة) localStorage.removeItem(مفتاح_المسودة);
     إشعار.نجاح(r.رسالة!);
     const id = فاتورة ? فاتورة.id : (r.بيانات as { id: number }).id;
@@ -261,21 +287,19 @@ export function نموذج_فاتورة({
     router.refresh();
   }
 
+  // ─── JSX ──────────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* بانر استرداد المسودة */}
+      {/* بانر المسودة */}
       {مسودة_معلقة && (
         <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
           <div className="flex items-center gap-2">
             <RotateCcw className="size-4 shrink-0" />
             <span>تم استرداد مسودة محفوظة — يمكنك الاستمرار من حيث توقفت.</span>
           </div>
-          <الزر
-            size="sm"
-            variant="outline"
+          <الزر size="sm" variant="outline"
             className="border-amber-400 text-amber-700 hover:bg-amber-100"
-            onClick={تجاهل_المسودة}
-          >
+            onClick={تجاهل_المسودة}>
             تجاهل المسودة
           </الزر>
         </div>
@@ -283,23 +307,15 @@ export function نموذج_فاتورة({
 
       {/* الترويسة */}
       <div className="card-soft grid gap-4 p-5 sm:grid-cols-4">
-        {/* رقم الفاتورة */}
         <div className="space-y-1.5">
           <العنوان>{t("inv.col.number")}</العنوان>
-          <الحقل
-            className="ltr-nums"
-            value={رقم_الفاتورة}
-            onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)}
-            placeholder="..."
-          />
+          <الحقل className="ltr-nums" value={رقم_الفاتورة}
+            onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)} placeholder="..." />
         </div>
         <div className="space-y-1.5">
           <العنوان مطلوب>{t("inv.col.customer")}</العنوان>
           <قائمة_اختيار
-            الخيارات={عملاء.map((c) => ({
-              القيمة: String(c.id),
-              التسمية: c.name,
-            }))}
+            الخيارات={عملاء.map((c) => ({ القيمة: String(c.id), التسمية: c.name }))}
             القيمة={عميل}
             عند_التغيير={(v) => {
               تعيين_عميل(v);
@@ -313,11 +329,8 @@ export function نموذج_فاتورة({
         </div>
         <div className="space-y-1.5">
           <العنوان>{t("party.col.phone")}</العنوان>
-          <الحقل
-            className="ltr-nums"
-            value={هاتف}
-            onChange={(e) => تعيين_هاتف(e.target.value)}
-          />
+          <الحقل className="ltr-nums" value={هاتف}
+            onChange={(e) => تعيين_هاتف(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <العنوان مطلوب>{t("common.date")}</العنوان>
@@ -349,73 +362,77 @@ export function نموذج_فاتورة({
             <tbody>
               {بنود.map((ب, i) => (
                 <tr key={i} className="border-b border-border/60">
+                  {/* اللون */}
                   <td className="p-1.5 min-w-28">
                     <الحقل
+                      ref={(el) => { صف(i).اللون = el; }}
                       value={ب.اللون}
                       onChange={(e) => حدّث(i, "اللون", e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "اللون"); } }}
                       placeholder={t("inv.f.color")}
                     />
                   </td>
+                  {/* الشركة */}
                   <td className="p-1.5 min-w-36">
                     <قائمة_اختيار
-                      الخيارات={شركات.map((s) => ({
-                        القيمة: s,
-                        التسمية: s,
-                      }))}
+                      triggerRef={(el) => { صف(i).شركة = el; }}
+                      الخيارات={شركات.map((s) => ({ القيمة: s, التسمية: s }))}
                       القيمة={ب.الشركة || null}
                       عند_التغيير={(v) => حدّث(i, "الشركة", v)}
                       عند_الإضافة={(جديد) => {
-                        if (!شركات.includes(جديد))
-                          تعيين_شركات((s) => [...s, جديد]);
+                        if (!شركات.includes(جديد)) تعيين_شركات((s) => [...s, جديد]);
                         حدّث(i, "الشركة", جديد);
                       }}
+                      عند_الاختيار={() => انتقل(i, "شركة")}
+                      عند_التعديل={عدّل_شركة}
+                      عند_الحذف={احذف_شركة}
                       تسمية_الإضافة="إضافة شركة"
                       نص_بديل="الشركة"
                     />
                   </td>
+                  {/* التصنيف */}
                   <td className="p-1.5 min-w-36">
                     <قائمة_اختيار
-                      الخيارات={تصنيفات.map((c) => ({
-                        القيمة: c,
-                        التسمية: c,
-                      }))}
+                      triggerRef={(el) => { صف(i).تصنيف = el; }}
+                      الخيارات={تصنيفات.map((c) => ({ القيمة: c, التسمية: c }))}
                       القيمة={ب.التصنيف}
                       عند_التغيير={(v) => حدّث(i, "التصنيف", v)}
                       عند_الإضافة={(جديد) => {
-                        if (!تصنيفات.includes(جديد))
-                          تعيين_تصنيفات((s) => [...s, جديد]);
+                        if (!تصنيفات.includes(جديد)) تعيين_تصنيفات((s) => [...s, جديد]);
                         حدّث(i, "التصنيف", جديد);
                       }}
+                      عند_الاختيار={() => انتقل(i, "تصنيف")}
+                      عند_التعديل={عدّل_تصنيف}
+                      عند_الحذف={احذف_تصنيف}
                       تسمية_الإضافة={t("inv.f.new_category")}
                       نص_بديل={t("inv.f.category")}
                     />
                   </td>
+                  {/* الكمية */}
                   <td className="p-1.5">
                     <الحقل
+                      ref={(el) => { صف(i).الكمية = el; }}
                       className="ltr-nums text-end"
                       selectOnFocus
                       value={ب.الكمية}
                       onChange={(e) => حدّث(i, "الكمية", e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && i === بنود.length - 1)
-                          أضف_بند();
-                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الكمية"); } }}
                       placeholder="0"
                     />
                   </td>
+                  {/* الوزن */}
                   <td className="p-1.5">
                     <الحقل
+                      ref={(el) => { صف(i).الوزن = el; }}
                       className="ltr-nums text-end"
                       selectOnFocus
                       value={ب.الوزن}
                       onChange={(e) => حدّث(i, "الوزن", e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && i === بنود.length - 1)
-                          أضف_بند();
-                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الوزن"); } }}
                       placeholder="0.00"
                     />
                   </td>
+                  {/* المجموع */}
                   <td className="p-1.5 text-end ltr-nums tabular-nums text-muted-foreground text-sm">
                     {(() => {
                       const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
@@ -424,14 +441,10 @@ export function نموذج_فاتورة({
                         : "—";
                     })()}
                   </td>
+                  {/* حذف */}
                   <td className="p-1.5 text-center">
                     {بنود.length > 1 && (
-                      <الزر
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => احذف_بند(i)}
-                        title="حذف البند"
-                      >
+                      <الزر size="icon" variant="ghost" onClick={() => احذف_بند(i)} title="حذف البند">
                         <Trash2 className="size-4 text-danger" />
                       </الزر>
                     )}
@@ -448,9 +461,7 @@ export function نموذج_فاتورة({
         <div className="card-soft p-5">
           <h3 className="mb-3 font-semibold">{t("inv.f.summary_by_cat")}</h3>
           {تجميع.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("inv.f.enter_items")}
-            </p>
+            <p className="text-sm text-muted-foreground">{t("inv.f.enter_items")}</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="text-muted-foreground">
@@ -470,17 +481,12 @@ export function نموذج_فاتورة({
                     <tr key={ت} className="border-b border-border/60">
                       <td className="p-2 font-medium">{ت}</td>
                       <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
-                      <td className="p-2 text-end ltr-nums">
-                        {ح.وزن.toFixed(2)} {t("inv.kg")}
-                      </td>
+                      <td className="p-2 text-end ltr-nums">{ح.وزن.toFixed(2)} {t("inv.kg")}</td>
                       <td className="p-1.5">
-                        <الحقل
-                          className="ltr-nums text-end w-24"
-                          selectOnFocus
+                        <الحقل className="ltr-nums text-end w-24" selectOnFocus
                           value={سعر_التصنيف}
                           onChange={(e) => حدّث_سعر_تصنيف(ت, e.target.value)}
-                          placeholder="0.00"
-                        />
+                          placeholder="0.00" />
                       </td>
                       <td className="p-2 text-end ltr-nums font-medium">
                         {مبلغ_التصنيف > 0
@@ -497,18 +503,12 @@ export function نموذج_فاتورة({
         <div className="card-soft space-y-2 p-5">
           <h3 className="mb-3 font-semibold">{t("inv.f.totals")}</h3>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">
-              {t("inv.f.total_count")}
-            </span>
+            <span className="text-muted-foreground">{t("inv.f.total_count")}</span>
             <span className="ltr-nums font-medium">{إجمالي_الكمية}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">
-              {t("inv.col.total_weight")}
-            </span>
-            <span className="ltr-nums font-medium">
-              {إجمالي_الوزن.toFixed(2)} {t("inv.kg")}
-            </span>
+            <span className="text-muted-foreground">{t("inv.col.total_weight")}</span>
+            <span className="ltr-nums font-medium">{إجمالي_الوزن.toFixed(2)} {t("inv.kg")}</span>
           </div>
           <div className="flex justify-between border-t border-border pt-2 text-lg">
             <span className="font-semibold">{t("inv.f.financial_total")}</span>
@@ -519,16 +519,11 @@ export function نموذج_فاتورة({
 
       <div className="space-y-1.5">
         <العنوان>{t("party.f.notes")}</العنوان>
-        <منطقة_نص
-          value={ملاحظات}
-          onChange={(e) => تعيين_ملاحظات(e.target.value)}
-        />
+        <منطقة_نص value={ملاحظات} onChange={(e) => تعيين_ملاحظات(e.target.value)} />
       </div>
 
       <div className="flex justify-end gap-2">
-        <الزر variant="outline" onClick={() => router.back()}>
-          {t("common.cancel")}
-        </الزر>
+        <الزر variant="outline" onClick={() => router.back()}>{t("common.cancel")}</الزر>
         <الزر variant="success" onClick={احفظ} disabled={جارٍ}>
           <Save className="size-4" />{" "}
           {جارٍ ? t("common.saving") : t("inv.f.save")}
