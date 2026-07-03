@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown } from "lucide-react";
 import { ChequeStatus, ChequeDirection } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -34,6 +34,35 @@ const لون_الحالة: Record<ChequeStatus, "warning" | "success" | "danger"
   COLLECTED: "success",
   BOUNCED: "danger",
 };
+
+const أسماء_الشهور = [
+  "يناير","فبراير","مارس","أبريل","مايو","يونيو",
+  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
+];
+
+type مجموعة_شهر = { رقم: number; اسم: string; بنود: شيك[] };
+type مجموعة_سنة = { سنة: number; شهور: مجموعة_شهر[] };
+
+function جمّع_حسب_التاريخ(صفوف: شيك[]): مجموعة_سنة[] {
+  const map: Record<number, Record<number, شيك[]>> = {};
+  for (const ش of صفوف) {
+    const d = new Date(ش.تاريخ_الاستحقاق);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    (map[y] ??= {})[m] ??= [];
+    map[y][m].push(ش);
+  }
+  return Object.keys(map)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .map((y) => ({
+      سنة: y,
+      شهور: Object.keys(map[y])
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((m) => ({ رقم: m, اسم: أسماء_الشهور[m], بنود: map[y][m] })),
+    }));
+}
 
 export type شيك = {
   id: number;
@@ -70,6 +99,30 @@ export function شاشة_الشيكات({
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
+
+  const سنة_الآن = new Date().getFullYear();
+  const شهر_الآن = new Date().getMonth();
+  const [سنوات_مفتوحة, تعيين_سنوات_مفتوحة] = React.useState<Set<number>>(
+    () => new Set([سنة_الآن])
+  );
+  const [شهور_مفتوحة, تعيين_شهور_مفتوحة] = React.useState<Set<string>>(
+    () => new Set([`${سنة_الآن}-${شهر_الآن}`])
+  );
+
+  function تبديل_سنة(s: number) {
+    تعيين_سنوات_مفتوحة((prev) => {
+      const n = new Set(prev);
+      n.has(s) ? n.delete(s) : n.add(s);
+      return n;
+    });
+  }
+  function تبديل_شهر(key: string) {
+    تعيين_شهور_مفتوحة((prev) => {
+      const n = new Set(prev);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
+  }
 
   function طبّق_الفلاتر(صفوف: شيك[]): شيك[] {
     return صفوف.filter((ش) => {
@@ -178,6 +231,82 @@ export function شاشة_الشيكات({
     />
   );
 
+  function عرض_مجمعة(بيانات: شيك[]) {
+    const مجمعة = جمّع_حسب_التاريخ(بيانات);
+    if (مجمعة.length === 0) {
+      return (
+        <p className="py-12 text-center text-sm text-muted-foreground">{t("cheque.empty")}</p>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        {مجمعة.map(({ سنة, شهور }) => {
+          const عدد_الكل = شهور.reduce((s, m) => s + m.بنود.length, 0);
+          const مجموع_الكل = شهور.reduce((s, m) => s + m.بنود.reduce((a, ش) => a + ش.المبلغ, 0), 0);
+          const مفتوح_سنة = سنوات_مفتوحة.has(سنة);
+          return (
+            <div key={سنة} className="overflow-hidden rounded-xl border border-border">
+              {/* رأس السنة */}
+              <button
+                type="button"
+                onClick={() => تبديل_سنة(سنة)}
+                className="flex w-full items-center justify-between bg-appgray px-5 py-3 text-right transition-colors hover:bg-gray-100"
+              >
+                <div className="flex items-center gap-3">
+                  <ChevronDown
+                    className={`size-4 text-muted-foreground transition-transform duration-200 ${مفتوح_سنة ? "" : "-rotate-90"}`}
+                  />
+                  <span className="text-lg font-bold ltr-nums">{سنة}</span>
+                  <span className="rounded-full bg-border px-2 py-0.5 text-xs text-muted-foreground">
+                    {عدد_الكل} شيك
+                  </span>
+                </div>
+                <نص_مبلغ القيمة={مجموع_الكل} className="font-semibold" />
+              </button>
+
+              {مفتوح_سنة && (
+                <div className="divide-y divide-border border-t border-border">
+                  {شهور.map(({ رقم, اسم, بنود }) => {
+                    const key = `${سنة}-${رقم}`;
+                    const مفتوح_شهر = شهور_مفتوحة.has(key);
+                    const إجمالي_شهر = بنود.reduce((s, ش) => s + ش.المبلغ, 0);
+                    return (
+                      <div key={key}>
+                        {/* رأس الشهر */}
+                        <button
+                          type="button"
+                          onClick={() => تبديل_شهر(key)}
+                          className="flex w-full items-center justify-between bg-white px-7 py-2.5 text-right transition-colors hover:bg-appgray/60"
+                        >
+                          <div className="flex items-center gap-3">
+                            <ChevronDown
+                              className={`size-3.5 text-muted-foreground transition-transform duration-200 ${مفتوح_شهر ? "" : "-rotate-90"}`}
+                            />
+                            <span className="font-medium">{اسم}</span>
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                              {بنود.length} شيك
+                            </span>
+                          </div>
+                          <نص_مبلغ القيمة={إجمالي_شهر} className="text-sm text-muted-foreground" />
+                        </button>
+
+                        {مفتوح_شهر && (
+                          <div className="bg-white px-4 pb-3 pt-1">
+                            {جدول(بنود)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   const حالات_الفلتر = [
     { ق: "", ت: t("common.all") },
     ...حالات_الشيك.map((s) => ({ ق: s, ت: t(`cheque.status.${s}` as const) })),
@@ -268,7 +397,7 @@ export function شاشة_الشيكات({
         </div>
       </div>
 
-      {جدول(طبّق_الفلاتر(تبويب === "INCOMING" ? الواردة : الصادرة))}
+      {عرض_مجمعة(طبّق_الفلاتر(تبويب === "INCOMING" ? الواردة : الصادرة))}
 
       {نموذج && (
         <حوار_شيك
