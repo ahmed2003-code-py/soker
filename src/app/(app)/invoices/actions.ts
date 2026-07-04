@@ -308,3 +308,32 @@ export async function أضف_للقائمة_DB(نوع: "تصنيف" | "شركة"
     await حفظ_القائمة(مفتاح, [...قائمة, قيمة]);
   }
 }
+
+/**
+ * يُرجع آخر سعر مُستخدم لكل تصنيف مع عميل معين (من أحدث فاتورة).
+ * يُستخدم لملء السعر تلقائياً عند اختيار العميل أو التصنيف.
+ */
+export async function احصل_آخر_أسعار(
+  معرف_عميل: number,
+  تصنيفات: string[]
+): Promise<Record<string, string>> {
+  if (!معرف_عميل || !تصنيفات.length) return {};
+  const نتائج = await Promise.all(
+    تصنيفات.map(async (cat) => {
+      const سطر = await prisma.invoiceLine.findFirst({
+        where: {
+          category: cat,
+          price: { not: null },
+          invoice: { customerId: معرف_عميل },
+        },
+        orderBy: [{ invoice: { date: "desc" } }, { invoice: { id: "desc" } }],
+        select: { price: true },
+      });
+      const قيمة = سطر?.price != null ? String(Number(سطر.price)) : null;
+      return [cat, قيمة] as const;
+    })
+  );
+  return Object.fromEntries(
+    نتائج.filter((x): x is [string, string] => x[1] !== null && x[1] !== "0")
+  );
+}
