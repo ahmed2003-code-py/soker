@@ -207,13 +207,104 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
   return نجح(undefined, "تم حذف الفاتورة وعكس قيدها");
 }
 
-/** التصنيفات الموجودة سابقاً (لاقتراحات قائمة الاختيار) */
-export async function تصنيفات_مقترحة(): Promise<string[]> {
-  await اطلب_المستخدم();
-  const ص = await prisma.invoiceLine.findMany({
-    distinct: ["category"],
-    select: { category: true },
-    take: 100,
+// ─── قوائم التصنيفات والشركات (مخزنة في settings) ──────────
+const مفتاح_تصنيفات = "قائمة_التصنيفات";
+const مفتاح_شركات   = "قائمة_الشركات";
+
+async function قرأ_القائمة(مفتاح: string): Promise<string[] | null> {
+  const s = await prisma.setting.findUnique({ where: { key: مفتاح } });
+  if (!s) return null;
+  try { return JSON.parse(s.value) as string[]; } catch { return null; }
+}
+
+async function حفظ_القائمة(مفتاح: string, قائمة: string[]): Promise<void> {
+  await prisma.setting.upsert({
+    where:  { key: مفتاح },
+    update: { value: JSON.stringify(قائمة) },
+    create: { key: مفتاح, value: JSON.stringify(قائمة) },
   });
-  return ص.map((x) => x.category).filter(Boolean);
+}
+
+/**
+ * يُرجع قوائم التصنيفات والشركات المخزنة في settings.
+ * إن لم تكن مُهيأة بعد يقرأهما من invoice_lines ويحفظهما تلقائياً.
+ */
+export async function احصل_قوائم_الفواتير(): Promise<{ تصنيفات: string[]; شركات: string[] }> {
+  const [تص, شر] = await Promise.all([
+    قرأ_القائمة(مفتاح_تصنيفات),
+    قرأ_القائمة(مفتاح_شركات),
+  ]);
+
+  // إذا كانت القائمة غير موجودة → نبذرها من البيانات الموجودة
+  const [تصنيفات, شركات] = await Promise.all([
+    تص !== null
+      ? Promise.resolve(تص)
+      : prisma.invoiceLine
+          .findMany({ distinct: ["category"], select: { category: true }, take: 500 })
+          .then((r) => {
+            const q = r.map((x) => x.category).filter(Boolean);
+            void حفظ_القائمة(مفتاح_تصنيفات, q);
+            return q;
+          }),
+    شر !== null
+      ? Promise.resolve(شر)
+      : prisma.invoiceLine
+          .findMany({ distinct: ["company"], select: { company: true }, where: { company: { not: null } }, take: 500 })
+          .then((r) => {
+            const q = r.map((x) => x.company as string).filter(Boolean);
+            void حفظ_القائمة(مفتاح_شركات, q);
+            return q;
+          }),
+  ]);
+
+  return { تصنيفات, شركات };
+}
+
+/** تعديل اسم تصنيف في القائمة فقط (لا يُعدّل الفواتير القديمة) */
+export async function عدّل_تصنيف_DB(قديم: string, جديد: string): Promise<نتيجة> {
+  await اطلب_المستخدم();
+  const نظيف = جديد.trim();
+  if (!نظيف) return فشل("اسم التصنيف لا يمكن أن يكون فارغاً");
+  const قائمة = (await قرأ_القائمة(مفتاح_تصنيفات)) ?? [];
+  const محدّثة = قائمة.map((x) => (x === قديم ? نظيف : x));
+  if (!محدّثة.includes(نظيف)) محدّثة.push(نظيف);
+  await حفظ_القائمة(مفتاح_تصنيفات, محدّثة);
+  return نجح(undefined, "تم تعديل التصنيف");
+}
+
+/** حذف تصنيف من القائمة فقط (لا يُعدّل الفواتير القديمة) */
+export async function احذف_تصنيف_DB(قيمة: string): Promise<نتيجة> {
+  await اطلب_المستخدم();
+  const قائمة = (await قرأ_القائمة(مفتاح_تصنيفات)) ?? [];
+  await حفظ_القائمة(مفتاح_تصنيفات, قائمة.filter((x) => x !== قيمة));
+  return نجح(undefined, "تم الحذف");
+}
+
+/** تعديل اسم شركة في القائمة فقط (لا يُعدّل الفواتير القديمة) */
+export async function عدّل_شركة_DB(قديم: string, جديد: string): Promise<نتيجة> {
+  await اطلب_المستخدم();
+  const نظيف = جديد.trim();
+  if (!نظيف) return فشل("اسم الشركة لا يمكن أن يكون فارغاً");
+  const قائمة = (await قرأ_القائمة(مفتاح_شركات)) ?? [];
+  const محدّثة = قائمة.map((x) => (x === قديم ? نظيف : x));
+  if (!محدّثة.includes(نظيف)) محدّثة.push(نظيف);
+  await حفظ_القائمة(مفتاح_شركات, محدّثة);
+  return نجح(undefined, "تم تعديل الشركة");
+}
+
+/** حذف شركة من القائمة فقط (لا يُعدّل الفواتير القديمة) */
+export async function احذف_شركة_DB(قيمة: string): Promise<نتيجة> {
+  await اطلب_المستخدم();
+  const قائمة = (await قرأ_القائمة(مفتاح_شركات)) ?? [];
+  await حفظ_القائمة(مفتاح_شركات, قائمة.filter((x) => x !== قيمة));
+  return نجح(undefined, "تم الحذف");
+}
+
+/** إضافة عنصر جديد للقائمة عند إنشائه أول مرة */
+export async function أضف_للقائمة_DB(نوع: "تصنيف" | "شركة", قيمة: string): Promise<void> {
+  const مفتاح = نوع === "تصنيف" ? مفتاح_تصنيفات : مفتاح_شركات;
+  const قائمة = (await قرأ_القائمة(مفتاح)) ?? [];
+  if (!قائمة.includes(قيمة)) {
+    await حفظ_القائمة(مفتاح, [...قائمة, قيمة]);
+  }
 }
