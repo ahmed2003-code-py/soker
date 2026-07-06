@@ -4,13 +4,14 @@ import { ترويسة_الصفحة } from "@/components/page-header";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { نموذج_فاتورة } from "../../form";
 import { احصل_قوائم_الفواتير } from "../../actions";
+import { تسمية_حساب_الخزنة } from "@/lib/enums";
 
 export const metadata = { title: "تعديل فاتورة — سُكر" };
 
 export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   const { t } = مترجم_الخادم();
-  const [فاتورة, عملاء, { تصنيفات, شركات }] = await Promise.all([
+  const [فاتورة, عملاء, { تصنيفات, شركات }, حسابات] = await Promise.all([
     prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
@@ -18,6 +19,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       orderBy: { name: "asc" },
     }),
     احصل_قوائم_الفواتير(),
+    prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
   ]);
   if (!فاتورة) notFound();
 
@@ -26,6 +28,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
       <نموذج_فاتورة
         العملاء={عملاء.map((c) => ({ ...c, balance: Number(c.balance) }))}
+        حسابات_الخزنة={حسابات.map((h) => ({ id: h.id, التسمية: تسمية_حساب_الخزنة[h.type] }))}
         التصنيفات={تصنيفات}
         الشركات={شركات}
         فاتورة={{

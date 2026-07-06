@@ -21,6 +21,16 @@ export const مخطط_بند = z.object({
   ملاحظات: z.string().trim().optional().nullable(),
 });
 
+export const مخطط_دفعة_الفاتورة = z.object({
+  المبلغ: z
+    .union([z.string(), z.number()])
+    .transform((v) => تحليل_مبلغ(v))
+    .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ الدفعة يجب أن يكون أكبر من صفر" }),
+  معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
+  طريقة_الدفع: z.string().trim().optional().nullable(),
+  ملاحظات: z.string().trim().optional().nullable(),
+});
+
 export const مخطط_فاتورة = z.object({
   رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
   معرف_العميل: z.number().int().positive("اختر العميل"),
@@ -28,6 +38,7 @@ export const مخطط_فاتورة = z.object({
   التاريخ: z.string().min(1, "التاريخ مطلوب"),
   ملاحظات: z.string().trim().optional().nullable(),
   البنود: z.array(مخطط_بند).min(1, "أضف بنداً واحداً على الأقل"),
+  الدفعة: مخطط_دفعة_الفاتورة.optional().nullable(),
 });
 
 export type مدخلات_فاتورة = z.infer<typeof مخطط_فاتورة>;

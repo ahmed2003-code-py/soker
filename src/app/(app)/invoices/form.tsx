@@ -6,6 +6,7 @@ import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { قائمة_اختيار } from "@/components/combobox";
+import { Wallet } from "lucide-react";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { نص_مبلغ } from "@/components/money-text";
 import { useإشعار } from "@/components/ui/toast";
@@ -71,9 +72,11 @@ export function نموذج_فاتورة({
   العملاء: عملاء0,
   التصنيفات: تصنيفات0,
   الشركات: شركات0,
+  حسابات_الخزنة,
   فاتورة,
 }: {
   العملاء: { id: number; name: string; phone: string | null; balance: number }[];
+  حسابات_الخزنة: { id: number; التسمية: string }[];
   التصنيفات: string[];
   الشركات: string[];
   فاتورة?: {
@@ -115,6 +118,14 @@ export function نموذج_فاتورة({
   });
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [مسودة_معلقة, تعيين_مسودة_معلقة] = React.useState(false);
+
+  // ─── الدفعة الفورية ───────────────────────────────────────
+  const [دفعة_مفعلة, تعيين_دفعة_مفعلة] = React.useState(false);
+  const [مبلغ_الدفعة, تعيين_مبلغ_الدفعة] = React.useState("");
+  const [حساب_الدفعة, تعيين_حساب_الدفعة] = React.useState(
+    حسابات_الخزنة[0] ? String(حسابات_الخزنة[0].id) : ""
+  );
+  const [طريقة_الدفع, تعيين_طريقة_الدفع] = React.useState("");
 
   // ─── refs للتنقل ───────────────────────────────────────────
   const مراجع = React.useRef<مراجع_صف[]>([]);
@@ -307,6 +318,14 @@ export function نموذج_فاتورة({
         السعر: ب.السعر,
         ملاحظات: ب.ملاحظات,
       })),
+      // دفعة فورية (فاتورة جديدة فقط)
+      ...(!فاتورة && دفعة_مفعلة && مبلغ_الدفعة && حساب_الدفعة ? {
+        الدفعة: {
+          المبلغ: مبلغ_الدفعة,
+          معرف_الحساب: Number(حساب_الدفعة),
+          طريقة_الدفع: طريقة_الدفع || null,
+        },
+      } : {}),
     };
     const r = فاتورة
       ? await تعديل_فاتورة(فاتورة.id, payload)
@@ -603,6 +622,60 @@ export function نموذج_فاتورة({
         <العنوان>{t("party.f.notes")}</العنوان>
         <منطقة_نص value={ملاحظات} onChange={(e) => تعيين_ملاحظات(e.target.value)} />
       </div>
+
+      {/* ── دفعة فورية — فاتورة جديدة فقط ── */}
+      {!فاتورة && (
+        <div className="card-soft p-4">
+          <label className="flex cursor-pointer items-center gap-2.5 select-none">
+            <input
+              type="checkbox"
+              checked={دفعة_مفعلة}
+              onChange={(e) => {
+                تعيين_دفعة_مفعلة(e.target.checked);
+                if (e.target.checked && !مبلغ_الدفعة && الإجمالي_المالي > 0) {
+                  تعيين_مبلغ_الدفعة(String(الإجمالي_المالي));
+                }
+              }}
+              className="size-4 rounded accent-primary"
+            />
+            <Wallet className="size-4 text-success" />
+            <span className="font-medium">تسجيل دفعة مع الفاتورة</span>
+          </label>
+
+          {دفعة_مفعلة && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3 border-t border-border pt-3">
+              <div className="space-y-1.5">
+                <العنوان مطلوب>المبلغ المدفوع</العنوان>
+                <الحقل
+                  selectOnFocus
+                  className="ltr-nums"
+                  value={مبلغ_الدفعة}
+                  onChange={(e) => تعيين_مبلغ_الدفعة(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <العنوان مطلوب>حساب الخزنة</العنوان>
+                <قائمة_اختيار
+                  الخيارات={حسابات_الخزنة.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }))}
+                  القيمة={حساب_الدفعة}
+                  عند_التغيير={تعيين_حساب_الدفعة}
+                  نص_بديل="اختر الحساب"
+                  قابل_للبحث={false}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <العنوان>طريقة الدفع</العنوان>
+                <الحقل
+                  value={طريقة_الدفع}
+                  onChange={(e) => تعيين_طريقة_الدفع(e.target.value)}
+                  placeholder="نقدي / تحويل / شيك…"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end gap-2">
         <الزر variant="outline" onClick={() => router.back()}>{t("common.cancel")}</الزر>
