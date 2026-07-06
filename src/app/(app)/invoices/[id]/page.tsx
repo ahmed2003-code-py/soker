@@ -306,12 +306,19 @@ export default async function صفحة_عرض_فاتورة({
           </p>
         )}
 
-        <مبدّل_رصيد_الفاتورة
-          الرصيد_الحالي={Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount)}
-          قيمة_الفاتورة={Number(فاتورة.totalAmount)}
-          إجمالي_الدفعات={فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0)}
-          اسم_العميل={فاتورة.customer.name}
-        />
+        {(() => {
+          const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
+          // الرصيد السابق = الرصيد الحالي − قيمة الفاتورة + الدفعة (لأن balance يشمل الاثنين)
+          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          return (
+            <مبدّل_رصيد_الفاتورة
+              الرصيد_الحالي={الرصيد_السابق}
+              قيمة_الفاتورة={Number(فاتورة.totalAmount)}
+              إجمالي_الدفعات={إجمالي_الدفعات}
+              اسم_العميل={فاتورة.customer.name}
+            />
+          );
+        })()}
 
         <div className="mt-6 border-t border-border pt-3 no-print">
           <سطر_المساءلة
