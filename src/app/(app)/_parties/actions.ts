@@ -32,8 +32,9 @@ export async function إنشاء_طرف(مدخلات: unknown): Promise<نتيج
         address: ب.العنوان || null,
         type: ب.النوع,
         creditLimit: ب.حد_الائتمان ?? null,
+        openingBalance: ب.رصيد_ابتدائي ?? "0",
+        balance: ب.رصيد_ابتدائي ?? "0",
         notes: ب.ملاحظات || null,
-        balance: 0,
         createdById: فاعل.id,
       },
     });
@@ -60,6 +61,9 @@ export async function تعديل_طرف(id: number, مدخلات: unknown): Prom
   const حالي = await prisma.party.findUnique({ where: { id } });
   if (!حالي) return فشل("الطرف غير موجود");
 
+  const رصيد_ابتدائي_تغيّر = ب.رصيد_ابتدائي !== undefined &&
+    Number(ب.رصيد_ابتدائي) !== Number(حالي.openingBalance);
+
   await prisma.$transaction(async (tx) => {
     await tx.party.update({
       where: { id },
@@ -69,10 +73,15 @@ export async function تعديل_طرف(id: number, مدخلات: unknown): Prom
         address: ب.العنوان || null,
         type: ب.النوع,
         creditLimit: ب.حد_الائتمان ?? null,
+        openingBalance: ب.رصيد_ابتدائي ?? حالي.openingBalance,
         notes: ب.ملاحظات || null,
         updatedById: فاعل.id,
       },
     });
+    // لو تغيّر الرصيد الابتدائي → أعد حساب سلسلة الحركات كاملاً
+    if (رصيد_ابتدائي_تغيّر) {
+      await أعد_حساب_سلسلة_الطرف(tx, id);
+    }
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "UPDATE",

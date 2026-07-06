@@ -31,15 +31,17 @@ export async function أعد_حساب_سلسلة_الطرف(
 ): Promise<Prisma.Decimal> {
   const طرف = await tx.party.findUniqueOrThrow({
     where: { id: معرف_الطرف },
-    select: { type: true },
+    select: { type: true, openingBalance: true },
   });
 
-  // تحديث جميع الأرصدة في استعلام واحد بدلاً من N تحديثات متسلسلة
+  const رصيد_ابتدائي = د(طرف.openingBalance);
+
+  // تحديث جميع الأرصدة في استعلام واحد — الرصيد يبدأ من الرصيد الابتدائي
   if (طرف.type === PartyType.CUSTOMER) {
     await tx.$executeRaw`
       WITH running AS (
         SELECT id,
-          SUM(debit - credit) OVER (ORDER BY date ASC, id ASC) AS nb
+          ${رصيد_ابتدائي} + SUM(debit - credit) OVER (ORDER BY date ASC, id ASC) AS nb
         FROM ledger_entries WHERE party_id = ${معرف_الطرف} AND deleted_at IS NULL
       )
       UPDATE ledger_entries le SET balance_after = running.nb
@@ -50,7 +52,7 @@ export async function أعد_حساب_سلسلة_الطرف(
     await tx.$executeRaw`
       WITH running AS (
         SELECT id,
-          SUM(credit - debit) OVER (ORDER BY date ASC, id ASC) AS nb
+          ${رصيد_ابتدائي} + SUM(credit - debit) OVER (ORDER BY date ASC, id ASC) AS nb
         FROM ledger_entries WHERE party_id = ${معرف_الطرف} AND deleted_at IS NULL
       )
       UPDATE ledger_entries le SET balance_after = running.nb
@@ -64,7 +66,8 @@ export async function أعد_حساب_سلسلة_الطرف(
     orderBy: [{ date: "desc" }, { id: "desc" }],
     select: { balanceAfter: true },
   });
-  const تراكمي = آخر?.balanceAfter ?? د(0);
+  // لو ما فيش حركات، الرصيد = الرصيد الابتدائي
+  const تراكمي = آخر?.balanceAfter ?? رصيد_ابتدائي;
 
   await tx.party.update({
     where: { id: معرف_الطرف },
@@ -102,7 +105,7 @@ export async function أضف_قيد(
 ) {
   const طرف = await tx.party.findUniqueOrThrow({
     where: { id: بيانات.معرف_الطرف },
-    select: { type: true },
+    select: { type: true, openingBalance: true },
   });
   // آخر حركة في السلسلة (الأحدث زمنياً) قبل إضافة القيد الجديد
   const الأخيرة = await tx.ledgerEntry.findFirst({
@@ -113,10 +116,12 @@ export async function أضف_قيد(
 
   const مدين = د(بيانات.مدين ?? 0);
   const دائن = د(بيانات.دائن ?? 0);
+  // لو ما فيش حركات سابقة، نبدأ من الرصيد الابتدائي
+  const نقطة_البداية = الأخيرة?.balanceAfter ?? طرف.openingBalance;
 
   const في_النهاية = !الأخيرة || بيانات.التاريخ >= الأخيرة.date;
   const رصيد_جديد = في_النهاية
-    ? جمع(الأخيرة?.balanceAfter ?? 0, أثر_الحركة(طرف.type, مدين, دائن))
+    ? جمع(نقطة_البداية, أثر_الحركة(طرف.type, مدين, دائن))
     : د(0); // قيد بتاريخ سابق: يُحسب في إعادة الحساب الكاملة
 
   const قيد = await tx.ledgerEntry.create({
@@ -138,13 +143,11 @@ export async function أضف_قيد(
   });
 
   if (في_النهاية) {
-    // تحديث تزايدي: رصيد الطرف = رصيد القيد الجديد (آخر السلسلة)
     await tx.party.update({
       where: { id: بيانات.معرف_الطرف },
       data: { balance: رصيد_جديد },
     });
   } else {
-    // إدراج بتاريخ سابق → أعد حساب السلسلة كاملة لتصحيح ما يليه
     await أعد_حساب_سلسلة_الطرف(tx, بيانات.معرف_الطرف);
   }
   return قيد;

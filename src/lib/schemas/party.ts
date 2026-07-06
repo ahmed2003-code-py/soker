@@ -13,6 +13,10 @@ export const مخطط_طرف = z.object({
   العنوان: z.string().trim().optional().nullable(),
   النوع: z.enum(["CUSTOMER", "SUPPLIER"]),
   حد_الائتمان: مبلغ_اختياري,
+  رصيد_ابتدائي: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => (v === null || v === undefined || v === "" ? "0" : تحليل_مبلغ(v) ?? "0")),
   ملاحظات: z.string().trim().optional().nullable(),
 });
 

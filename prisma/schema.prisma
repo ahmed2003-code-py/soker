@@ -95,9 +95,10 @@ model Party {
   phone       String?   @map("phone")
   address     String?   @map("address")
   type        PartyType @map("type")
-  creditLimit Decimal?  @map("credit_limit") @db.Decimal(18, 4)
-  balance     Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
-  notes       String?   @map("notes")
+  creditLimit     Decimal?  @map("credit_limit") @db.Decimal(18, 4)
+  openingBalance  Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
+  balance         Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
+  notes           String?   @map("notes")
   active      Boolean   @default(true) @map("active")
 
   createdById Int      @map("created_by_id")

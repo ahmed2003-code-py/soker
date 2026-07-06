@@ -17,6 +17,7 @@ export default async function صفحة_العملاء() {
     الهاتف: p.phone,
     العنوان: p.address,
     الرصيد: Number(p.balance),
+    رصيد_ابتدائي: Number(p.openingBalance),
     حد_الائتمان: p.creditLimit != null ? Number(p.creditLimit) : null,
     ملاحظات: p.notes,
     آخر_تحديث: p.updatedAt.toISOString(),

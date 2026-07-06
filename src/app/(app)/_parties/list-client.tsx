@@ -30,6 +30,7 @@ export type صف_طرف = {
   الهاتف: string | null;
   العنوان: string | null;
   الرصيد: number;
+  رصيد_ابتدائي: number;
   حد_الائتمان: number | null;
   ملاحظات: string | null;
   آخر_تحديث?: string;
@@ -172,6 +173,9 @@ function نموذج_طرف({
   const [الهاتف, تعيين_الهاتف] = React.useState(الصف?.الهاتف ?? "");
   const [العنوان_, تعيين_العنوان] = React.useState(الصف?.العنوان ?? "");
   const [حد, تعيين_حد] = React.useState(الصف?.حد_الائتمان != null ? String(الصف.حد_الائتمان) : "");
+  const [رصيد_افتتاحي, تعيين_رصيد_افتتاحي] = React.useState(
+    الصف?.رصيد_ابتدائي != null && الصف.رصيد_ابتدائي !== 0 ? String(الصف.رصيد_ابتدائي) : ""
+  );
   const [ملاحظات, تعيين_ملاحظات] = React.useState(الصف?.ملاحظات ?? "");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
@@ -183,6 +187,7 @@ function نموذج_طرف({
       العنوان: العنوان_,
       النوع,
       حد_الائتمان: حد || null,
+      رصيد_ابتدائي: رصيد_افتتاحي || "0",
       ملاحظات,
     };
     const r = الصف ? await تعديل_طرف(الصف.id, payload) : await إنشاء_طرف(payload);
@@ -211,6 +216,15 @@ function نموذج_طرف({
           <div className="space-y-1.5">
             <العنوان>{t("party.f.credit_limit")}</العنوان>
             <الحقل selectOnFocus value={حد} onChange={(e) => تعيين_حد(e.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>الرصيد الابتدائي</العنوان>
+            <الحقل
+              selectOnFocus
+              value={رصيد_افتتاحي}
+              onChange={(e) => تعيين_رصيد_افتتاحي(e.target.value)}
+              placeholder="0.00 — الرصيد قبل استخدام البرنامج"
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <العنوان>{t("party.f.address")}</العنوان>
