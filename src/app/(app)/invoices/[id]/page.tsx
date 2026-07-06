@@ -25,6 +25,10 @@ export default async function صفحة_عرض_فاتورة({
         lines: { orderBy: [{ category: "asc" }, { id: "asc" }] },
         createdBy: { select: { name: true } },
         updatedBy: { select: { name: true } },
+        treasuryTxns: {
+          where: { deletedAt: null },
+          select: { amount: true },
+        },
       },
     }),
     prisma.setting.findMany({
@@ -305,6 +309,7 @@ export default async function صفحة_عرض_فاتورة({
         <مبدّل_رصيد_الفاتورة
           الرصيد_الحالي={Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount)}
           قيمة_الفاتورة={Number(فاتورة.totalAmount)}
+          إجمالي_الدفعات={فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0)}
           اسم_العميل={فاتورة.customer.name}
         />
 

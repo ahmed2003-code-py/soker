@@ -616,7 +616,8 @@ export function نموذج_فاتورة({
             const العميل_المحدد = عملاء.find((c) => String(c.id) === عميل);
             if (!العميل_المحدد || الإجمالي_المالي === 0) return null;
             const الرصيد_الحالي = العميل_المحدد.balance;
-            const الرصيد_الجديد = الرصيد_الحالي + الإجمالي_المالي;
+            const مبلغ_دفعة_فعلي = دفعة_مفعلة ? (ع(مبلغ_الدفعة) || 0) : 0;
+            const الرصيد_الجديد = الرصيد_الحالي + الإجمالي_المالي - مبلغ_دفعة_فعلي;
             return (
               <div className="mt-3 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm space-y-1.5">
                 <div className="flex justify-between text-muted-foreground">
@@ -627,6 +628,12 @@ export function نموذج_فاتورة({
                   <span>+ هذه الفاتورة</span>
                   <نص_مبلغ القيمة={الإجمالي_المالي} />
                 </div>
+                {مبلغ_دفعة_فعلي > 0 && (
+                  <div className="flex justify-between text-success">
+                    <span>− الدفعة المسجّلة</span>
+                    <نص_مبلغ القيمة={مبلغ_دفعة_فعلي} النوع="إيراد" />
+                  </div>
+                )}
                 <div className="flex justify-between border-t border-primary-blue/20 pt-1.5 font-semibold text-primary-blue">
                   <span>الرصيد بعد الفاتورة</span>
                   <نص_مبلغ القيمة={Math.abs(الرصيد_الجديد)} النوع={الرصيد_الجديد > 0 ? "مصروف" : "محايد"} />

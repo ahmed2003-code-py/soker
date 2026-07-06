@@ -4,14 +4,16 @@ import * as React from "react";
 export function مبدّل_رصيد_الفاتورة({
   الرصيد_الحالي,
   قيمة_الفاتورة,
+  إجمالي_الدفعات = 0,
   اسم_العميل,
 }: {
   الرصيد_الحالي: number;
   قيمة_الفاتورة: number;
+  إجمالي_الدفعات?: number;
   اسم_العميل: string;
 }) {
   const [مُظهَر, تعيين_مُظهَر] = React.useState(false);
-  const الرصيد_الجديد = الرصيد_الحالي + قيمة_الفاتورة;
+  const الرصيد_الجديد = الرصيد_الحالي + قيمة_الفاتورة - إجمالي_الدفعات;
 
   const نص_رصيد = (r: number) => {
     const مبلغ = Math.abs(r).toLocaleString("en-US", { minimumFractionDigits: 2 });
@@ -49,6 +51,14 @@ export function مبدّل_رصيد_الفاتورة({
               {قيمة_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })} ج.م
             </span>
           </div>
+          {إجمالي_الدفعات > 0 && (
+            <div className="flex justify-between text-green-700 print:text-black/70">
+              <span>− دفعة مسجّلة مع الفاتورة</span>
+              <span className="ltr-nums">
+                {إجمالي_الدفعات.toLocaleString("en-US", { minimumFractionDigits: 2 })} ج.م
+              </span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-foreground/20 pt-1.5 font-bold print:text-black">
             <span>الرصيد الإجمالي بعد الفاتورة</span>
             <span className="ltr-nums">{نص_رصيد(الرصيد_الجديد)}</span>
