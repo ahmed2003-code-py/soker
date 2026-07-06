@@ -25,10 +25,12 @@ export async function إنشاء_طرف(مدخلات: unknown): Promise<نتيج
   const ب = t.data;
 
   const طرف = await prisma.$transaction(async (tx) => {
+    const أرقام = (ب.أرقام_الهواتف ?? []).filter((h) => h.رقم.trim());
     const p = await tx.party.create({
       data: {
         name: ب.الاسم,
-        phone: ب.الهاتف || null,
+        phone: أرقام[0]?.رقم || ب.الهاتف || null,
+        phones: أرقام as object[],
         address: ب.العنوان || null,
         type: ب.النوع,
         creditLimit: ب.حد_الائتمان ?? null,
@@ -65,11 +67,13 @@ export async function تعديل_طرف(id: number, مدخلات: unknown): Prom
     Number(ب.رصيد_ابتدائي) !== Number(حالي.openingBalance);
 
   await prisma.$transaction(async (tx) => {
+    const أرقام = (ب.أرقام_الهواتف ?? []).filter((h) => h.رقم.trim());
     await tx.party.update({
       where: { id },
       data: {
         name: ب.الاسم,
-        phone: ب.الهاتف || null,
+        phone: أرقام[0]?.رقم || ب.الهاتف || null,
+        phones: أرقام as object[],
         address: ب.العنوان || null,
         type: ب.النوع,
         creditLimit: ب.حد_الائتمان ?? null,

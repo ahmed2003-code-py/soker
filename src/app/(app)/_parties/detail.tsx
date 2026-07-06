@@ -96,8 +96,20 @@ export async function تفاصيل_الطرف({
 
       <div className="mb-4 card-soft p-4">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-          <span>
-            {t("party.col.phone")}: <span className="ltr-nums">{طرف.phone || "—"}</span>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span className="text-muted-foreground">{t("party.col.phone")}:</span>
+            {(() => {
+              const أرقام = طرف.phones as { رقم: string; تسمية: string | null }[];
+              if (Array.isArray(أرقام) && أرقام.length > 0) {
+                return أرقام.map((ه, i) => (
+                  <span key={i} className="ltr-nums">
+                    {ه.رقم}
+                    {ه.تسمية && <span className="text-muted-foreground mr-1 text-xs">({ه.تسمية})</span>}
+                  </span>
+                ));
+              }
+              return <span className="ltr-nums">{طرف.phone || "—"}</span>;
+            })()}
           </span>
           <span>{t("party.f.address")}: {طرف.address || "—"}</span>
           {طرف.creditLimit != null && (

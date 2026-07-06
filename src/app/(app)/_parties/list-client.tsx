@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, X } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -22,12 +22,14 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import type { مفتاح_ترجمة } from "@/lib/i18n";
+import type { هاتف_طرف } from "@/lib/schemas/party";
 import { إنشاء_طرف, تعديل_طرف, حذف_طرف } from "./actions";
 
 export type صف_طرف = {
   id: number;
   الاسم: string;
   الهاتف: string | null;
+  أرقام_الهواتف: هاتف_طرف[];
   العنوان: string | null;
   الرصيد: number;
   رصيد_ابتدائي: number;
@@ -170,20 +172,32 @@ function نموذج_طرف({
     ? النوع === "CUSTOMER" ? t("party.edit_customer") : t("party.edit_supplier")
     : النوع === "CUSTOMER" ? t("party.add_customer") : t("party.add_supplier");
   const [الاسم, تعيين_الاسم] = React.useState(الصف?.الاسم ?? "");
-  const [الهاتف, تعيين_الهاتف] = React.useState(الصف?.الهاتف ?? "");
+  const [أرقام, تعيين_أرقام] = React.useState<هاتف_طرف[]>(() => {
+    if (الصف?.أرقام_الهواتف?.length) return الصف.أرقام_الهواتف;
+    if (الصف?.الهاتف) return [{ رقم: الصف.الهاتف, تسمية: null }];
+    return [{ رقم: "", تسمية: null }];
+  });
   const [العنوان_, تعيين_العنوان] = React.useState(الصف?.العنوان ?? "");
   const [حد, تعيين_حد] = React.useState(الصف?.حد_الائتمان != null ? String(الصف.حد_الائتمان) : "");
   const [رصيد_افتتاحي, تعيين_رصيد_افتتاحي] = React.useState(
     الصف?.رصيد_ابتدائي != null && الصف.رصيد_ابتدائي !== 0 ? String(الصف.رصيد_ابتدائي) : ""
   );
   const [ملاحظات, تعيين_ملاحظات] = React.useState(الصف?.ملاحظات ?? "");
+
+  function عدّل_رقم(idx: number, حقل: keyof هاتف_طرف, قيمة: string) {
+    تعيين_أرقام((prev) => prev.map((h, i) => i === idx ? { ...h, [حقل]: قيمة || null } : h));
+  }
+  function احذف_رقم(idx: number) {
+    تعيين_أرقام((prev) => prev.filter((_, i) => i !== idx));
+  }
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   async function حفظ() {
     تعيين_جارٍ(true);
     const payload = {
       الاسم,
-      الهاتف,
+      الهاتف: أرقام[0]?.رقم || null,
+      أرقام_الهواتف: أرقام.filter((h) => h.رقم.trim()),
       العنوان: العنوان_,
       النوع,
       حد_الائتمان: حد || null,
@@ -209,9 +223,40 @@ function نموذج_طرف({
             <العنوان مطلوب>{t("party.col.name")}</العنوان>
             <الحقل autoFocus value={الاسم} onChange={(e) => تعيين_الاسم(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2 sm:col-span-2">
             <العنوان>{t("party.col.phone")}</العنوان>
-            <الحقل className="ltr-nums" value={الهاتف} onChange={(e) => تعيين_الهاتف(e.target.value)} />
+            {أرقام.map((هاتف, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <الحقل
+                  className="ltr-nums flex-1"
+                  value={هاتف.رقم}
+                  onChange={(e) => عدّل_رقم(idx, "رقم", e.target.value)}
+                  placeholder="رقم الهاتف"
+                />
+                <الحقل
+                  className="flex-1 text-sm"
+                  value={هاتف.تسمية ?? ""}
+                  onChange={(e) => عدّل_رقم(idx, "تسمية", e.target.value)}
+                  placeholder="تسمية — مثلاً: المحاسب"
+                />
+                {أرقام.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => احذف_رقم(idx)}
+                    className="shrink-0 rounded-lg p-1 text-muted-foreground hover:text-danger hover:bg-danger/10"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => تعيين_أرقام((prev) => [...prev, { رقم: "", تسمية: null }])}
+              className="flex items-center gap-1 text-sm text-primary-blue hover:underline"
+            >
+              <Plus className="size-3.5" /> إضافة رقم آخر
+            </button>
           </div>
           <div className="space-y-1.5">
             <العنوان>{t("party.f.credit_limit")}</العنوان>

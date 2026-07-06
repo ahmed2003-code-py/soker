@@ -131,7 +131,12 @@ export function نموذج_فاتورة({
     const refs = مراجع.current[i];
     if (!refs) return;
     if (idx < ترتيب.length - 1) {
-      refs[ترتيب[idx + 1]]?.focus();
+      const التالي = refs[ترتيب[idx + 1]];
+      التالي?.focus();
+      // لو الحقل التالي combobox (زر) → افتحه فوراً بدل ما المستخدم يضغط Enter مرة تانية
+      if (التالي instanceof HTMLButtonElement) {
+        requestAnimationFrame(() => التالي.click());
+      }
     } else {
       // آخر حقل في السطر → أضف سطراً جديداً وانتقل إليه
       if (i === بنود.length - 1) {

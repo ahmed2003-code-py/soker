@@ -15,6 +15,7 @@ export default async function صفحة_العملاء() {
     id: p.id,
     الاسم: p.name,
     الهاتف: p.phone,
+    أرقام_الهواتف: (p.phones as { رقم: string; تسمية: string | null }[]) ?? [],
     العنوان: p.address,
     الرصيد: Number(p.balance),
     رصيد_ابتدائي: Number(p.openingBalance),

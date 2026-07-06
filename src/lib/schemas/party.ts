@@ -7,9 +7,17 @@ const مبلغ_اختياري = z
   .transform((v) => (v === null || v === undefined || v === "" ? null : تحليل_مبلغ(v)))
   .refine((v) => v === null || v !== null, { message: "قيمة غير صالحة" });
 
+const هاتف_واحد = z.object({
+  رقم: z.string().trim().min(1),
+  تسمية: z.string().trim().optional().nullable(),
+});
+
+export type هاتف_طرف = z.infer<typeof هاتف_واحد>;
+
 export const مخطط_طرف = z.object({
   الاسم: z.string().trim().min(2, "الاسم مطلوب"),
   الهاتف: z.string().trim().optional().nullable(),
+  أرقام_الهواتف: z.array(هاتف_واحد).optional().default([]),
   العنوان: z.string().trim().optional().nullable(),
   النوع: z.enum(["CUSTOMER", "SUPPLIER"]),
   حد_الائتمان: مبلغ_اختياري,

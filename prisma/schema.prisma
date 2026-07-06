@@ -98,6 +98,7 @@ model Party {
   creditLimit     Decimal?  @map("credit_limit") @db.Decimal(18, 4)
   openingBalance  Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
   balance         Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
+  phones          Json      @default("[]") @map("phones")
   notes           String?   @map("notes")
   active      Boolean   @default(true) @map("active")
 
