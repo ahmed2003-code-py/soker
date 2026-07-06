@@ -27,7 +27,7 @@ export const مخطط_دفعة_الفاتورة = z.object({
     .transform((v) => تحليل_مبلغ(v))
     .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ الدفعة يجب أن يكون أكبر من صفر" }),
   معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
-  طريقة_الدفع: z.string().trim().optional().nullable(),
+  معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
   ملاحظات: z.string().trim().optional().nullable(),
 });
 
