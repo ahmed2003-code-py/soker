@@ -316,7 +316,7 @@ export function نموذج_فاتورة({
 
   async function احفظ() {
     if (!عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
-    if (!فاتورة && دفعة_مفعلة && له_فرعية_دفعة && !حساب_فرعي_الدفعة) {
+    if (دفعة_مفعلة && له_فرعية_دفعة && !حساب_فرعي_الدفعة) {
       const تسمية = نوع_حساب_الدفعة === "BANK" ? "البنك" : نوع_حساب_الدفعة === "VODAFONE" ? "المحفظة" : "حساب إنستا";
       return إشعار.خطأ(`يرجى اختيار ${تسمية} للدفعة`);
     }
@@ -337,8 +337,8 @@ export function نموذج_فاتورة({
         السعر: ب.السعر,
         ملاحظات: ب.ملاحظات,
       })),
-      // دفعة فورية (فاتورة جديدة فقط)
-      ...(!فاتورة && دفعة_مفعلة && مبلغ_الدفعة && حساب_الدفعة ? {
+      // دفعة مع الفاتورة
+      ...(دفعة_مفعلة && مبلغ_الدفعة && حساب_الدفعة ? {
         الدفعة: {
           المبلغ: مبلغ_الدفعة,
           معرف_الحساب: Number(حساب_الدفعة),
@@ -642,9 +642,8 @@ export function نموذج_فاتورة({
         <منطقة_نص value={ملاحظات} onChange={(e) => تعيين_ملاحظات(e.target.value)} />
       </div>
 
-      {/* ── دفعة فورية — فاتورة جديدة فقط ── */}
-      {!فاتورة && (
-        <div className="card-soft p-4">
+      {/* ── تسجيل دفعة ── */}
+      <div className="card-soft p-4">
           <label className="flex cursor-pointer items-center gap-2.5 select-none">
             <input
               type="checkbox"
@@ -701,7 +700,6 @@ export function نموذج_فاتورة({
             </div>
           )}
         </div>
-      )}
 
       <div className="flex justify-end gap-2">
         <الزر variant="outline" onClick={() => router.back()}>{t("common.cancel")}</الزر>
