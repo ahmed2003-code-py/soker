@@ -48,6 +48,21 @@ export function قائمة_اختيار({
   const [بحث, تعيين_بحث] = React.useState("");
   const [تعديل_نشط, تعيين_تعديل_نشط] = React.useState<string | null>(null);
   const [نص_التعديل, تعيين_نص_التعديل] = React.useState("");
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  const itemButtonsRef = React.useRef<HTMLButtonElement[]>([]);
+
+  // عند الفتح: ركّز على أول عنصر مباشرة
+  React.useEffect(() => {
+    if (مفتوح) {
+      requestAnimationFrame(() => {
+        const أول = itemButtonsRef.current[0];
+        if (أول) أول.focus();
+        else searchRef.current?.focus();
+      });
+    } else {
+      تعيين_بحث("");
+    }
+  }, [مفتوح]);
 
   const المختار = الخيارات.find((x) => x.القيمة === القيمة);
   const مُصفّاة = بحث
@@ -81,6 +96,9 @@ export function قائمة_اختيار({
 
   const يملك_أدوات = !!(عند_التعديل || عند_الحذف);
 
+  // صفّر مصفوفة الأزرار قبل كل render — تُملأ بعد الـ commit عبر ref callbacks
+  itemButtonsRef.current = [];
+
   return (
     <منبثقة open={مفتوح} onOpenChange={تعيين_مفتوح}>
       <مشغل_منبثقة asChild>
@@ -105,9 +123,15 @@ export function قائمة_اختيار({
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <Search className="size-4 opacity-50" />
             <input
-              autoFocus
+              ref={searchRef}
               value={بحث}
               onChange={(e) => تعيين_بحث(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  itemButtonsRef.current[0]?.focus();
+                }
+              }}
               placeholder={نص_البحث}
               className="h-7 w-full bg-transparent text-sm outline-none"
             />
@@ -117,6 +141,25 @@ export function قائمة_اختيار({
         <div
           className="max-h-60 overflow-y-auto overscroll-contain p-1"
           onWheel={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            const أزرار = itemButtonsRef.current.filter(Boolean);
+            const المُركّز = document.activeElement as HTMLButtonElement;
+            const الفهرس = أزرار.indexOf(المُركّز);
+
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              const التالي = أزرار[الفهرس + 1];
+              if (التالي) التالي.focus();
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              if (الفهرس <= 0) searchRef.current?.focus();
+              else أزرار[الفهرس - 1]?.focus();
+            } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              // أي حرف → افتح البحث وابدأ الكتابة
+              searchRef.current?.focus();
+              تعيين_بحث((prev) => prev + e.key);
+            }
+          }}
         >
           {مُصفّاة.length === 0 && !يمكن_الإضافة && (
             <p className="px-3 py-4 text-center text-sm text-muted-foreground">لا نتائج</p>
@@ -161,8 +204,9 @@ export function قائمة_اختيار({
               <div key={x.القيمة} className="group flex items-center gap-0.5 rounded-lg hover:bg-appgray">
                 <button
                   type="button"
+                  ref={(el) => { if (el) itemButtonsRef.current.push(el); }}
                   onClick={() => اختر(x)}
-                  className="flex flex-1 items-center justify-between px-3 py-2 text-sm"
+                  className="flex flex-1 items-center justify-between px-3 py-2 text-sm focus:outline-none focus:bg-appgray"
                 >
                   <span>{x.التسمية}</span>
                   {x.القيمة === القيمة && <Check className="size-4 text-primary-blue" />}
