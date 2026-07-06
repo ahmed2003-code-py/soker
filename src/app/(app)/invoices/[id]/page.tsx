@@ -6,6 +6,7 @@ import { سطر_المساءلة } from "@/components/accountability-line";
 import { تفقيط } from "@/lib/tafqit";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شريط_إجراءات_الفاتورة } from "./actions-bar";
+import { مبدّل_رصيد_الفاتورة } from "./balance-toggle";
 
 export const metadata = { title: "عرض فاتورة — سُكر" };
 
@@ -300,6 +301,12 @@ export default async function صفحة_عرض_فاتورة({
             {فاتورة.notes}
           </p>
         )}
+
+        <مبدّل_رصيد_الفاتورة
+          الرصيد_الحالي={Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount)}
+          قيمة_الفاتورة={Number(فاتورة.totalAmount)}
+          اسم_العميل={فاتورة.customer.name}
+        />
 
         <div className="mt-6 border-t border-border pt-3 no-print">
           <سطر_المساءلة
