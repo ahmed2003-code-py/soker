@@ -14,15 +14,22 @@ export type بند_إدخال = {
   ملاحظات?: string | null;
 };
 
-/** رقم فاتورة تسلسلي فريد آمن للتزامن (تحديث ذرّي لعدّاد الإعدادات). */
+/**
+ * رقم فاتورة تسلسلي فريد آمن للتزامن.
+ * يأخذ MAX(number) الفعلي من الجدول ويُضيف 1 — هكذا لا يُخلّف الحذفُ فجوات
+ * ولا يتعارض العداد مع الواقع. العداد في settings يتزامن معه.
+ */
 export async function احصل_رقم_فاتورة_جديد(tx: عميل_معاملة): Promise<number> {
-  const نتيجة = await tx.$queryRaw<{ value: string }[]>`
-    UPDATE settings SET value = ((value::int) + 1)::text
-    WHERE key = 'عداد_الفواتير'
-    RETURNING value
+  const صف = await tx.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX(number) AS max FROM invoices
   `;
-  if (!نتيجة[0]) throw new Error("عدّاد الفواتير غير مُهيّأ");
-  return Number(نتيجة[0].value);
+  const رقم = (صف[0]?.max ?? 0) + 1;
+  // أبقِ العداد متزامناً مع الواقع
+  await tx.$executeRaw`
+    UPDATE settings SET value = ${String(رقم)}
+    WHERE key = 'عداد_الفواتير'
+  `;
+  return رقم;
 }
 
 /** حساب إجماليات الفاتورة. التسعير بالوزن: مجموع البند = السعر × الوزن. */

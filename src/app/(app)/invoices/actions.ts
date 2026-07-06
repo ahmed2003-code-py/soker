@@ -17,10 +17,10 @@ import { مخطط_فاتورة } from "@/lib/schemas/invoice";
 
 /** يُرجع رقم الفاتورة التالي دون تعديل العدّاد (للعرض المبدئي في النموذج) */
 export async function احصل_رقم_الفاتورة_التالي(): Promise<number> {
-  const r = await prisma.$queryRaw<{ value: string }[]>`
-    SELECT (value::int + 1)::text AS value FROM settings WHERE key = 'عداد_الفواتير'
+  const r = await prisma.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX(number) AS max FROM invoices
   `;
-  return r[0] ? Number(r[0].value) : 1;
+  return (r[0]?.max ?? 0) + 1;
 }
 
 export async function إنشاء_فاتورة(مدخلات: unknown): Promise<نتيجة<{ id: number; الرقم: number }>> {
@@ -193,6 +193,12 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
   await prisma.$transaction(async (tx) => {
     await اعكس_قيود_الفاتورة(tx, id, فاتورة.customerId);
     await tx.invoice.delete({ where: { id } }); // البنود Cascade
+    // أعِد العداد لـ MAX الفعلي بعد الحذف — يمنع الفجوات في الترقيم
+    await tx.$executeRaw`
+      UPDATE settings
+      SET value = COALESCE((SELECT MAX(number)::text FROM invoices), '0')
+      WHERE key = 'عداد_الفواتير'
+    `;
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "DELETE",
