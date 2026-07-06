@@ -11,7 +11,7 @@ export default async function صفحة_فاتورة_جديدة() {
   const [عملاء, { تصنيفات, شركات }] = await Promise.all([
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
-      select: { id: true, name: true, phone: true },
+      select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),
     احصل_قوائم_الفواتير(),
@@ -20,7 +20,7 @@ export default async function صفحة_فاتورة_جديدة() {
     <div>
       <ترويسة_الصفحة العنوان={t("inv.new")} الوصف={t("inv.new_subtitle")} />
       <نموذج_فاتورة
-        العملاء={عملاء}
+        العملاء={عملاء.map((c) => ({ ...c, balance: Number(c.balance) }))}
         التصنيفات={تصنيفات}
         الشركات={شركات}
       />

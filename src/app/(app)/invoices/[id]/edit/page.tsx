@@ -14,7 +14,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
     prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
-      select: { id: true, name: true, phone: true },
+      select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),
     احصل_قوائم_الفواتير(),
@@ -25,7 +25,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
     <div>
       <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
       <نموذج_فاتورة
-        العملاء={عملاء}
+        العملاء={عملاء.map((c) => ({ ...c, balance: Number(c.balance) }))}
         التصنيفات={تصنيفات}
         الشركات={شركات}
         فاتورة={{

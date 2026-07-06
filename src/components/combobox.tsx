@@ -201,12 +201,12 @@ export function قائمة_اختيار({
               </div>
             ) : (
               /* الوضع العادي */
-              <div key={x.القيمة} className="group flex items-center gap-0.5 rounded-lg hover:bg-appgray">
+              <div key={x.القيمة} className="group flex items-center gap-0.5 rounded-lg hover:bg-primary-blue/10 focus-within:bg-primary-blue/10">
                 <button
                   type="button"
                   ref={(el) => { if (el) itemButtonsRef.current.push(el); }}
                   onClick={() => اختر(x)}
-                  className="flex flex-1 items-center justify-between px-3 py-2 text-sm focus:outline-none focus:bg-appgray"
+                  className="flex flex-1 items-center justify-between px-3 py-2 text-sm focus:outline-none focus:text-primary-blue"
                 >
                   <span>{x.التسمية}</span>
                   {x.القيمة === القيمة && <Check className="size-4 text-primary-blue" />}

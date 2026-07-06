@@ -73,7 +73,7 @@ export function نموذج_فاتورة({
   الشركات: شركات0,
   فاتورة,
 }: {
-  العملاء: { id: number; name: string; phone: string | null }[];
+  العملاء: { id: number; name: string; phone: string | null; balance: number }[];
   التصنيفات: string[];
   الشركات: string[];
   فاتورة?: {
@@ -282,7 +282,7 @@ export function نموذج_فاتورة({
   async function أضف_عميل(الاسم: string) {
     const r = await إنشاء_طرف({ الاسم, النوع: "CUSTOMER" });
     if (!r.نجاح || !r.بيانات) return إشعار.خطأ(r.رسالة || t("inv.f.customer_add_err"));
-    const جديد = { id: r.بيانات.id, name: الاسم, phone: null };
+    const جديد = { id: r.بيانات.id, name: الاسم, phone: null, balance: 0 };
     تعيين_عملاء((س) => [...س, جديد]);
     تعيين_عميل(String(جديد.id));
     إشعار.نجاح(t("inv.f.customer_added"));
@@ -572,6 +572,30 @@ export function نموذج_فاتورة({
             <span className="font-semibold">{t("inv.f.financial_total")}</span>
             <نص_مبلغ القيمة={الإجمالي_المالي} />
           </div>
+
+          {/* رصيد العميل بعد الفاتورة */}
+          {(() => {
+            const العميل_المحدد = عملاء.find((c) => String(c.id) === عميل);
+            if (!العميل_المحدد || الإجمالي_المالي === 0) return null;
+            const الرصيد_الحالي = العميل_المحدد.balance;
+            const الرصيد_الجديد = الرصيد_الحالي + الإجمالي_المالي;
+            return (
+              <div className="mt-3 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm space-y-1.5">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>رصيد العميل الحالي</span>
+                  <نص_مبلغ القيمة={Math.abs(الرصيد_الحالي)} النوع={الرصيد_الحالي > 0 ? "مصروف" : "محايد"} />
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>+ هذه الفاتورة</span>
+                  <نص_مبلغ القيمة={الإجمالي_المالي} />
+                </div>
+                <div className="flex justify-between border-t border-primary-blue/20 pt-1.5 font-semibold text-primary-blue">
+                  <span>الرصيد بعد الفاتورة</span>
+                  <نص_مبلغ القيمة={Math.abs(الرصيد_الجديد)} النوع={الرصيد_الجديد > 0 ? "مصروف" : "محايد"} />
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
