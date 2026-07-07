@@ -156,8 +156,10 @@ export function قائمة_اختيار({
               else أزرار[الفهرس - 1]?.focus();
             } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
               // أي حرف → افتح البحث وابدأ الكتابة
-              searchRef.current?.focus();
+              // preventDefault يمنع الحرف من الانتقال للـ input بعد focus() ويمنع التضاعف
+              e.preventDefault();
               تعيين_بحث((prev) => prev + e.key);
+              searchRef.current?.focus();
             }
           }}
         >
