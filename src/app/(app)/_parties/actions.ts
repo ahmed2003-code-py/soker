@@ -17,6 +17,37 @@ import {
   مخطط_حركة_يدوية,
 } from "@/lib/schemas/party";
 
+/** تصفير أرصدة جميع الموردين (opening balance = 0 + إعادة حساب) */
+export async function تصفير_أرصدة_الموردين(): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+
+  const موردون = await prisma.party.findMany({
+    where: { type: "SUPPLIER" },
+    select: { id: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.party.updateMany({
+      where: { type: "SUPPLIER" },
+      data: { openingBalance: "0" },
+    });
+    for (const مورد of موردون) {
+      await أعد_حساب_سلسلة_الطرف(tx, مورد.id);
+    }
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "UPDATE",
+      نوع_الكيان: "الطرف",
+      معرف_الكيان: 0,
+      التفاصيل: { عملية: "تصفير_أرصدة_الموردين", عدد: موردون.length },
+    });
+  }, { timeout: 60000 });
+
+  revalidatePath("/suppliers");
+  return نجح(undefined, `تم تصفير الرصيد الابتدائي لـ ${موردون.length} مورد`);
+}
+
 /** تعيين الرصيد الابتدائي للطرف وإعادة حساب السلسلة */
 export async function تعديل_الرصيد_الابتدائي(معرف_الطرف: number, رصيد_جديد: string): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();

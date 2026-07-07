@@ -4,13 +4,15 @@ import { useRouter } from "next/navigation";
 import { Printer, Pencil, Trash2, ArrowRight, MessageCircle } from "lucide-react";
 import * as React from "react";
 import { الزر } from "@/components/ui/button";
+import { الحقل } from "@/components/ui/input";
+import { العنوان } from "@/components/ui/label";
+import { الحوار, محتوى_الحوار, رأس_الحوار, عنوان_الحوار, تذييل_الحوار } from "@/components/ui/dialog";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حذف_فاتورة } from "../actions";
 
-/** يحوّل رقم مصري لصيغة wa.me الدولية: 01xxxxxxxx → 201xxxxxxxx */
 function رقم_واتساب(هاتف: string): string {
   const نظيف = هاتف.replace(/\D/g, "");
   if (نظيف.startsWith("20")) return نظيف;
@@ -39,9 +41,10 @@ export function شريط_إجراءات_الفاتورة({
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const [حذف, تعيين_حذف] = React.useState(false);
+  const [واتساب_مفتوح, تعيين_واتساب_مفتوح] = React.useState(false);
+  const [رقم_الهاتف, تعيين_رقم_الهاتف] = React.useState("");
 
-  const رابط_واتساب = React.useMemo(() => {
-    if (!هاتف_العميل) return null;
+  function ابن_رسالة_واتساب(رقم: string) {
     const رقم_الفاتورة = String(الرقم).padStart(7, "0");
     const مبلغ = الإجمالي != null
       ? الإجمالي.toLocaleString("en-US", { minimumFractionDigits: 2 }) + " ج.م"
@@ -56,11 +59,9 @@ export function شريط_إجراءات_الفاتورة({
       مبلغ ? `الإجمالي: ${مبلغ}` : "",
       `─────────────────`,
       `شكراً لتعاملكم معنا`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    return `https://wa.me/${رقم_واتساب(هاتف_العميل)}?text=${encodeURIComponent(رسالة)}`;
-  }, [هاتف_العميل, الرقم, الإجمالي, اسم_العميل, اسم_الشركة, التاريخ]);
+    ].filter(Boolean).join("\n");
+    return `https://wa.me/${رقم_واتساب(رقم)}?text=${encodeURIComponent(رسالة)}`;
+  }
 
   return (
     <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -69,14 +70,16 @@ export function شريط_إجراءات_الفاتورة({
       </الزر>
       <div className="flex flex-wrap gap-2">
         <سجل_التغييرات النوع="الفاتورة" المعرف={المعرف} />
-        {رابط_واتساب && (
-          <الزر variant="outline" asChild>
-            <a href={رابط_واتساب} target="_blank" rel="noopener noreferrer">
-              <MessageCircle className="size-4 text-green-600" />
-              واتساب
-            </a>
-          </الزر>
-        )}
+        <الزر
+          variant="outline"
+          onClick={() => {
+            تعيين_رقم_الهاتف(هاتف_العميل ?? "");
+            تعيين_واتساب_مفتوح(true);
+          }}
+        >
+          <MessageCircle className="size-4 text-green-600" />
+          واتساب
+        </الزر>
         <الزر variant="blue" onClick={() => window.print()}>
           <Printer className="size-4" /> {t("inv.print")}
         </الزر>
@@ -89,6 +92,46 @@ export function شريط_إجراءات_الفاتورة({
           <Trash2 className="size-4" /> {t("common.delete")}
         </الزر>
       </div>
+
+      {/* حوار إرسال واتساب */}
+      <الحوار open={واتساب_مفتوح} onOpenChange={(o) => !o && تعيين_واتساب_مفتوح(false)}>
+        <محتوى_الحوار>
+          <رأس_الحوار>
+            <عنوان_الحوار>إرسال عبر واتساب</عنوان_الحوار>
+          </رأس_الحوار>
+          <div className="space-y-1.5">
+            <العنوان>رقم الهاتف</العنوان>
+            <الحقل
+              autoFocus
+              type="tel"
+              className="ltr-nums"
+              placeholder="01xxxxxxxxx"
+              value={رقم_الهاتف}
+              onChange={(e) => تعيين_رقم_الهاتف(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && رقم_الهاتف.trim()) {
+                  window.open(ابن_رسالة_واتساب(رقم_الهاتف.trim()), "_blank");
+                  تعيين_واتساب_مفتوح(false);
+                }
+              }}
+            />
+          </div>
+          <تذييل_الحوار>
+            <الزر
+              variant="success"
+              disabled={!رقم_الهاتف.trim()}
+              onClick={() => {
+                window.open(ابن_رسالة_واتساب(رقم_الهاتف.trim()), "_blank");
+                تعيين_واتساب_مفتوح(false);
+              }}
+            >
+              <MessageCircle className="size-4" /> إرسال
+            </الزر>
+            <الزر variant="outline" onClick={() => تعيين_واتساب_مفتوح(false)}>إلغاء</الزر>
+          </تذييل_الحوار>
+        </محتوى_الحوار>
+      </الحوار>
+
       <حوار_تأكيد
         مفتوح={حذف}
         عند_التغيير={تعيين_حذف}

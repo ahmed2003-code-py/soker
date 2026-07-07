@@ -23,7 +23,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import type { مفتاح_ترجمة } from "@/lib/i18n";
 import type { هاتف_طرف } from "@/lib/schemas/party";
-import { إنشاء_طرف, تعديل_طرف, حذف_طرف } from "./actions";
+import { إنشاء_طرف, تعديل_طرف, حذف_طرف, تصفير_أرصدة_الموردين } from "./actions";
 
 export type صف_طرف = {
   id: number;
@@ -65,6 +65,7 @@ export function قائمة_الأطراف({
   const نص_الفراغ = النوع === "CUSTOMER" ? t("party.empty_customers") : t("party.empty_suppliers");
   const [نموذج, تعيين_نموذج] = React.useState<{ صف?: صف_طرف } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<صف_طرف | null>(null);
+  const [تصفير_مفتوح, تعيين_تصفير_مفتوح] = React.useState(false);
 
   const أعمدة: عمود<صف_طرف>[] = [
     { المفتاح: "الاسم", العنوان: t("party.col.name"), قابل_للفرز: true },
@@ -104,7 +105,12 @@ export function قائمة_الأطراف({
 
   return (
     <>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        {النوع === "SUPPLIER" && (
+          <الزر variant="outline" onClick={() => تعيين_تصفير_مفتوح(true)}>
+            تصفير الأرصدة الابتدائية
+          </الزر>
+        )}
         <الزر onClick={() => تعيين_نموذج({})}>
           <Plus className="size-4" /> {نص_الإضافة}
         </الزر>
@@ -152,6 +158,17 @@ export function قائمة_الأطراف({
           }}
         />
       )}
+      <حوار_تأكيد
+        مفتوح={تصفير_مفتوح}
+        عند_التغيير={(o) => !o && تعيين_تصفير_مفتوح(false)}
+        العنوان="تصفير الأرصدة الابتدائية للموردين"
+        الوصف="سيتم ضبط الرصيد الابتدائي على 0 لجميع الموردين وإعادة حساب أرصدتهم. الحركات الموجودة تبقى كما هي."
+        عند_التأكيد={async () => {
+          const r = await تصفير_أرصدة_الموردين();
+          r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+          if (r.نجاح) router.refresh();
+        }}
+      />
     </>
   );
 }
