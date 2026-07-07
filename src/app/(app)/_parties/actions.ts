@@ -17,37 +17,6 @@ import {
   مخطط_حركة_يدوية,
 } from "@/lib/schemas/party";
 
-/** تصفير أرصدة جميع الموردين — يحذف كل الحركات ويضبط الرصيد على الصفر */
-export async function تصفير_أرصدة_الموردين(): Promise<نتيجة> {
-  const فاعل = await اطلب_المستخدم();
-  تحقق_الصلاحية(فاعل.role, "كتابة");
-
-  const معرفات_الموردين = await prisma.party.findMany({
-    where: { type: "SUPPLIER" },
-    select: { id: true },
-  });
-  const ids = معرفات_الموردين.map((م) => م.id);
-
-  await prisma.$transaction(async (tx) => {
-    // حذف كل حركات دفتر الأستاذ للموردين
-    await tx.ledgerEntry.deleteMany({ where: { partyId: { in: ids } } });
-    // ضبط الرصيد والرصيد الابتدائي على الصفر
-    await tx.party.updateMany({
-      where: { id: { in: ids } },
-      data: { openingBalance: "0", balance: "0" },
-    });
-    await تسجيل_عملية(tx, {
-      المستخدم: فاعل.id,
-      العملية: "UPDATE",
-      نوع_الكيان: "الطرف",
-      معرف_الكيان: 0,
-      التفاصيل: { عملية: "تصفير_أرصدة_الموردين", عدد: ids.length },
-    });
-  }, { timeout: 60000 });
-
-  revalidatePath("/suppliers");
-  return نجح(undefined, `تم تصفير ${ids.length} مورد`);
-}
 
 /** تعيين الرصيد الابتدائي للطرف وإعادة حساب السلسلة */
 export async function تعديل_الرصيد_الابتدائي(معرف_الطرف: number, رصيد_جديد: string): Promise<نتيجة> {
