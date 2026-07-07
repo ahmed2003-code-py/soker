@@ -7,14 +7,18 @@ import { زر_طباعة } from "./print-button";
 
 export default async function صفحة_مشاركة_فاتورة({
   params,
+  searchParams,
 }: {
   params: { token: string };
+  searchParams: { balance?: string };
 }) {
+  const مع_رصيد = searchParams.balance === "1";
   const فاتورة = await prisma.invoice.findUnique({
     where: { shareToken: params.token },
     include: {
       customer: true,
       lines: { orderBy: [{ category: "asc" }, { id: "asc" }] },
+      treasuryTxns: مع_رصيد ? { select: { amount: true } } : false,
     },
   });
   if (!فاتورة) notFound();
@@ -202,6 +206,45 @@ export default async function صفحة_مشاركة_فاتورة({
             {فاتورة.notes}
           </p>
         )}
+
+        {/* قسم الرصيد — يظهر فقط لو ?balance=1 */}
+        {مع_رصيد && (() => {
+          const إجمالي_الدفعات = (فاتورة.treasuryTxns ?? []).reduce((s, t) => s + Number(t.amount), 0);
+          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          const الرصيد_الجديد = الرصيد_السابق + Number(فاتورة.totalAmount) - إجمالي_الدفعات;
+          const نص_رصيد = (r: number) => {
+            const مبلغ = Math.abs(r).toLocaleString("en-US", { minimumFractionDigits: 2 });
+            const نوع = r > 0 ? "مديونية" : r < 0 ? "سلفة" : "مُسوَّى";
+            return `${مبلغ} ج.م  (${نوع})`;
+          };
+          return (
+            <div className="mt-5 rounded-xl border border-gray-300 p-3 text-[13px] space-y-1.5">
+              <p className="font-semibold mb-2">رصيد العميل: {فاتورة.customer.name}</p>
+              <div className="flex justify-between text-gray-500">
+                <span>الرصيد السابق</span>
+                <span className="ltr-nums">{نص_رصيد(الرصيد_السابق)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>+ هذه الفاتورة</span>
+                <span className="ltr-nums">
+                  {Number(فاتورة.totalAmount).toLocaleString("en-US", { minimumFractionDigits: 2 })} ج.م
+                </span>
+              </div>
+              {إجمالي_الدفعات > 0 && (
+                <div className="flex justify-between text-green-700">
+                  <span>− دفعة مسجّلة مع الفاتورة</span>
+                  <span className="ltr-nums">
+                    {إجمالي_الدفعات.toLocaleString("en-US", { minimumFractionDigits: 2 })} ج.م
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-gray-300 pt-1.5 font-bold">
+                <span>الرصيد الإجمالي بعد الفاتورة</span>
+                <span className="ltr-nums">{نص_رصيد(الرصيد_الجديد)}</span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

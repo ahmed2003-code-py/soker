@@ -13,6 +13,15 @@ export function مبدّل_رصيد_الفاتورة({
   اسم_العميل: string;
 }) {
   const [مُظهَر, تعيين_مُظهَر] = React.useState(false);
+
+  function عند_التبديل(قيمة: boolean) {
+    تعيين_مُظهَر(قيمة);
+    // نحدّث الـ URL بـ ?balance=1 عشان actions-bar يقراه لما ينسخ الرابط أو يبعت واتساب
+    const url = new URL(window.location.href);
+    if (قيمة) url.searchParams.set("balance", "1");
+    else url.searchParams.delete("balance");
+    window.history.replaceState(null, "", url.toString());
+  }
   const الرصيد_الجديد = الرصيد_الحالي + قيمة_الفاتورة - إجمالي_الدفعات;
 
   const نص_رصيد = (r: number) => {
@@ -29,7 +38,7 @@ export function مبدّل_رصيد_الفاتورة({
           type="checkbox"
           id="toggle-balance"
           checked={مُظهَر}
-          onChange={(e) => تعيين_مُظهَر(e.target.checked)}
+          onChange={(e) => عند_التبديل(e.target.checked)}
           className="size-4 cursor-pointer rounded accent-primary"
         />
         <label htmlFor="toggle-balance" className="cursor-pointer select-none">

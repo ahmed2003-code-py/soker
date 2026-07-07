@@ -47,13 +47,17 @@ export function شريط_إجراءات_الفاتورة({
   const [رقم_الهاتف, تعيين_رقم_الهاتف] = React.useState("");
   const [نُسخ, تعيين_نُسخ] = React.useState(false);
 
-  const رابط_المشاركة = رمز_المشاركة
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/${رمز_المشاركة}`
-    : null;
+  function ابن_رابط_المشاركة() {
+    if (!رمز_المشاركة) return null;
+    const base = `${window.location.origin}/share/${رمز_المشاركة}`;
+    const مع_رصيد = new URLSearchParams(window.location.search).get("balance") === "1";
+    return مع_رصيد ? `${base}?balance=1` : base;
+  }
 
   async function انسخ_الرابط() {
-    if (!رابط_المشاركة) return;
-    await navigator.clipboard.writeText(رابط_المشاركة);
+    const رابط = ابن_رابط_المشاركة();
+    if (!رابط) return;
+    await navigator.clipboard.writeText(رابط);
     تعيين_نُسخ(true);
     setTimeout(() => تعيين_نُسخ(false), 2000);
   }
@@ -72,7 +76,7 @@ export function شريط_إجراءات_الفاتورة({
       `─────────────────`,
       مبلغ ? `الإجمالي: ${مبلغ}` : "",
       `─────────────────`,
-      رابط_المشاركة ? `رابط الفاتورة:\n${رابط_المشاركة}` : "",
+      رمز_المشاركة ? `رابط الفاتورة:\n${ابن_رابط_المشاركة() ?? ""}` : "",
       `─────────────────`,
       `شكراً لتعاملكم معنا`,
     ].filter(Boolean).join("\n");
@@ -86,7 +90,7 @@ export function شريط_إجراءات_الفاتورة({
       </الزر>
       <div className="flex flex-wrap gap-2">
         <سجل_التغييرات النوع="الفاتورة" المعرف={المعرف} />
-        {رابط_المشاركة && (
+        {رمز_المشاركة && (
           <الزر variant="outline" onClick={انسخ_الرابط}>
             <Link2 className="size-4" />
             {نُسخ ? "✓ تم النسخ" : "نسخ الرابط"}
