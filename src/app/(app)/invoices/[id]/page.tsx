@@ -72,7 +72,15 @@ export default async function صفحة_عرض_فاتورة({
 
   return (
     <div>
-      <شريط_إجراءات_الفاتورة المعرف={فاتورة.id} الرقم={فاتورة.number} />
+      <شريط_إجراءات_الفاتورة
+        المعرف={فاتورة.id}
+        الرقم={فاتورة.number}
+        هاتف_العميل={فاتورة.phone || فاتورة.customer.phone}
+        اسم_العميل={فاتورة.customer.name}
+        اسم_الشركة={اسم_الشركة}
+        الإجمالي={Number(فاتورة.totalAmount)}
+        التاريخ={فاتورة.date.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" })}
+      />
 
       {/* ورقة الفاتورة (قابلة للطباعة) */}
       <div className="mx-auto max-w-3xl card-soft p-8 text-foreground print:max-w-none print:border-0 print:p-0 print:text-black print:shadow-none">

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Printer, Pencil, Trash2, ArrowRight } from "lucide-react";
+import { Printer, Pencil, Trash2, ArrowRight, MessageCircle } from "lucide-react";
 import * as React from "react";
 import { الزر } from "@/components/ui/button";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
@@ -10,17 +10,58 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حذف_فاتورة } from "../actions";
 
+/** يحوّل رقم مصري لصيغة wa.me الدولية: 01xxxxxxxx → 201xxxxxxxx */
+function رقم_واتساب(هاتف: string): string {
+  const نظيف = هاتف.replace(/\D/g, "");
+  if (نظيف.startsWith("20")) return نظيف;
+  if (نظيف.startsWith("0")) return "2" + نظيف;
+  return "20" + نظيف;
+}
+
 export function شريط_إجراءات_الفاتورة({
   المعرف,
   الرقم,
+  هاتف_العميل,
+  اسم_العميل,
+  اسم_الشركة,
+  الإجمالي,
+  التاريخ,
 }: {
   المعرف: number;
   الرقم: number;
+  هاتف_العميل?: string | null;
+  اسم_العميل?: string;
+  اسم_الشركة?: string;
+  الإجمالي?: number;
+  التاريخ?: string;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const [حذف, تعيين_حذف] = React.useState(false);
+
+  const رابط_واتساب = React.useMemo(() => {
+    if (!هاتف_العميل) return null;
+    const رقم_الفاتورة = String(الرقم).padStart(7, "0");
+    const مبلغ = الإجمالي != null
+      ? الإجمالي.toLocaleString("en-US", { minimumFractionDigits: 2 }) + " ج.م"
+      : "";
+    const رسالة = [
+      `${اسم_الشركة ?? "مؤسسة سكر للتجارة"}`,
+      `─────────────────`,
+      `فاتورة رقم: ${رقم_الفاتورة}`,
+      التاريخ ? `التاريخ: ${التاريخ}` : "",
+      اسم_العميل ? `العميل: ${اسم_العميل}` : "",
+      `─────────────────`,
+      مبلغ ? `الإجمالي: ${مبلغ}` : "",
+      `─────────────────`,
+      `شكراً لتعاملكم معنا`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return `https://wa.me/${رقم_واتساب(هاتف_العميل)}?text=${encodeURIComponent(رسالة)}`;
+  }, [هاتف_العميل, الرقم, الإجمالي, اسم_العميل, اسم_الشركة, التاريخ]);
+
   return (
     <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
       <الزر variant="outline" size="sm" onClick={() => router.push("/invoices")}>
@@ -28,6 +69,14 @@ export function شريط_إجراءات_الفاتورة({
       </الزر>
       <div className="flex flex-wrap gap-2">
         <سجل_التغييرات النوع="الفاتورة" المعرف={المعرف} />
+        {رابط_واتساب && (
+          <الزر variant="outline" asChild>
+            <a href={رابط_واتساب} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="size-4 text-green-600" />
+              واتساب
+            </a>
+          </الزر>
+        )}
         <الزر variant="blue" onClick={() => window.print()}>
           <Printer className="size-4" /> {t("inv.print")}
         </الزر>
