@@ -57,6 +57,7 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
         totalWeight: إجمالي_الوزن,
         totalAmount: الإجمالي_المالي,
         notes: ب.ملاحظات || null,
+        shareToken: crypto.randomUUID(),
         createdById: فاعل.id,
         lines: {
           create: بنود_محسوبة.map((x) => ({

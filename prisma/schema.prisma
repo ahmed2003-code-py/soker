@@ -133,6 +133,7 @@ model Invoice {
   totalWeight Decimal  @default(0) @map("total_weight") @db.Decimal(18, 4)
   totalAmount Decimal  @default(0) @map("total_amount") @db.Decimal(18, 4)
   notes       String?  @map("notes")
+  shareToken  String?  @unique @map("share_token")
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

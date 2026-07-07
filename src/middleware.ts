@@ -26,6 +26,6 @@ export default withAuth(
 export const config = {
   // نستثني كل /api (كل مسار يتحقق من الجلسة بنفسه ويعيد 401)، وصفحة الدخول والأصول الثابتة
   matcher: [
-    "/((?!login|api|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
+    "/((?!login|share|api|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
   ],
 };

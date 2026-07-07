@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Printer, Pencil, Trash2, ArrowRight, MessageCircle } from "lucide-react";
+import { Printer, Pencil, Trash2, ArrowRight, MessageCircle, Link2 } from "lucide-react";
 import * as React from "react";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -28,6 +28,7 @@ export function شريط_إجراءات_الفاتورة({
   اسم_الشركة,
   الإجمالي,
   التاريخ,
+  رمز_المشاركة,
 }: {
   المعرف: number;
   الرقم: number;
@@ -36,6 +37,7 @@ export function شريط_إجراءات_الفاتورة({
   اسم_الشركة?: string;
   الإجمالي?: number;
   التاريخ?: string;
+  رمز_المشاركة?: string | null;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
@@ -43,6 +45,18 @@ export function شريط_إجراءات_الفاتورة({
   const [حذف, تعيين_حذف] = React.useState(false);
   const [واتساب_مفتوح, تعيين_واتساب_مفتوح] = React.useState(false);
   const [رقم_الهاتف, تعيين_رقم_الهاتف] = React.useState("");
+  const [نُسخ, تعيين_نُسخ] = React.useState(false);
+
+  const رابط_المشاركة = رمز_المشاركة
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/${رمز_المشاركة}`
+    : null;
+
+  async function انسخ_الرابط() {
+    if (!رابط_المشاركة) return;
+    await navigator.clipboard.writeText(رابط_المشاركة);
+    تعيين_نُسخ(true);
+    setTimeout(() => تعيين_نُسخ(false), 2000);
+  }
 
   function ابن_رسالة_واتساب(رقم: string) {
     const رقم_الفاتورة = String(الرقم).padStart(7, "0");
@@ -58,6 +72,8 @@ export function شريط_إجراءات_الفاتورة({
       `─────────────────`,
       مبلغ ? `الإجمالي: ${مبلغ}` : "",
       `─────────────────`,
+      رابط_المشاركة ? `رابط الفاتورة:\n${رابط_المشاركة}` : "",
+      `─────────────────`,
       `شكراً لتعاملكم معنا`,
     ].filter(Boolean).join("\n");
     return `https://wa.me/${رقم_واتساب(رقم)}?text=${encodeURIComponent(رسالة)}`;
@@ -70,6 +86,12 @@ export function شريط_إجراءات_الفاتورة({
       </الزر>
       <div className="flex flex-wrap gap-2">
         <سجل_التغييرات النوع="الفاتورة" المعرف={المعرف} />
+        {رابط_المشاركة && (
+          <الزر variant="outline" onClick={انسخ_الرابط}>
+            <Link2 className="size-4" />
+            {نُسخ ? "✓ تم النسخ" : "نسخ الرابط"}
+          </الزر>
+        )}
         <الزر
           variant="outline"
           onClick={() => {

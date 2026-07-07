@@ -80,6 +80,7 @@ export default async function صفحة_عرض_فاتورة({
         اسم_الشركة={اسم_الشركة}
         الإجمالي={Number(فاتورة.totalAmount)}
         التاريخ={فاتورة.date.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" })}
+        رمز_المشاركة={فاتورة.shareToken}
       />
 
       {/* ورقة الفاتورة (قابلة للطباعة) */}
