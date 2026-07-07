@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HandCoins, Trash2, Pencil, ExternalLink } from "lucide-react";
+import { HandCoins, Trash2, Pencil, ExternalLink, Landmark } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -23,7 +23,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
-import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة } from "./actions";
+import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي } from "./actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -59,11 +59,13 @@ function تسمية_فرعي(النوع: TreasuryAccountType): string {
 export function حركات_الطرف({
   الطرف,
   الحركات,
+  رصيد_ابتدائي = 0,
   حسابات_الخزنة,
   حسابات_فرعية,
 }: {
   الطرف: { id: number; النوع: PartyType };
   الحركات: حركة[];
+  رصيد_ابتدائي?: number;
   حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
   حسابات_فرعية: خريطة_حسابات_فرعية;
 }) {
@@ -80,6 +82,8 @@ export function حركات_الطرف({
   const [إلى, تعيين_إلى] = React.useState("");
   const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
   const [حذف_جماعي, تعيين_حذف_جماعي] = React.useState(false);
+  const [رصيد_ابتدائي_حوار, تعيين_رصيد_ابتدائي_حوار] = React.useState(false);
+  const [قيمة_رصيد_ابتدائي, تعيين_قيمة_رصيد_ابتدائي] = React.useState("");
 
   const حركات_معروضة = الحركات.filter((ح) => {
     const d = ح.التاريخ.slice(0, 10);
@@ -222,6 +226,17 @@ export function حركات_الطرف({
               حذف المحدد ({محددة.size})
             </الزر>
           )}
+          <الزر
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              تعيين_قيمة_رصيد_ابتدائي(رصيد_ابتدائي !== 0 ? String(رصيد_ابتدائي) : "");
+              تعيين_رصيد_ابتدائي_حوار(true);
+            }}
+          >
+            <Landmark className="size-4" />
+            الرصيد الابتدائي
+          </الزر>
           <الزر variant="success" onClick={() => تعيين_دفعة(true)}>
             <HandCoins className="size-4" />
             {الطرف.النوع === "CUSTOMER"
@@ -390,6 +405,57 @@ export function حركات_الطرف({
             }
           }}
         />
+      )}
+
+      {/* حوار تعيين الرصيد الابتدائي */}
+      {رصيد_ابتدائي_حوار && (
+        <الحوار open onOpenChange={(o) => !o && تعيين_رصيد_ابتدائي_حوار(false)}>
+          <محتوى_الحوار>
+            <رأس_الحوار>
+              <عنوان_الحوار>تعيين الرصيد الابتدائي</عنوان_الحوار>
+            </رأس_الحوار>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                الرصيد الابتدائي هو المبلغ الموجود <strong>قبل</strong> استخدام البرنامج.
+                {الطرف.النوع === "CUSTOMER"
+                  ? " موجب = العميل مدين لك."
+                  : " موجب = أنت مدين للمورد."}
+                <br />
+                الحركات الموجودة تبقى — فقط نقطة البداية تتغير.
+              </p>
+              <div className="space-y-1.5">
+                <العنوان>الرصيد الابتدائي</العنوان>
+                <الحقل
+                  autoFocus
+                  selectOnFocus
+                  type="number"
+                  step="0.01"
+                  value={قيمة_رصيد_ابتدائي}
+                  onChange={(e) => تعيين_قيمة_رصيد_ابتدائي(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <تذييل_الحوار>
+              <الزر
+                variant="success"
+                onClick={async () => {
+                  const r = await تعديل_الرصيد_الابتدائي(الطرف.id, قيمة_رصيد_ابتدائي || "0");
+                  r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+                  if (r.نجاح) {
+                    تعيين_رصيد_ابتدائي_حوار(false);
+                    router.refresh();
+                  }
+                }}
+              >
+                حفظ
+              </الزر>
+              <الزر variant="outline" onClick={() => تعيين_رصيد_ابتدائي_حوار(false)}>
+                إلغاء
+              </الزر>
+            </تذييل_الحوار>
+          </محتوى_الحوار>
+        </الحوار>
       )}
     </>
   );

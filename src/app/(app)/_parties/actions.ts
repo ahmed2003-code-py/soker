@@ -17,6 +17,38 @@ import {
   مخطط_حركة_يدوية,
 } from "@/lib/schemas/party";
 
+/** تعيين الرصيد الابتدائي للطرف وإعادة حساب السلسلة */
+export async function تعديل_الرصيد_الابتدائي(معرف_الطرف: number, رصيد_جديد: string): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const طرف = await prisma.party.findUnique({ where: { id: معرف_الطرف } });
+  if (!طرف) return فشل("الطرف غير موجود");
+
+  const قيمة = isNaN(Number(رصيد_جديد)) ? "0" : String(Number(رصيد_جديد));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.party.update({
+      where: { id: معرف_الطرف },
+      data: { openingBalance: قيمة, updatedById: فاعل.id },
+    });
+    await أعد_حساب_سلسلة_الطرف(tx, معرف_الطرف);
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "UPDATE",
+      نوع_الكيان: "الطرف",
+      معرف_الكيان: معرف_الطرف,
+      التفاصيل: {
+        تغيير: "الرصيد_الابتدائي",
+        قبل: String(طرف.openingBalance),
+        بعد: قيمة,
+      },
+    });
+  });
+
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, معرف_الطرف));
+  return نجح(undefined, "تم تحديث الرصيد الابتدائي وإعادة حساب الرصيد");
+}
+
 export async function إنشاء_طرف(مدخلات: unknown): Promise<نتيجة<{ id: number }>> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
