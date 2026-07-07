@@ -100,6 +100,10 @@ export async function اعكس_قيود_الفاتورة(
   معرف_الفاتورة: number,
   معرف_العميل: number
 ) {
-  await tx.ledgerEntry.deleteMany({ where: { invoiceId: معرف_الفاتورة } });
+  // نحذف فقط قيد المديونية بتاع الفاتورة نفسها (treasuryTxnId = null)
+  // قيود الدفعات المرتبطة (عندها treasuryTxnId) بتفضل كما هي
+  await tx.ledgerEntry.deleteMany({
+    where: { invoiceId: معرف_الفاتورة, treasuryTxnId: null },
+  });
   await أعد_حساب_سلسلة_الطرف(tx, معرف_العميل);
 }

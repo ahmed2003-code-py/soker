@@ -13,7 +13,13 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
   const id = Number(params.id);
   const { t } = مترجم_الخادم();
   const [فاتورة, عملاء, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
-    prisma.invoice.findUnique({ where: { id }, include: { lines: true } }),
+    prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        lines: true,
+        treasuryTxns: { where: { deletedAt: null }, select: { amount: true } },
+      },
+    }),
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
       select: { id: true, name: true, phone: true, balance: true },
@@ -25,11 +31,22 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
   ]);
   if (!فاتورة) notFound();
 
+  // الرصيد في DB يشمل قيد الفاتورة + الدفعات — نطرح الفاتورة ونرجّع الدفعات
+  // عشان الـ preview في الفورم يبدأ من الرصيد "قبل" الفاتورة الحالية
+  const إجمالي_الدفعات_الموجودة = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const عملاء_معدّلة = عملاء.map((c) => ({
+    ...c,
+    balance:
+      c.id === فاتورة.customerId
+        ? Number(c.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات_الموجودة
+        : Number(c.balance),
+  }));
+
   return (
     <div>
       <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
       <نموذج_فاتورة
-        العملاء={عملاء.map((c) => ({ ...c, balance: Number(c.balance) }))}
+        العملاء={عملاء_معدّلة}
         حسابات_الخزنة={حسابات.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}
         حسابات_فرعية={حسابات_فرعية}
         التصنيفات={تصنيفات}
