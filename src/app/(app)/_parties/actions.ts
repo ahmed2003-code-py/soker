@@ -17,35 +17,36 @@ import {
   مخطط_حركة_يدوية,
 } from "@/lib/schemas/party";
 
-/** تصفير أرصدة جميع الموردين (opening balance = 0 + إعادة حساب) */
+/** تصفير أرصدة جميع الموردين — يحذف كل الحركات ويضبط الرصيد على الصفر */
 export async function تصفير_أرصدة_الموردين(): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
 
-  const موردون = await prisma.party.findMany({
+  const معرفات_الموردين = await prisma.party.findMany({
     where: { type: "SUPPLIER" },
     select: { id: true },
   });
+  const ids = معرفات_الموردين.map((م) => م.id);
 
   await prisma.$transaction(async (tx) => {
+    // حذف كل حركات دفتر الأستاذ للموردين
+    await tx.ledgerEntry.deleteMany({ where: { partyId: { in: ids } } });
+    // ضبط الرصيد والرصيد الابتدائي على الصفر
     await tx.party.updateMany({
-      where: { type: "SUPPLIER" },
-      data: { openingBalance: "0" },
+      where: { id: { in: ids } },
+      data: { openingBalance: "0", balance: "0" },
     });
-    for (const مورد of موردون) {
-      await أعد_حساب_سلسلة_الطرف(tx, مورد.id);
-    }
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "UPDATE",
       نوع_الكيان: "الطرف",
       معرف_الكيان: 0,
-      التفاصيل: { عملية: "تصفير_أرصدة_الموردين", عدد: موردون.length },
+      التفاصيل: { عملية: "تصفير_أرصدة_الموردين", عدد: ids.length },
     });
   }, { timeout: 60000 });
 
   revalidatePath("/suppliers");
-  return نجح(undefined, `تم تصفير الرصيد الابتدائي لـ ${موردون.length} مورد`);
+  return نجح(undefined, `تم تصفير ${ids.length} مورد`);
 }
 
 /** تعيين الرصيد الابتدائي للطرف وإعادة حساب السلسلة */
