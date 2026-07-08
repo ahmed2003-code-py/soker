@@ -41,8 +41,8 @@ export default async function صفحة_عرض_فاتورة({
     إعدادات.find((s) => s.key === "اسم_الشركة")?.value || "مؤسسة سكر";
   const لها_شعار = !!(إعدادات.find((s) => s.key === "شعار_الشركة")?.value);
   const رقم = String(فاتورة.number).padStart(7, "0");
-  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
-  const هو_مورد = نوع_الفاتورة !== "SALE";
+  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "CUSTOMER_RETURN" | "PURCHASE" | "SUPPLIER_RETURN";
+  const هو_مورد = نوع_الفاتورة === "PURCHASE" || نوع_الفاتورة === "SUPPLIER_RETURN";
 
   // تجميع البنود حسب التصنيف مع الإجماليات
   type مجموعة_تصنيف = {
@@ -102,7 +102,10 @@ export default async function صفحة_عرض_فاتورة({
             <div>
               <h1 className="text-2xl font-bold">{اسم_الشركة}</h1>
               <p className="text-sm font-medium">
-                {نوع_الفاتورة === "PURCHASE" ? "فاتورة شراء من مورد" : نوع_الفاتورة === "SUPPLIER_RETURN" ? "مرتجع إلى مورد" : t("inv.v.sales_invoice")}
+                {نوع_الفاتورة === "PURCHASE" ? "فاتورة شراء من مورد" :
+                 نوع_الفاتورة === "SUPPLIER_RETURN" ? "مرتجع إلى مورد" :
+                 نوع_الفاتورة === "CUSTOMER_RETURN" ? "مرتجع من عميل" :
+                 t("inv.v.sales_invoice")}
               </p>
             </div>
           </div>
@@ -325,14 +328,19 @@ export default async function صفحة_عرض_فاتورة({
           </p>
         )}
 
-        {/* مبدّل الرصيد — للعملاء فقط */}
+        {/* مبدّل الرصيد — للعملاء فقط (بيع أو مرتجع) */}
         {!هو_مورد && (() => {
           const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          // للمرتجع: الفاتورة تقلل الرصيد (دائن) → الرصيد_السابق = balance + totalAmount - payments
+          // للبيع:   الفاتورة تزيد الرصيد (مدين)  → الرصيد_السابق = balance - totalAmount + payments
+          const هو_مرتجع = نوع_الفاتورة === "CUSTOMER_RETURN";
+          const الرصيد_السابق = هو_مرتجع
+            ? Number(فاتورة.customer.balance) + Number(فاتورة.totalAmount) - إجمالي_الدفعات
+            : Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
           return (
             <مبدّل_رصيد_الفاتورة
               الرصيد_الحالي={الرصيد_السابق}
-              قيمة_الفاتورة={Number(فاتورة.totalAmount)}
+              قيمة_الفاتورة={هو_مرتجع ? -Number(فاتورة.totalAmount) : Number(فاتورة.totalAmount)}
               إجمالي_الدفعات={إجمالي_الدفعات}
               اسم_العميل={فاتورة.customer.name}
             />

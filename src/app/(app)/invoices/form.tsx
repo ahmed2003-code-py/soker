@@ -88,7 +88,7 @@ export function نموذج_فاتورة({
   فاتورة?: {
     id: number;
     الرقم: number;
-    نوع_الفاتورة: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+    نوع_الفاتورة: "SALE" | "CUSTOMER_RETURN" | "PURCHASE" | "SUPPLIER_RETURN";
     معرف_العميل: number;
     مرجع_خارجي?: string | null;
     الهاتف: string | null;
@@ -106,14 +106,21 @@ export function نموذج_فاتورة({
   const [شركات, تعيين_شركات] = React.useState(شركات0);
 
   // نوع الطرف: عميل أو مورد
+  const أنواع_المورد_نموذج = ["PURCHASE", "SUPPLIER_RETURN"];
   const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"CUSTOMER" | "SUPPLIER">(
-    فاتورة && فاتورة.نوع_الفاتورة !== "SALE" ? "SUPPLIER" : "CUSTOMER"
+    فاتورة && أنواع_المورد_نموذج.includes(فاتورة.نوع_الفاتورة) ? "SUPPLIER" : "CUSTOMER"
+  );
+  // اتجاه فاتورة العميل: بيع (SALE) أو مرتجع (CUSTOMER_RETURN)
+  const [اتجاه_العميل, تعيين_اتجاه_العميل] = React.useState<"SALE" | "CUSTOMER_RETURN">(
+    فاتورة?.نوع_الفاتورة === "CUSTOMER_RETURN" ? "CUSTOMER_RETURN" : "SALE"
   );
   // اتجاه فاتورة المورد: جاية (PURCHASE) أو رايحة (SUPPLIER_RETURN)
   const [اتجاه_المورد, تعيين_اتجاه_المورد] = React.useState<"PURCHASE" | "SUPPLIER_RETURN">(
     فاتورة?.نوع_الفاتورة === "SUPPLIER_RETURN" ? "SUPPLIER_RETURN" : "PURCHASE"
   );
   const [مرجع_خارجي, تعيين_مرجع_خارجي] = React.useState(فاتورة?.مرجع_خارجي ?? "");
+  // نوع الفاتورة المحسوب (computed at component level لاستخدامه في الـ JSX)
+  const نوع_الفاتورة_الحالي = نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : اتجاه_العميل;
 
   const [عميل, تعيين_عميل] = React.useState<string>(
     فاتورة ? String(فاتورة.معرف_العميل) : ""
@@ -346,7 +353,7 @@ export function نموذج_فاتورة({
       return إشعار.خطأ(`يرجى اختيار ${تسمية} للدفعة`);
     }
     تعيين_جارٍ(true);
-    const نوع_الفاتورة_المحدد = نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : "SALE";
+    const نوع_الفاتورة_المحدد = نوع_الفاتورة_الحالي;
     const رقم_مُحدد = رقم_الفاتورة.trim() ? Number(رقم_الفاتورة.replace(/,/g, "")) : null;
     const payload = {
       نوع_الفاتورة: نوع_الفاتورة_المحدد,
@@ -425,6 +432,28 @@ export function نموذج_فاتورة({
                 }`}
               >
                 {نوع === "CUSTOMER" ? "عميل" : "مورد"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* اتجاه فاتورة العميل: بيع أو مرتجع */}
+        {نوع_الطرف === "CUSTOMER" && (
+          <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
+            {([["SALE", "بيع"], ["CUSTOMER_RETURN", "مرتجع من العميل"]] as const).map(([نوع, تسمية]) => (
+              <button
+                key={نوع}
+                type="button"
+                onClick={() => تعيين_اتجاه_العميل(نوع)}
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                  اتجاه_العميل === نوع
+                    ? نوع === "CUSTOMER_RETURN"
+                      ? "bg-amber-100 shadow text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                      : "bg-white shadow text-foreground dark:bg-background"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {تسمية}
               </button>
             ))}
           </div>
@@ -722,11 +751,15 @@ export function نموذج_فاتورة({
             if (!العميل_المحدد || الإجمالي_المالي === 0) return null;
             const الرصيد_الحالي = العميل_المحدد.balance;
             const مبلغ_دفعة_فعلي = دفعة_مفعلة ? (ع(مبلغ_الدفعة) || 0) : 0;
-            const الرصيد_الجديد = الرصيد_الحالي + الإجمالي_المالي - مبلغ_دفعة_فعلي;
+            // المرتجع والرايحة يقللان الرصيد؛ البيع والجاية يزيدانه
+            const يقلل = نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" || نوع_الفاتورة_الحالي === "SUPPLIER_RETURN";
+            const الرصيد_الجديد = الرصيد_الحالي + (يقلل ? -الإجمالي_المالي : الإجمالي_المالي) - مبلغ_دفعة_فعلي;
             const تسمية_رصيد = نوع_الطرف === "CUSTOMER" ? "رصيد العميل الحالي" : "رصيد المورد الحالي";
-            const تسمية_فاتورة = نوع_الطرف === "CUSTOMER"
-              ? "+ هذه الفاتورة"
-              : اتجاه_المورد === "PURCHASE" ? "+ فاتورة من المورد" : "− مرتجع إلى المورد";
+            const تسمية_فاتورة =
+              نوع_الفاتورة_الحالي === "SALE" ? "+ هذه الفاتورة" :
+              نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" ? "− مرتجع (يقلل المديونية)" :
+              نوع_الفاتورة_الحالي === "PURCHASE" ? "+ فاتورة من المورد" :
+              "− مرتجع إلى المورد";
             return (
               <div className="mt-3 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm space-y-1.5">
                 <div className="flex justify-between text-muted-foreground">
@@ -774,8 +807,10 @@ export function نموذج_فاتورة({
             />
             <Wallet className="size-4 text-success" />
             <span className="font-medium">
-              {نوع_الطرف === "SUPPLIER" && اتجاه_المورد === "PURCHASE"
+              {نوع_الفاتورة_الحالي === "PURCHASE"
                 ? "تسجيل دفع للمورد مع الفاتورة"
+                : نوع_الفاتورة_الحالي === "CUSTOMER_RETURN"
+                ? "تسجيل تحصيل نقدي مع المرتجع"
                 : "تسجيل دفعة مع الفاتورة"}
             </span>
           </label>
@@ -784,7 +819,9 @@ export function نموذج_فاتورة({
             <div className="mt-3 grid gap-3 sm:grid-cols-2 border-t border-border pt-3">
               <div className="space-y-1.5">
                 <العنوان مطلوب>
-                  {نوع_الطرف === "SUPPLIER" && اتجاه_المورد === "PURCHASE" ? "المبلغ المدفوع للمورد" : "المبلغ المدفوع"}
+                  {نوع_الفاتورة_الحالي === "PURCHASE" ? "المبلغ المدفوع للمورد" :
+                   نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" ? "المبلغ المحصّل مع المرتجع" :
+                   "المبلغ المدفوع"}
                 </العنوان>
                 <الحقل
                   selectOnFocus
