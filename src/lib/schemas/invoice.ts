@@ -32,8 +32,10 @@ export const مخطط_دفعة_الفاتورة = z.object({
 });
 
 export const مخطط_فاتورة = z.object({
+  نوع_الفاتورة: z.enum(["SALE", "PURCHASE", "SUPPLIER_RETURN"]).default("SALE"),
+  مرجع_خارجي: z.string().trim().optional().nullable(), // رقم فاتورة المورد (للجاية)
   رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
-  معرف_العميل: z.number().int().positive("اختر العميل"),
+  معرف_العميل: z.number().int().positive("اختر الطرف"),
   الهاتف: z.string().trim().optional().nullable(),
   التاريخ: z.string().min(1, "التاريخ مطلوب"),
   ملاحظات: z.string().trim().optional().nullable(),

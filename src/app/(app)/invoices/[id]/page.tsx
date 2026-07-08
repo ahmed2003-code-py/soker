@@ -41,6 +41,8 @@ export default async function صفحة_عرض_فاتورة({
     إعدادات.find((s) => s.key === "اسم_الشركة")?.value || "مؤسسة سكر";
   const لها_شعار = !!(إعدادات.find((s) => s.key === "شعار_الشركة")?.value);
   const رقم = String(فاتورة.number).padStart(7, "0");
+  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+  const هو_مورد = نوع_الفاتورة !== "SALE";
 
   // تجميع البنود حسب التصنيف مع الإجماليات
   type مجموعة_تصنيف = {
@@ -99,7 +101,9 @@ export default async function صفحة_عرض_فاتورة({
             ) : null}
             <div>
               <h1 className="text-2xl font-bold">{اسم_الشركة}</h1>
-              <p className="text-sm font-medium">{t("inv.v.sales_invoice")}</p>
+              <p className="text-sm font-medium">
+                {نوع_الفاتورة === "PURCHASE" ? "فاتورة شراء من مورد" : نوع_الفاتورة === "SUPPLIER_RETURN" ? "مرتجع إلى مورد" : t("inv.v.sales_invoice")}
+              </p>
             </div>
           </div>
           <div className="text-end text-sm leading-7">
@@ -107,6 +111,12 @@ export default async function صفحة_عرض_فاتورة({
               <span className="font-semibold">{t("inv.col.number")}: </span>
               <span className="ltr-nums text-lg font-bold">{رقم}</span>
             </p>
+            {هو_مورد && فاتورة.externalRef && (
+              <p>
+                <span className="font-semibold">رقم فاتورة المورد: </span>
+                <span className="ltr-nums font-bold">{فاتورة.externalRef}</span>
+              </p>
+            )}
             <p>
               <span className="font-semibold">{t("common.date")}: </span>
               <نص_تاريخ القيمة={فاتورة.date} />
@@ -114,10 +124,10 @@ export default async function صفحة_عرض_فاتورة({
           </div>
         </div>
 
-        {/* العميل */}
+        {/* العميل / المورد */}
         <div className="my-4 flex flex-wrap gap-x-10 gap-y-1 text-[15px]">
           <span>
-            <span className="font-semibold">{t("inv.col.customer")}: </span>
+            <span className="font-semibold">{هو_مورد ? "المورد" : t("inv.col.customer")}: </span>
             {فاتورة.customer.name}
           </span>
           <span>
@@ -315,9 +325,9 @@ export default async function صفحة_عرض_فاتورة({
           </p>
         )}
 
-        {(() => {
+        {/* مبدّل الرصيد — للعملاء فقط */}
+        {!هو_مورد && (() => {
           const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-          // الرصيد السابق = الرصيد الحالي − قيمة الفاتورة + الدفعة (لأن balance يشمل الاثنين)
           const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
           return (
             <مبدّل_رصيد_الفاتورة

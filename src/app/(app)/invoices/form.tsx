@@ -72,6 +72,7 @@ const ترتيب: (keyof مراجع_صف)[] = ["اللون", "شركة", "تصن
 
 export function نموذج_فاتورة({
   العملاء: عملاء0,
+  الموردون: موردون0 = [],
   التصنيفات: تصنيفات0,
   الشركات: شركات0,
   حسابات_الخزنة,
@@ -79,6 +80,7 @@ export function نموذج_فاتورة({
   فاتورة,
 }: {
   العملاء: { id: number; name: string; phone: string | null; balance: number }[];
+  الموردون?: { id: number; name: string; phone: string | null; balance: number }[];
   حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
   حسابات_فرعية: خريطة_حسابات_فرعية;
   التصنيفات: string[];
@@ -86,7 +88,9 @@ export function نموذج_فاتورة({
   فاتورة?: {
     id: number;
     الرقم: number;
+    نوع_الفاتورة: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
     معرف_العميل: number;
+    مرجع_خارجي?: string | null;
     الهاتف: string | null;
     التاريخ: string;
     ملاحظات: string | null;
@@ -97,8 +101,20 @@ export function نموذج_فاتورة({
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const [عملاء, تعيين_عملاء] = React.useState(عملاء0);
+  const [موردون, تعيين_موردون] = React.useState(موردون0);
   const [تصنيفات, تعيين_تصنيفات] = React.useState(تصنيفات0);
   const [شركات, تعيين_شركات] = React.useState(شركات0);
+
+  // نوع الطرف: عميل أو مورد
+  const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"CUSTOMER" | "SUPPLIER">(
+    فاتورة && فاتورة.نوع_الفاتورة !== "SALE" ? "SUPPLIER" : "CUSTOMER"
+  );
+  // اتجاه فاتورة المورد: جاية (PURCHASE) أو رايحة (SUPPLIER_RETURN)
+  const [اتجاه_المورد, تعيين_اتجاه_المورد] = React.useState<"PURCHASE" | "SUPPLIER_RETURN">(
+    فاتورة?.نوع_الفاتورة === "SUPPLIER_RETURN" ? "SUPPLIER_RETURN" : "PURCHASE"
+  );
+  const [مرجع_خارجي, تعيين_مرجع_خارجي] = React.useState(فاتورة?.مرجع_خارجي ?? "");
+
   const [عميل, تعيين_عميل] = React.useState<string>(
     فاتورة ? String(فاتورة.معرف_العميل) : ""
   );
@@ -314,6 +330,15 @@ export function نموذج_فاتورة({
     إشعار.نجاح(t("inv.f.customer_added"));
   }
 
+  async function أضف_مورد(الاسم: string) {
+    const r = await إنشاء_طرف({ الاسم, النوع: "SUPPLIER" });
+    if (!r.نجاح || !r.بيانات) return إشعار.خطأ(r.رسالة || "خطأ في إضافة المورد");
+    const جديد = { id: r.بيانات.id, name: الاسم, phone: null, balance: 0 };
+    تعيين_موردون((س) => [...س, جديد]);
+    تعيين_عميل(String(جديد.id));
+    إشعار.نجاح("تم إضافة المورد");
+  }
+
   async function احفظ() {
     if (!عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
     if (دفعة_مفعلة && له_فرعية_دفعة && !حساب_فرعي_الدفعة) {
@@ -321,8 +346,11 @@ export function نموذج_فاتورة({
       return إشعار.خطأ(`يرجى اختيار ${تسمية} للدفعة`);
     }
     تعيين_جارٍ(true);
+    const نوع_الفاتورة_المحدد = نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : "SALE";
     const رقم_مُحدد = رقم_الفاتورة.trim() ? Number(رقم_الفاتورة.replace(/,/g, "")) : null;
     const payload = {
+      نوع_الفاتورة: نوع_الفاتورة_المحدد,
+      مرجع_خارجي: نوع_الفاتورة_المحدد === "PURCHASE" ? (مرجع_خارجي.trim() || null) : null,
       رقم_الفاتورة_المحدد: رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
       معرف_العميل: Number(عميل),
       الهاتف: هاتف,
@@ -377,46 +405,122 @@ export function نموذج_فاتورة({
       )}
 
       {/* الترويسة */}
-      <div className="card-soft grid gap-4 p-5 sm:grid-cols-4">
-        <div className="space-y-1.5">
-          <العنوان>{t("inv.col.number")}</العنوان>
-          <الحقل className="ltr-nums" value={رقم_الفاتورة}
-            onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)} placeholder="..." />
-        </div>
-        <div className="space-y-1.5">
-          <العنوان مطلوب>{t("inv.col.customer")}</العنوان>
-          <قائمة_اختيار
-            الخيارات={عملاء.map((c) => ({ القيمة: String(c.id), التسمية: c.name }))}
-            القيمة={عميل}
-            عند_التغيير={async (v) => {
-              تعيين_عميل(v);
-              const c = عملاء.find((x) => String(x.id) === v);
-              if (c) تعيين_هاتف(c.phone ?? "");
-              // جلب آخر أسعار لجميع التصنيفات المختارة حالياً
-              const cats = [...new Set(بنود.map((b) => b.التصنيف).filter(Boolean))];
-              if (cats.length && v) {
-                const أسعار = await احصل_آخر_أسعار(Number(v), cats);
-                if (Object.keys(أسعار).length) {
-                  تعيين_أسعار((prev) => ({ ...prev, ...أسعار }));
-                  تعيين_بنود((س) =>
-                    س.map((ب) => (أسعار[ب.التصنيف] ? { ...ب, السعر: أسعار[ب.التصنيف] } : ب))
-                  );
-                }
-              }
-            }}
-            عند_الإضافة={أضف_عميل}
-            تسمية_الإضافة={t("party.add_customer")}
-            نص_بديل={t("inv.f.pick_customer")}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <العنوان>{t("party.col.phone")}</العنوان>
-          <الحقل className="ltr-nums" value={هاتف}
-            onChange={(e) => تعيين_هاتف(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <العنوان مطلوب>{t("common.date")}</العنوان>
-          <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+      <div className="card-soft p-5 space-y-4">
+        {/* مفتاح نوع الطرف */}
+        {!فاتورة && (
+          <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
+            {(["CUSTOMER", "SUPPLIER"] as const).map((نوع) => (
+              <button
+                key={نوع}
+                type="button"
+                onClick={() => {
+                  تعيين_نوع_الطرف(نوع);
+                  تعيين_عميل("");
+                  تعيين_هاتف("");
+                }}
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                  نوع_الطرف === نوع
+                    ? "bg-white shadow text-foreground dark:bg-background"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {نوع === "CUSTOMER" ? "عميل" : "مورد"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* اتجاه فاتورة المورد */}
+        {نوع_الطرف === "SUPPLIER" && (
+          <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
+            {([["PURCHASE", "جاية — من المورد"], ["SUPPLIER_RETURN", "رايحة — إليه"]] as const).map(([نوع, تسمية]) => (
+              <button
+                key={نوع}
+                type="button"
+                onClick={() => تعيين_اتجاه_المورد(نوع)}
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                  اتجاه_المورد === نوع
+                    ? "bg-white shadow text-foreground dark:bg-background"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {تسمية}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-4">
+          {/* رقم الفاتورة */}
+          <div className="space-y-1.5">
+            {نوع_الطرف === "SUPPLIER" && اتجاه_المورد === "PURCHASE" ? (
+              <>
+                <العنوان>رقم فاتورة المورد</العنوان>
+                <الحقل
+                  className="ltr-nums"
+                  value={مرجع_خارجي}
+                  onChange={(e) => تعيين_مرجع_خارجي(e.target.value)}
+                  placeholder="رقم الفاتورة الصادرة من المورد"
+                />
+              </>
+            ) : (
+              <>
+                <العنوان>{t("inv.col.number")}</العنوان>
+                <الحقل className="ltr-nums" value={رقم_الفاتورة}
+                  onChange={(e) => تعيين_رقم_الفاتورة(e.target.value)} placeholder="..." />
+              </>
+            )}
+          </div>
+
+          {/* اختيار الطرف */}
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{نوع_الطرف === "CUSTOMER" ? t("inv.col.customer") : "المورد"}</العنوان>
+            {نوع_الطرف === "CUSTOMER" ? (
+              <قائمة_اختيار
+                الخيارات={عملاء.map((c) => ({ القيمة: String(c.id), التسمية: c.name }))}
+                القيمة={عميل}
+                عند_التغيير={async (v) => {
+                  تعيين_عميل(v);
+                  const c = عملاء.find((x) => String(x.id) === v);
+                  if (c) تعيين_هاتف(c.phone ?? "");
+                  const cats = [...new Set(بنود.map((b) => b.التصنيف).filter(Boolean))];
+                  if (cats.length && v) {
+                    const أسعار = await احصل_آخر_أسعار(Number(v), cats);
+                    if (Object.keys(أسعار).length) {
+                      تعيين_أسعار((prev) => ({ ...prev, ...أسعار }));
+                      تعيين_بنود((س) => س.map((ب) => (أسعار[ب.التصنيف] ? { ...ب, السعر: أسعار[ب.التصنيف] } : ب)));
+                    }
+                  }
+                }}
+                عند_الإضافة={أضف_عميل}
+                تسمية_الإضافة={t("party.add_customer")}
+                نص_بديل={t("inv.f.pick_customer")}
+              />
+            ) : (
+              <قائمة_اختيار
+                الخيارات={موردون.map((s) => ({ القيمة: String(s.id), التسمية: s.name }))}
+                القيمة={عميل}
+                عند_التغيير={(v) => {
+                  تعيين_عميل(v);
+                  const s = موردون.find((x) => String(x.id) === v);
+                  if (s) تعيين_هاتف(s.phone ?? "");
+                }}
+                عند_الإضافة={أضف_مورد}
+                تسمية_الإضافة="إضافة مورد"
+                نص_بديل="اختر المورد"
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <العنوان>{t("party.col.phone")}</العنوان>
+            <الحقل className="ltr-nums" value={هاتف}
+              onChange={(e) => تعيين_هاتف(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("common.date")}</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
         </div>
       </div>
 
@@ -611,21 +715,26 @@ export function نموذج_فاتورة({
             <نص_مبلغ القيمة={الإجمالي_المالي} />
           </div>
 
-          {/* رصيد العميل بعد الفاتورة */}
+          {/* رصيد الطرف بعد الفاتورة */}
           {(() => {
-            const العميل_المحدد = عملاء.find((c) => String(c.id) === عميل);
+            const قائمة = نوع_الطرف === "CUSTOMER" ? عملاء : موردون;
+            const العميل_المحدد = قائمة.find((c) => String(c.id) === عميل);
             if (!العميل_المحدد || الإجمالي_المالي === 0) return null;
             const الرصيد_الحالي = العميل_المحدد.balance;
             const مبلغ_دفعة_فعلي = دفعة_مفعلة ? (ع(مبلغ_الدفعة) || 0) : 0;
             const الرصيد_الجديد = الرصيد_الحالي + الإجمالي_المالي - مبلغ_دفعة_فعلي;
+            const تسمية_رصيد = نوع_الطرف === "CUSTOMER" ? "رصيد العميل الحالي" : "رصيد المورد الحالي";
+            const تسمية_فاتورة = نوع_الطرف === "CUSTOMER"
+              ? "+ هذه الفاتورة"
+              : اتجاه_المورد === "PURCHASE" ? "+ فاتورة من المورد" : "− مرتجع إلى المورد";
             return (
               <div className="mt-3 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm space-y-1.5">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>رصيد العميل الحالي</span>
+                  <span>{تسمية_رصيد}</span>
                   <نص_مبلغ القيمة={Math.abs(الرصيد_الحالي)} النوع={الرصيد_الحالي > 0 ? "مصروف" : "محايد"} />
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>+ هذه الفاتورة</span>
+                  <span>{تسمية_فاتورة}</span>
                   <نص_مبلغ القيمة={الإجمالي_المالي} />
                 </div>
                 {مبلغ_دفعة_فعلي > 0 && (
@@ -664,13 +773,19 @@ export function نموذج_فاتورة({
               className="size-4 rounded accent-primary"
             />
             <Wallet className="size-4 text-success" />
-            <span className="font-medium">تسجيل دفعة مع الفاتورة</span>
+            <span className="font-medium">
+              {نوع_الطرف === "SUPPLIER" && اتجاه_المورد === "PURCHASE"
+                ? "تسجيل دفع للمورد مع الفاتورة"
+                : "تسجيل دفعة مع الفاتورة"}
+            </span>
           </label>
 
           {دفعة_مفعلة && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2 border-t border-border pt-3">
               <div className="space-y-1.5">
-                <العنوان مطلوب>المبلغ المدفوع</العنوان>
+                <العنوان مطلوب>
+                  {نوع_الطرف === "SUPPLIER" && اتجاه_المورد === "PURCHASE" ? "المبلغ المدفوع للمورد" : "المبلغ المدفوع"}
+                </العنوان>
                 <الحقل
                   selectOnFocus
                   className="ltr-nums"

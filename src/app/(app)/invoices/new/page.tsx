@@ -10,9 +10,14 @@ export const metadata = { title: "فاتورة جديدة — سُكر" };
 
 export default async function صفحة_فاتورة_جديدة() {
   const { t } = مترجم_الخادم();
-  const [عملاء, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
+  const [عملاء, موردون, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
     prisma.party.findMany({
       where: { type: "CUSTOMER" },
+      select: { id: true, name: true, phone: true, balance: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.party.findMany({
+      where: { type: "SUPPLIER" },
       select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),
@@ -25,6 +30,7 @@ export default async function صفحة_فاتورة_جديدة() {
       <ترويسة_الصفحة العنوان={t("inv.new")} الوصف={t("inv.new_subtitle")} />
       <نموذج_فاتورة
         العملاء={عملاء.map((c) => ({ ...c, balance: Number(c.balance) }))}
+        الموردون={موردون.map((s) => ({ ...s, balance: Number(s.balance) }))}
         التصنيفات={تصنيفات}
         الشركات={شركات}
         حسابات_الخزنة={حسابات.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}

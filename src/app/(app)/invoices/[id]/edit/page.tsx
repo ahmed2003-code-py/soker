@@ -12,7 +12,7 @@ export const metadata = { title: "تعديل فاتورة — سُكر" };
 export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   const { t } = مترجم_الخادم();
-  const [فاتورة, عملاء, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
+  const [فاتورة, عملاء, موردون, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id },
       include: {
@@ -25,21 +25,39 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),
+    prisma.party.findMany({
+      where: { type: "SUPPLIER" },
+      select: { id: true, name: true, phone: true, balance: true },
+      orderBy: { name: "asc" },
+    }),
     احصل_قوائم_الفواتير(),
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
     اجلب_خريطة_حسابات_فرعية(),
   ]);
   if (!فاتورة) notFound();
 
+  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+  const هو_مورد = نوع_الفاتورة !== "SALE";
+
   // الرصيد في DB يشمل قيد الفاتورة + الدفعات — نطرح الفاتورة ونرجّع الدفعات
-  // عشان الـ preview في الفورم يبدأ من الرصيد "قبل" الفاتورة الحالية
   const إجمالي_الدفعات_الموجودة = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const طرح_الفاتورة = هو_مورد && نوع_الفاتورة === "PURCHASE"
+    ? Number(فاتورة.totalAmount)  // جاية → دائن على المورد
+    : هو_مورد
+    ? -Number(فاتورة.totalAmount) // رايحة → مدين على المورد
+    : Number(فاتورة.totalAmount); // بيع → مدين على العميل
+
   const عملاء_معدّلة = عملاء.map((c) => ({
     ...c,
-    balance:
-      c.id === فاتورة.customerId
-        ? Number(c.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات_الموجودة
-        : Number(c.balance),
+    balance: c.id === فاتورة.customerId && !هو_مورد
+      ? Number(c.balance) - طرح_الفاتورة + إجمالي_الدفعات_الموجودة
+      : Number(c.balance),
+  }));
+  const موردون_معدّلة = موردون.map((s) => ({
+    ...s,
+    balance: s.id === فاتورة.customerId && هو_مورد
+      ? Number(s.balance) - طرح_الفاتورة + إجمالي_الدفعات_الموجودة
+      : Number(s.balance),
   }));
 
   return (
@@ -47,6 +65,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
       <نموذج_فاتورة
         العملاء={عملاء_معدّلة}
+        الموردون={موردون_معدّلة}
         حسابات_الخزنة={حسابات.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}
         حسابات_فرعية={حسابات_فرعية}
         التصنيفات={تصنيفات}
@@ -54,6 +73,8 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
         فاتورة={{
           id: فاتورة.id,
           الرقم: فاتورة.number,
+          نوع_الفاتورة,
+          مرجع_خارجي: فاتورة.externalRef ?? null,
           معرف_العميل: فاتورة.customerId,
           الهاتف: فاتورة.phone,
           التاريخ: فاتورة.date.toISOString(),
