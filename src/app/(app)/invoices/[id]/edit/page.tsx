@@ -38,14 +38,19 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
 
   const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   const هو_مورد = نوع_الفاتورة !== "SALE";
+  const عميل_زائر = !فاتورة.customerId;
 
-  // الرصيد في DB يشمل قيد الفاتورة + الدفعات — نطرح الفاتورة ونرجّع الدفعات
+  // حساب إجمالي دفعات الفاتورة الموجودة
   const إجمالي_الدفعات_الموجودة = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
+
+  // totalAmount = صافي (مبيعات − مرتجعات). لاستعادة رصيد ما قبل الفاتورة:
+  // balance_current = balance_before + totalAmount - payments
+  // → balance_before = balance_current - totalAmount + payments
   const طرح_الفاتورة = هو_مورد && نوع_الفاتورة === "PURCHASE"
-    ? Number(فاتورة.totalAmount)  // جاية → دائن على المورد
+    ? Number(فاتورة.totalAmount)   // جاية → دائن على المورد
     : هو_مورد
-    ? -Number(فاتورة.totalAmount) // رايحة → مدين على المورد
-    : Number(فاتورة.totalAmount); // بيع → مدين على العميل
+    ? -Number(فاتورة.totalAmount)  // رايحة → مدين على المورد
+    : Number(فاتورة.totalAmount);  // بيع/مختلط → صافي على العميل
 
   const عملاء_معدّلة = عملاء.map((c) => ({
     ...c,
@@ -75,11 +80,13 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           الرقم: فاتورة.number,
           نوع_الفاتورة,
           مرجع_خارجي: فاتورة.externalRef ?? null,
-          معرف_العميل: فاتورة.customerId,
+          معرف_العميل: عميل_زائر ? null : (فاتورة.customerId ?? null),
+          اسم_الزائر: عميل_زائر ? (فاتورة.guestName ?? null) : null,
           الهاتف: فاتورة.phone,
           التاريخ: فاتورة.date.toISOString(),
           ملاحظات: فاتورة.notes,
           البنود: فاتورة.lines.map((l) => ({
+            نوع_البند: (l.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
             اللون: l.color,
             الشركة: l.company ?? "",
             الكمية: String(Number(l.qty)),

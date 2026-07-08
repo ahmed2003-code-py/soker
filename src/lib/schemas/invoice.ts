@@ -12,6 +12,7 @@ const رقم_غير_سالب = z
   .refine((v) => v !== null && Number(v) >= 0, { message: "قيمة غير صالحة" });
 
 export const مخطط_بند = z.object({
+  نوع_البند: z.enum(["SALE", "RETURN"]).default("SALE"),
   اللون: z.string().trim().min(1, "اللون مطلوب"),
   الشركة: z.string().trim().optional().nullable(),
   الكمية: رقم_غير_سالب,
@@ -32,10 +33,11 @@ export const مخطط_دفعة_الفاتورة = z.object({
 });
 
 export const مخطط_فاتورة = z.object({
-  نوع_الفاتورة: z.enum(["SALE", "CUSTOMER_RETURN", "PURCHASE", "SUPPLIER_RETURN"]).default("SALE"),
-  مرجع_خارجي: z.string().trim().optional().nullable(), // رقم فاتورة المورد (للجاية)
+  نوع_الفاتورة: z.enum(["SALE", "PURCHASE", "SUPPLIER_RETURN"]).default("SALE"),
+  مرجع_خارجي: z.string().trim().optional().nullable(),
   رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
-  معرف_العميل: z.number().int().positive("اختر الطرف"),
+  معرف_العميل: z.number().int().positive().optional().nullable(), // null = عميل زائر
+  اسم_الزائر: z.string().trim().optional().nullable(),           // للطباعة عند الزائر
   الهاتف: z.string().trim().optional().nullable(),
   التاريخ: z.string().min(1, "التاريخ مطلوب"),
   ملاحظات: z.string().trim().optional().nullable(),

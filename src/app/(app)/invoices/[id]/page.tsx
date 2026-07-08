@@ -41,15 +41,26 @@ export default async function صفحة_عرض_فاتورة({
     إعدادات.find((s) => s.key === "اسم_الشركة")?.value || "مؤسسة سكر";
   const لها_شعار = !!(إعدادات.find((s) => s.key === "شعار_الشركة")?.value);
   const رقم = String(فاتورة.number).padStart(7, "0");
-  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "CUSTOMER_RETURN" | "PURCHASE" | "SUPPLIER_RETURN";
+  const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   const هو_مورد = نوع_الفاتورة === "PURCHASE" || نوع_الفاتورة === "SUPPLIER_RETURN";
+  const عميل_زائر = !فاتورة.customerId;
+  const اسم_الطرف = فاتورة.customer?.name ?? فاتورة.guestName ?? "عميل نقدي";
+
+  // إجماليات المبيعات والمرتجعات من البنود
+  const إجمالي_مبيعات_الفاتورة = فاتورة.lines
+    .filter((l) => l.lineType !== "RETURN")
+    .reduce((s, l) => s + Number(l.lineTotal), 0);
+  const إجمالي_مرتجعات_الفاتورة = فاتورة.lines
+    .filter((l) => l.lineType === "RETURN")
+    .reduce((s, l) => s + Number(l.lineTotal), 0);
+  const لها_مرتجعات = !هو_مورد && إجمالي_مرتجعات_الفاتورة > 0;
 
   // تجميع البنود حسب التصنيف مع الإجماليات
   type مجموعة_تصنيف = {
     التصنيف: string;
     إجمالي_الكمية: number;
     إجمالي_الوزن: number;
-    إجمالي_المبلغ: number;
+    إجمالي_المبلغ: number; // صافي = مبيعات − مرتجعات
     بنود: typeof فاتورة.lines;
     أسعار: Set<number>;
   };
@@ -63,10 +74,11 @@ export default async function صفحة_عرض_فاتورة({
       بنود: [],
       أسعار: new Set<number>(),
     };
+    const إشارة = بند.lineType === "RETURN" ? -1 : 1;
     مجموعة.بنود.push(بند);
-    مجموعة.إجمالي_الكمية += Number(بند.qty);
-    مجموعة.إجمالي_الوزن += Number(بند.weight);
-    مجموعة.إجمالي_المبلغ += Number(بند.lineTotal);
+    مجموعة.إجمالي_الكمية += Number(بند.qty) * إشارة;
+    مجموعة.إجمالي_الوزن += Number(بند.weight) * إشارة;
+    مجموعة.إجمالي_المبلغ += Number(بند.lineTotal) * إشارة;
     if (Number(بند.price) > 0) مجموعة.أسعار.add(Number(بند.price));
     تجميع.set(بند.category, مجموعة);
   }
@@ -77,8 +89,8 @@ export default async function صفحة_عرض_فاتورة({
       <شريط_إجراءات_الفاتورة
         المعرف={فاتورة.id}
         الرقم={فاتورة.number}
-        هاتف_العميل={فاتورة.phone || فاتورة.customer.phone}
-        اسم_العميل={فاتورة.customer.name}
+        هاتف_العميل={فاتورة.phone || فاتورة.customer?.phone}
+        اسم_العميل={اسم_الطرف}
         اسم_الشركة={اسم_الشركة}
         الإجمالي={Number(فاتورة.totalAmount)}
         التاريخ={فاتورة.date.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" })}
@@ -104,7 +116,7 @@ export default async function صفحة_عرض_فاتورة({
               <p className="text-sm font-medium">
                 {نوع_الفاتورة === "PURCHASE" ? "فاتورة شراء من مورد" :
                  نوع_الفاتورة === "SUPPLIER_RETURN" ? "مرتجع إلى مورد" :
-                 نوع_الفاتورة === "CUSTOMER_RETURN" ? "مرتجع من عميل" :
+                 لها_مرتجعات ? "فاتورة بيع ومرتجع" :
                  t("inv.v.sales_invoice")}
               </p>
             </div>
@@ -131,17 +143,20 @@ export default async function صفحة_عرض_فاتورة({
         <div className="my-4 flex flex-wrap gap-x-10 gap-y-1 text-[15px]">
           <span>
             <span className="font-semibold">{هو_مورد ? "المورد" : t("inv.col.customer")}: </span>
-            {فاتورة.customer.name}
+            {اسم_الطرف}
+            {عميل_زائر && (
+              <span className="mr-2 text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">نقدي</span>
+            )}
           </span>
           <span>
             <span className="font-semibold">{t("party.col.phone")}: </span>
             <span className="ltr-nums">
-              {فاتورة.phone || فاتورة.customer.phone || "—"}
+              {فاتورة.phone || فاتورة.customer?.phone || "—"}
             </span>
           </span>
         </div>
 
-        {/* جدول البنود — مجمّع حسب التصنيف كالفاتورة الورقية */}
+        {/* جدول البنود — مجمّع حسب التصنيف */}
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-y-2 border-foreground/70 print:border-black">
@@ -169,9 +184,18 @@ export default async function صفحة_عرض_فاتورة({
                 {مجموعة.بنود.map((بند) => (
                   <tr
                     key={بند.id}
-                    className="border-b border-foreground/10 print:border-black/15"
+                    className={`border-b border-foreground/10 print:border-black/15 ${
+                      بند.lineType === "RETURN"
+                        ? "bg-amber-50/60 dark:bg-amber-900/10 print:bg-amber-50/30"
+                        : ""
+                    }`}
                   >
                     <td className="px-2 py-1.5">
+                      {بند.lineType === "RETURN" && (
+                        <span className="inline-block text-[10px] text-amber-700 font-bold border border-amber-300 rounded px-1 ml-1.5 print:border-amber-400">
+                          مرتجع
+                        </span>
+                      )}
                       <span className="font-medium">{بند.color}</span>
                       {بند.company && (
                         <span className="text-muted-foreground mr-1.5 text-[12px]">
@@ -179,10 +203,10 @@ export default async function صفحة_عرض_فاتورة({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-end ltr-nums">
+                    <td className={`px-2 py-1.5 text-end ltr-nums ${بند.lineType === "RETURN" ? "text-amber-700" : ""}`}>
                       {Number(بند.qty)}
                     </td>
-                    <td className="px-2 py-1.5 text-end ltr-nums">
+                    <td className={`px-2 py-1.5 text-end ltr-nums ${بند.lineType === "RETURN" ? "text-amber-700" : ""}`}>
                       {Number(بند.weight).toFixed(2)}
                     </td>
                     <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">
@@ -192,11 +216,9 @@ export default async function صفحة_عرض_فاتورة({
                           })
                         : "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-end ltr-nums">
+                    <td className={`px-2 py-1.5 text-end ltr-nums ${بند.lineType === "RETURN" ? "text-amber-700 font-medium" : ""}`}>
                       {Number(بند.price) > 0
-                        ? Number(بند.lineTotal).toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                          })
+                        ? `${بند.lineType === "RETURN" ? "(" : ""}${Number(بند.lineTotal).toLocaleString("en-US", { minimumFractionDigits: 2 })}${بند.lineType === "RETURN" ? ")" : ""}`
                         : "—"}
                     </td>
                   </tr>
@@ -222,8 +244,8 @@ export default async function صفحة_عرض_فاتورة({
                     })()}
                   </td>
                   <td className="px-2 py-1.5 text-end ltr-nums text-sm">
-                    {مجموعة.إجمالي_المبلغ > 0
-                      ? مجموعة.إجمالي_المبلغ.toLocaleString("en-US", {
+                    {مجموعة.إجمالي_المبلغ !== 0
+                      ? Math.abs(مجموعة.إجمالي_المبلغ).toLocaleString("en-US", {
                           minimumFractionDigits: 2,
                         })
                       : "—"}
@@ -245,15 +267,9 @@ export default async function صفحة_عرض_فاتورة({
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-foreground/40 print:border-black/50">
-                    <th className="py-1 text-start font-semibold">
-                      {t("inv.f.category")}
-                    </th>
-                    <th className="py-1 text-end font-semibold">
-                      {t("inv.v.count")}
-                    </th>
-                    <th className="py-1 text-end font-semibold">
-                      {t("inv.v.weight")}
-                    </th>
+                    <th className="py-1 text-start font-semibold">{t("inv.f.category")}</th>
+                    <th className="py-1 text-end font-semibold">{t("inv.v.count")}</th>
+                    <th className="py-1 text-end font-semibold">{t("inv.v.weight")}</th>
                     <th className="py-1 text-end font-semibold">{t("inv.f.price_kg")}</th>
                     <th className="py-1 text-end font-semibold">المبلغ</th>
                   </tr>
@@ -272,20 +288,12 @@ export default async function صفحة_عرض_فاتورة({
                         className="border-b border-foreground/10 print:border-black/10"
                       >
                         <td className="py-1">{م.التصنيف}</td>
+                        <td className="py-1 text-end ltr-nums">{م.إجمالي_الكمية}</td>
+                        <td className="py-1 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
+                        <td className="py-1 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
                         <td className="py-1 text-end ltr-nums">
-                          {م.إجمالي_الكمية}
-                        </td>
-                        <td className="py-1 text-end ltr-nums">
-                          {م.إجمالي_الوزن.toFixed(2)}
-                        </td>
-                        <td className="py-1 text-end ltr-nums text-muted-foreground text-[12px]">
-                          {سعر_نص_م}
-                        </td>
-                        <td className="py-1 text-end ltr-nums">
-                          {م.إجمالي_المبلغ > 0
-                            ? م.إجمالي_المبلغ.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                              })
+                          {م.إجمالي_المبلغ !== 0
+                            ? Math.abs(م.إجمالي_المبلغ).toLocaleString("en-US", { minimumFractionDigits: 2 })
                             : "—"}
                         </td>
                       </tr>
@@ -300,9 +308,7 @@ export default async function صفحة_عرض_فاتورة({
           <div className="w-full sm:max-w-xs space-y-1">
             <div className="flex justify-between py-1 text-sm">
               <span>{t("inv.f.total_count")}</span>
-              <span className="ltr-nums font-medium">
-                {Number(فاتورة.totalQty)}
-              </span>
+              <span className="ltr-nums font-medium">{Number(فاتورة.totalQty)}</span>
             </div>
             <div className="flex justify-between py-1 text-sm">
               <span>{t("inv.col.total_weight")}</span>
@@ -310,13 +316,32 @@ export default async function صفحة_عرض_فاتورة({
                 {Number(فاتورة.totalWeight).toFixed(2)} {t("inv.kg")}
               </span>
             </div>
+
+            {/* تفصيل المبيعات والمرتجعات */}
+            {لها_مرتجعات && (
+              <>
+                <div className="flex justify-between py-1 text-sm border-t border-foreground/20 pt-2">
+                  <span>إجمالي المبيعات</span>
+                  <span className="ltr-nums font-medium">
+                    {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm text-amber-700 dark:text-amber-400">
+                  <span>إجمالي المرتجعات</span>
+                  <span className="ltr-nums font-medium">
+                    ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                  </span>
+                </div>
+              </>
+            )}
+
             <div className="mt-1 flex items-center justify-between border-t-2 border-foreground/80 pt-2 text-lg font-bold print:border-black">
-              <span>{t("inv.col.total")}</span>
+              <span>{لها_مرتجعات ? "الصافي" : t("inv.col.total")}</span>
               <نص_مبلغ القيمة={فاتورة.totalAmount} />
             </div>
             <p className="mt-2 text-[13px]">
               <span className="font-semibold">{t("inv.v.in_words")} </span>
-              {تفقيط(Number(فاتورة.totalAmount))}
+              {تفقيط(Math.abs(Number(فاتورة.totalAmount)))}
             </p>
           </div>
         </div>
@@ -328,19 +353,15 @@ export default async function صفحة_عرض_فاتورة({
           </p>
         )}
 
-        {/* مبدّل الرصيد — للعملاء فقط (بيع أو مرتجع) */}
-        {!هو_مورد && (() => {
+        {/* مبدّل الرصيد — للعملاء المسجّلين فقط */}
+        {!هو_مورد && !عميل_زائر && فاتورة.customer && (() => {
           const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-          // للمرتجع: الفاتورة تقلل الرصيد (دائن) → الرصيد_السابق = balance + totalAmount - payments
-          // للبيع:   الفاتورة تزيد الرصيد (مدين)  → الرصيد_السابق = balance - totalAmount + payments
-          const هو_مرتجع = نوع_الفاتورة === "CUSTOMER_RETURN";
-          const الرصيد_السابق = هو_مرتجع
-            ? Number(فاتورة.customer.balance) + Number(فاتورة.totalAmount) - إجمالي_الدفعات
-            : Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          // totalAmount = صافي (مبيعات − مرتجعات). الرصيد_السابق = balance - totalAmount + payments
+          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
           return (
             <مبدّل_رصيد_الفاتورة
               الرصيد_الحالي={الرصيد_السابق}
-              قيمة_الفاتورة={هو_مرتجع ? -Number(فاتورة.totalAmount) : Number(فاتورة.totalAmount)}
+              قيمة_الفاتورة={Number(فاتورة.totalAmount)}
               إجمالي_الدفعات={إجمالي_الدفعات}
               اسم_العميل={فاتورة.customer.name}
             />

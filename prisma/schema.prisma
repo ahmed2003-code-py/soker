@@ -125,8 +125,9 @@ model Party {
 model Invoice {
   id          Int      @id @default(autoincrement())
   number      Int      @unique @map("number") // تسلسلي فريد
-  customerId  Int      @map("customer_id")
-  customer    Party    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerId  Int?     @map("customer_id")   // null = عميل زائر (walk-in)
+  customer    Party?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  guestName   String?  @map("guest_name")   // اسم العميل الزائر للطباعة
   phone       String?  @map("phone")
   date        DateTime @map("date") @db.Date
   totalQty    Decimal  @default(0) @map("total_qty") @db.Decimal(18, 4)
@@ -158,6 +159,7 @@ model InvoiceLine {
   id        Int      @id @default(autoincrement())
   invoiceId Int      @map("invoice_id")
   invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineType  String   @default("SALE") @map("line_type") // SALE | RETURN
   color     String   @map("color")
   company   String?  @map("company") // الشركة / المصنع
   qty       Decimal  @default(0) @map("qty") @db.Decimal(18, 4)

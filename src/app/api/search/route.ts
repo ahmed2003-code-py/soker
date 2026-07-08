@@ -71,7 +71,7 @@ export async function GET(req: Request) {
       العناصر: فواتير.map((f) => ({
         id: f.id,
         عنوان: `فاتورة ${String(f.number).padStart(7, "0")}`,
-        وصف: `${f.customer.name} — ${تنسيق_مبلغ(f.totalAmount)}`,
+        وصف: `${f.customer?.name ?? "عميل نقدي"} — ${تنسيق_مبلغ(f.totalAmount)}`,
         رابط: `/invoices/${f.id}`,
       })),
     });

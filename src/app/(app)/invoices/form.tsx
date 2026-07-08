@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save, RotateCcw } from "lucide-react";
+import { Plus, Trash2, Save, RotateCcw, UserX } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
@@ -27,6 +27,7 @@ import {
 import { إنشاء_طرف } from "../_parties/actions";
 
 type بند = {
+  نوع_البند: "SALE" | "RETURN";
   اللون: string;
   الشركة: string;
   الكمية: string;
@@ -36,6 +37,7 @@ type بند = {
   ملاحظات: string;
 };
 const بند_فارغ = (): بند => ({
+  نوع_البند: "SALE",
   اللون: "",
   الشركة: "",
   الكمية: "",
@@ -51,6 +53,8 @@ const مفتاح_المسودة = "soker_invoice_draft_new";
 
 type مسودة = {
   عميل: string;
+  عميل_زائر: boolean;
+  اسم_الزائر: string;
   هاتف: string;
   تاريخ: string;
   ملاحظات: string;
@@ -88,8 +92,9 @@ export function نموذج_فاتورة({
   فاتورة?: {
     id: number;
     الرقم: number;
-    نوع_الفاتورة: "SALE" | "CUSTOMER_RETURN" | "PURCHASE" | "SUPPLIER_RETURN";
-    معرف_العميل: number;
+    نوع_الفاتورة: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+    معرف_العميل: number | null;
+    اسم_الزائر?: string | null;
     مرجع_خارجي?: string | null;
     الهاتف: string | null;
     التاريخ: string;
@@ -110,20 +115,22 @@ export function نموذج_فاتورة({
   const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"CUSTOMER" | "SUPPLIER">(
     فاتورة && أنواع_المورد_نموذج.includes(فاتورة.نوع_الفاتورة) ? "SUPPLIER" : "CUSTOMER"
   );
-  // اتجاه فاتورة العميل: بيع (SALE) أو مرتجع (CUSTOMER_RETURN)
-  const [اتجاه_العميل, تعيين_اتجاه_العميل] = React.useState<"SALE" | "CUSTOMER_RETURN">(
-    فاتورة?.نوع_الفاتورة === "CUSTOMER_RETURN" ? "CUSTOMER_RETURN" : "SALE"
-  );
   // اتجاه فاتورة المورد: جاية (PURCHASE) أو رايحة (SUPPLIER_RETURN)
   const [اتجاه_المورد, تعيين_اتجاه_المورد] = React.useState<"PURCHASE" | "SUPPLIER_RETURN">(
     فاتورة?.نوع_الفاتورة === "SUPPLIER_RETURN" ? "SUPPLIER_RETURN" : "PURCHASE"
   );
   const [مرجع_خارجي, تعيين_مرجع_خارجي] = React.useState(فاتورة?.مرجع_خارجي ?? "");
-  // نوع الفاتورة المحسوب (computed at component level لاستخدامه في الـ JSX)
-  const نوع_الفاتورة_الحالي = نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : اتجاه_العميل;
+  const نوع_الفاتورة_الحالي: "SALE" | "PURCHASE" | "SUPPLIER_RETURN" =
+    نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : "SALE";
+
+  // وضع العميل الزائر (walk-in)
+  const [عميل_زائر, تعيين_عميل_زائر] = React.useState(
+    فاتورة ? فاتورة.معرف_العميل === null : false
+  );
+  const [اسم_الزائر, تعيين_اسم_الزائر] = React.useState(فاتورة?.اسم_الزائر ?? "");
 
   const [عميل, تعيين_عميل] = React.useState<string>(
-    فاتورة ? String(فاتورة.معرف_العميل) : ""
+    فاتورة && فاتورة.معرف_العميل ? String(فاتورة.معرف_العميل) : ""
   );
   const [هاتف, تعيين_هاتف] = React.useState(فاتورة?.الهاتف ?? "");
   const [تاريخ, تعيين_تاريخ] = React.useState(
@@ -147,7 +154,7 @@ export function نموذج_فاتورة({
   const [مسودة_معلقة, تعيين_مسودة_معلقة] = React.useState(false);
 
   // ─── الدفعة الفورية ───────────────────────────────────────
-  const [دفعة_مفعلة, تعيين_دفعة_مفعلة] = React.useState(false);
+  const [دفعة_مفعلة, تعيين_دفعة_مفعلة] = React.useState(عميل_زائر); // إجبارية للزائر
   const [مبلغ_الدفعة, تعيين_مبلغ_الدفعة] = React.useState("");
   const [حساب_الدفعة, تعيين_حساب_الدفعة] = React.useState(
     حسابات_الخزنة[0] ? String(حسابات_الخزنة[0].id) : ""
@@ -182,12 +189,10 @@ export function نموذج_فاتورة({
     if (idx < ترتيب.length - 1) {
       const التالي = refs[ترتيب[idx + 1]];
       التالي?.focus();
-      // لو الحقل التالي combobox (زر) → افتحه فوراً بدل ما المستخدم يضغط Enter مرة تانية
       if (التالي instanceof HTMLButtonElement) {
         requestAnimationFrame(() => التالي.click());
       }
     } else {
-      // آخر حقل في السطر → أضف سطراً جديداً وانتقل إليه
       if (i === بنود.length - 1) {
         تعيين_بنود((س) => [...س, بند_فارغ()]);
         requestAnimationFrame(() => مراجع.current[i + 1]?.اللون?.focus());
@@ -205,6 +210,8 @@ export function نموذج_فاتورة({
       if (محفوظة) {
         const م: مسودة = JSON.parse(محفوظة);
         if (م.عميل) تعيين_عميل(م.عميل);
+        if (م.عميل_زائر) { تعيين_عميل_زائر(true); تعيين_دفعة_مفعلة(true); }
+        if (م.اسم_الزائر) تعيين_اسم_الزائر(م.اسم_الزائر);
         if (م.هاتف) تعيين_هاتف(م.هاتف);
         if (م.تاريخ) تعيين_تاريخ(م.تاريخ);
         if (م.ملاحظات) تعيين_ملاحظات(م.ملاحظات);
@@ -227,23 +234,23 @@ export function نموذج_فاتورة({
     if (فاتورة) return;
     if (مؤقت.current) clearTimeout(مؤقت.current);
     مؤقت.current = setTimeout(() => {
-      const م: مسودة = { عميل, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, وقت_الحفظ: Date.now() };
+      const م: مسودة = { عميل, عميل_زائر, اسم_الزائر, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, وقت_الحفظ: Date.now() };
       try { localStorage.setItem(مفتاح_المسودة, JSON.stringify(م)); } catch { /* تجاهل */ }
     }, 800);
     return () => { if (مؤقت.current) clearTimeout(مؤقت.current); };
-  }, [عميل, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, فاتورة]);
+  }, [عميل, عميل_زائر, اسم_الزائر, هاتف, تاريخ, ملاحظات, بنود, أسعار_تصنيفات, رقم_الفاتورة, فاتورة]);
 
   function تجاهل_المسودة() {
     localStorage.removeItem(مفتاح_المسودة);
     تعيين_مسودة_معلقة(false);
-    تعيين_عميل(""); تعيين_هاتف(""); تعيين_تاريخ(اليوم());
+    تعيين_عميل(""); تعيين_عميل_زائر(false); تعيين_اسم_الزائر("");
+    تعيين_هاتف(""); تعيين_تاريخ(اليوم());
     تعيين_ملاحظات(""); تعيين_بنود([بند_فارغ()]); تعيين_أسعار({});
     احصل_رقم_الفاتورة_التالي().then((n) => تعيين_رقم_الفاتورة(String(n)));
   }
 
-  // ─── تعديل/حذف التصنيفات (تحفظ في settings — لا تمس الفواتير القديمة) ──
+  // ─── تعديل/حذف التصنيفات ─────────────────────────────────
   async function عدّل_تصنيف(قديم: string, جديد: string) {
-    // تحديث محلي فوري
     تعيين_تصنيفات((s) => s.map((x) => (x === قديم ? جديد : x)));
     تعيين_بنود((ب) => ب.map((b) => b.التصنيف === قديم ? { ...b, التصنيف: جديد } : b));
     تعيين_أسعار((prev) => {
@@ -253,7 +260,6 @@ export function نموذج_فاتورة({
     });
     const r = await عدّل_تصنيف_DB(قديم, جديد);
     if (!r.نجاح) {
-      // تراجع عند الخطأ
       تعيين_تصنيفات((s) => s.map((x) => (x === جديد ? قديم : x)));
       إشعار.خطأ(r.رسالة);
     }
@@ -265,7 +271,6 @@ export function نموذج_فاتورة({
     تعيين_تصنيفات((s) => s.filter((x) => x !== قيمة));
   }
 
-  // ─── تعديل/حذف الشركات (تحفظ في settings — لا تمس الفواتير القديمة) ──
   async function عدّل_شركة(قديم: string, جديد: string) {
     تعيين_شركات((s) => s.map((x) => (x === قديم ? جديد : x)));
     تعيين_بنود((ب) => ب.map((b) => b.الشركة === قديم ? { ...b, الشركة: جديد } : b));
@@ -283,7 +288,7 @@ export function نموذج_فاتورة({
   }
 
   // ─── البنود ───────────────────────────────────────────────
-  function حدّث(i: number, مفتاح: keyof بند, قيمة: string) {
+  function حدّث(i: number, مفتاح: keyof Omit<بند, "نوع_البند">, قيمة: string) {
     if (مفتاح === "التصنيف") {
       تعيين_بنود((س) =>
         س.map((ب, j) =>
@@ -293,6 +298,14 @@ export function نموذج_فاتورة({
       return;
     }
     تعيين_بنود((س) => س.map((ب, j) => (j === i ? { ...ب, [مفتاح]: قيمة } : ب)));
+  }
+
+  function بدّل_نوع_البند(i: number) {
+    تعيين_بنود((س) =>
+      س.map((ب, j) =>
+        j === i ? { ...ب, نوع_البند: ب.نوع_البند === "RETURN" ? "SALE" : "RETURN" } : ب
+      )
+    );
   }
 
   function حدّث_سعر_تصنيف(تصنيف: string, سعر: string) {
@@ -312,17 +325,27 @@ export function نموذج_فاتورة({
   // ─── إجماليات ─────────────────────────────────────────────
   const إجمالي_الكمية = بنود.reduce((س, ب) => س + ع(ب.الكمية), 0);
   const إجمالي_الوزن = بنود.reduce((س, ب) => س + ع(ب.الوزن), 0);
-  const الإجمالي_المالي = بنود.reduce((س, ب) => {
+  const إجمالي_المبيعات_النموذج = بنود.reduce((س, ب) => {
+    if (ب.نوع_البند === "RETURN") return س;
     const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
     return س + سعر * ع(ب.الوزن);
   }, 0);
+  const إجمالي_المرتجعات_النموذج = بنود.reduce((س, ب) => {
+    if (ب.نوع_البند !== "RETURN") return س;
+    const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
+    return س + سعر * ع(ب.الوزن);
+  }, 0);
+  const الإجمالي_المالي = إجمالي_المبيعات_النموذج - إجمالي_المرتجعات_النموذج; // قد يكون سالباً
+  const لها_مرتجعات = نوع_الطرف === "CUSTOMER" && إجمالي_المرتجعات_النموذج > 0;
 
   const تجميع = React.useMemo(() => {
     const م = new Map<string, { كمية: number; وزن: number }>();
     for (const ب of بنود) {
       if (!ب.التصنيف) continue;
       const ح = م.get(ب.التصنيف) ?? { كمية: 0, وزن: 0 };
-      ح.كمية += ع(ب.الكمية); ح.وزن += ع(ب.الوزن);
+      const إشارة = ب.نوع_البند === "RETURN" ? -1 : 1;
+      ح.كمية += ع(ب.الكمية) * إشارة;
+      ح.وزن += ع(ب.الوزن) * إشارة;
       م.set(ب.التصنيف, ح);
     }
     return [...م.entries()];
@@ -347,23 +370,26 @@ export function نموذج_فاتورة({
   }
 
   async function احفظ() {
-    if (!عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
+    if (نوع_الطرف === "SUPPLIER" && !عميل) return إشعار.خطأ("اختر المورد");
+    if (نوع_الطرف === "CUSTOMER" && !عميل_زائر && !عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
+    if (عميل_زائر && !دفعة_مفعلة) return إشعار.خطأ("العميل الزائر يتطلب تحصيل فوري — فعّل الدفعة");
     if (دفعة_مفعلة && له_فرعية_دفعة && !حساب_فرعي_الدفعة) {
       const تسمية = نوع_حساب_الدفعة === "BANK" ? "البنك" : نوع_حساب_الدفعة === "VODAFONE" ? "المحفظة" : "حساب إنستا";
       return إشعار.خطأ(`يرجى اختيار ${تسمية} للدفعة`);
     }
     تعيين_جارٍ(true);
-    const نوع_الفاتورة_المحدد = نوع_الفاتورة_الحالي;
     const رقم_مُحدد = رقم_الفاتورة.trim() ? Number(رقم_الفاتورة.replace(/,/g, "")) : null;
     const payload = {
-      نوع_الفاتورة: نوع_الفاتورة_المحدد,
-      مرجع_خارجي: نوع_الفاتورة_المحدد === "PURCHASE" ? (مرجع_خارجي.trim() || null) : null,
+      نوع_الفاتورة: نوع_الفاتورة_الحالي,
+      مرجع_خارجي: نوع_الفاتورة_الحالي === "PURCHASE" ? (مرجع_خارجي.trim() || null) : null,
       رقم_الفاتورة_المحدد: رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
-      معرف_العميل: Number(عميل),
+      معرف_العميل: عميل_زائر ? null : (عميل ? Number(عميل) : null),
+      اسم_الزائر: عميل_زائر ? (اسم_الزائر.trim() || null) : null,
       الهاتف: هاتف,
       التاريخ: تاريخ,
       ملاحظات,
       البنود: بنود.map((ب) => ({
+        نوع_البند: ب.نوع_البند,
         اللون: ب.اللون,
         الشركة: ب.الشركة || null,
         الكمية: ب.الكمية,
@@ -372,7 +398,6 @@ export function نموذج_فاتورة({
         السعر: ب.السعر,
         ملاحظات: ب.ملاحظات,
       })),
-      // دفعة مع الفاتورة
       ...(دفعة_مفعلة && مبلغ_الدفعة && حساب_الدفعة ? {
         الدفعة: {
           المبلغ: مبلغ_الدفعة,
@@ -413,7 +438,7 @@ export function نموذج_فاتورة({
 
       {/* الترويسة */}
       <div className="card-soft p-5 space-y-4">
-        {/* مفتاح نوع الطرف */}
+        {/* مفتاح نوع الطرف (عميل/مورد) */}
         {!فاتورة && (
           <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
             {(["CUSTOMER", "SUPPLIER"] as const).map((نوع) => (
@@ -424,6 +449,7 @@ export function نموذج_فاتورة({
                   تعيين_نوع_الطرف(نوع);
                   تعيين_عميل("");
                   تعيين_هاتف("");
+                  if (نوع === "SUPPLIER") { تعيين_عميل_زائر(false); }
                 }}
                 className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   نوع_الطرف === نوع
@@ -437,26 +463,26 @@ export function نموذج_فاتورة({
           </div>
         )}
 
-        {/* اتجاه فاتورة العميل: بيع أو مرتجع */}
-        {نوع_الطرف === "CUSTOMER" && (
-          <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
-            {([["SALE", "بيع"], ["CUSTOMER_RETURN", "مرتجع من العميل"]] as const).map(([نوع, تسمية]) => (
-              <button
-                key={نوع}
-                type="button"
-                onClick={() => تعيين_اتجاه_العميل(نوع)}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                  اتجاه_العميل === نوع
-                    ? نوع === "CUSTOMER_RETURN"
-                      ? "bg-amber-100 shadow text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-                      : "bg-white shadow text-foreground dark:bg-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {تسمية}
-              </button>
-            ))}
-          </div>
+        {/* زر عميل زائر (walk-in) — للعملاء فقط */}
+        {نوع_الطرف === "CUSTOMER" && !فاتورة && (
+          <label className="flex cursor-pointer items-center gap-2 w-fit select-none text-sm">
+            <input
+              type="checkbox"
+              checked={عميل_زائر}
+              onChange={(e) => {
+                const ف = e.target.checked;
+                تعيين_عميل_زائر(ف);
+                if (ف) {
+                  تعيين_عميل("");
+                  تعيين_هاتف("");
+                  تعيين_دفعة_مفعلة(true);
+                }
+              }}
+              className="size-4 rounded accent-primary"
+            />
+            <UserX className="size-4 text-muted-foreground" />
+            <span className="text-muted-foreground">عميل زائر (بيع نقدي مباشر — بلا حساب)</span>
+          </label>
         )}
 
         {/* اتجاه فاتورة المورد */}
@@ -503,8 +529,15 @@ export function نموذج_فاتورة({
 
           {/* اختيار الطرف */}
           <div className="space-y-1.5">
-            <العنوان مطلوب>{نوع_الطرف === "CUSTOMER" ? t("inv.col.customer") : "المورد"}</العنوان>
-            {نوع_الطرف === "CUSTOMER" ? (
+            <العنوان مطلوب={!عميل_زائر}>{نوع_الطرف === "CUSTOMER" ? t("inv.col.customer") : "المورد"}</العنوان>
+            {عميل_زائر ? (
+              <الحقل
+                autoFocus
+                value={اسم_الزائر}
+                onChange={(e) => تعيين_اسم_الزائر(e.target.value)}
+                placeholder="اسم العميل للطباعة (اختياري)"
+              />
+            ) : نوع_الطرف === "CUSTOMER" ? (
               <قائمة_اختيار
                 الخيارات={عملاء.map((c) => ({ القيمة: String(c.id), التسمية: c.name }))}
                 القيمة={عميل}
@@ -565,6 +598,7 @@ export function نموذج_فاتورة({
           <table className="w-full text-sm">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border">
+                {نوع_الطرف === "CUSTOMER" && <th className="p-2 w-20"></th>}
                 <th className="p-2 text-start">{t("inv.f.color")}</th>
                 <th className="p-2 text-start">الشركة</th>
                 <th className="p-2 text-start">{t("inv.f.category")}</th>
@@ -576,7 +610,29 @@ export function نموذج_فاتورة({
             </thead>
             <tbody>
               {بنود.map((ب, i) => (
-                <tr key={i} className="border-b border-border/60">
+                <tr
+                  key={i}
+                  className={`border-b border-border/60 ${
+                    ب.نوع_البند === "RETURN" ? "bg-amber-50/40 dark:bg-amber-900/10" : ""
+                  }`}
+                >
+                  {/* زر نوع البند (بيع/مرتجع) — للعملاء فقط */}
+                  {نوع_الطرف === "CUSTOMER" && (
+                    <td className="p-1.5">
+                      <button
+                        type="button"
+                        title={ب.نوع_البند === "RETURN" ? "مرتجع — اضغط للتبديل" : "بيع — اضغط للتبديل"}
+                        onClick={() => بدّل_نوع_البند(i)}
+                        className={`rounded px-2 py-0.5 text-xs font-medium border transition-colors ${
+                          ب.نوع_البند === "RETURN"
+                            ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700"
+                            : "bg-muted/50 text-muted-foreground border-border hover:border-primary/40"
+                        }`}
+                      >
+                        {ب.نوع_البند === "RETURN" ? "مرتجع" : "بيع"}
+                      </button>
+                    </td>
+                  )}
                   {/* اللون */}
                   <td className="p-1.5 min-w-28">
                     <الحقل
@@ -614,7 +670,6 @@ export function نموذج_فاتورة({
                       القيمة={ب.التصنيف}
                       عند_التغيير={async (v) => {
                         حدّث(i, "التصنيف", v);
-                        // جلب آخر سعر للعميل والتصنيف — فقط إذا لم يكن هناك سعر محدد بعد
                         if (عميل && v && !أسعار_تصنيفات[v]) {
                           const أسعار = await احصل_آخر_أسعار(Number(عميل), [v]);
                           if (أسعار[v]) {
@@ -662,12 +717,13 @@ export function نموذج_فاتورة({
                     />
                   </td>
                   {/* المجموع */}
-                  <td className="p-1.5 text-end ltr-nums tabular-nums text-muted-foreground text-sm">
+                  <td className={`p-1.5 text-end ltr-nums tabular-nums text-sm ${ب.نوع_البند === "RETURN" ? "text-amber-700" : "text-muted-foreground"}`}>
                     {(() => {
                       const سعر = ع(أسعار_تصنيفات[ب.التصنيف] ?? ب.السعر);
-                      return سعر > 0
-                        ? (سعر * ع(ب.الوزن)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        : "—";
+                      const قيمة = سعر > 0 ? (سعر * ع(ب.الوزن)) : 0;
+                      if (قيمة === 0) return "—";
+                      const نص = قيمة.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      return ب.نوع_البند === "RETURN" ? `(${نص})` : نص;
                     })()}
                   </td>
                   {/* حذف */}
@@ -718,8 +774,8 @@ export function نموذج_فاتورة({
                           placeholder="0.00" />
                       </td>
                       <td className="p-2 text-end ltr-nums font-medium">
-                        {مبلغ_التصنيف > 0
-                          ? مبلغ_التصنيف.toLocaleString("en-US", { minimumFractionDigits: 2 })
+                        {مبلغ_التصنيف !== 0
+                          ? Math.abs(مبلغ_التصنيف).toLocaleString("en-US", { minimumFractionDigits: 2 })
                           : "—"}
                       </td>
                     </tr>
@@ -739,37 +795,78 @@ export function نموذج_فاتورة({
             <span className="text-muted-foreground">{t("inv.col.total_weight")}</span>
             <span className="ltr-nums font-medium">{إجمالي_الوزن.toFixed(2)} {t("inv.kg")}</span>
           </div>
-          <div className="flex justify-between border-t border-border pt-2 text-lg">
-            <span className="font-semibold">{t("inv.f.financial_total")}</span>
-            <نص_مبلغ القيمة={الإجمالي_المالي} />
-          </div>
+
+          {لها_مرتجعات ? (
+            <>
+              <div className="flex justify-between border-t border-border pt-2">
+                <span className="text-muted-foreground">إجمالي المبيعات</span>
+                <span className="ltr-nums font-medium">
+                  {إجمالي_المبيعات_النموذج.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between text-amber-700 dark:text-amber-400">
+                <span>إجمالي المرتجعات</span>
+                <span className="ltr-nums font-medium">
+                  ({إجمالي_المرتجعات_النموذج.toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-border pt-2 text-lg">
+                <span className="font-semibold">صافي الفاتورة</span>
+                <نص_مبلغ القيمة={الإجمالي_المالي} />
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between border-t border-border pt-2 text-lg">
+              <span className="font-semibold">{t("inv.f.financial_total")}</span>
+              <نص_مبلغ القيمة={الإجمالي_المالي} />
+            </div>
+          )}
 
           {/* رصيد الطرف بعد الفاتورة */}
           {(() => {
+            if (عميل_زائر) return null; // لا يوجد رصيد للزائر
             const قائمة = نوع_الطرف === "CUSTOMER" ? عملاء : موردون;
             const العميل_المحدد = قائمة.find((c) => String(c.id) === عميل);
-            if (!العميل_المحدد || الإجمالي_المالي === 0) return null;
+            if (!العميل_المحدد) return null;
             const الرصيد_الحالي = العميل_المحدد.balance;
             const مبلغ_دفعة_فعلي = دفعة_مفعلة ? (ع(مبلغ_الدفعة) || 0) : 0;
-            // المرتجع والرايحة يقللان الرصيد؛ البيع والجاية يزيدانه
-            const يقلل = نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" || نوع_الفاتورة_الحالي === "SUPPLIER_RETURN";
-            const الرصيد_الجديد = الرصيد_الحالي + (يقلل ? -الإجمالي_المالي : الإجمالي_المالي) - مبلغ_دفعة_فعلي;
+            let الرصيد_الجديد: number;
+            if (نوع_الطرف === "CUSTOMER") {
+              // مبيعات ترفع الرصيد، مرتجعات تخفضه
+              الرصيد_الجديد = الرصيد_الحالي + إجمالي_المبيعات_النموذج - إجمالي_المرتجعات_النموذج - مبلغ_دفعة_فعلي;
+            } else {
+              // PURCHASE ترفع المستحق، SUPPLIER_RETURN تخفضه
+              const يقلل = نوع_الفاتورة_الحالي === "SUPPLIER_RETURN";
+              الرصيد_الجديد = الرصيد_الحالي + (يقلل ? -الإجمالي_المالي : الإجمالي_المالي) - مبلغ_دفعة_فعلي;
+            }
             const تسمية_رصيد = نوع_الطرف === "CUSTOMER" ? "رصيد العميل الحالي" : "رصيد المورد الحالي";
-            const تسمية_فاتورة =
-              نوع_الفاتورة_الحالي === "SALE" ? "+ هذه الفاتورة" :
-              نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" ? "− مرتجع (يقلل المديونية)" :
-              نوع_الفاتورة_الحالي === "PURCHASE" ? "+ فاتورة من المورد" :
-              "− مرتجع إلى المورد";
             return (
               <div className="mt-3 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm space-y-1.5">
                 <div className="flex justify-between text-muted-foreground">
                   <span>{تسمية_رصيد}</span>
                   <نص_مبلغ القيمة={Math.abs(الرصيد_الحالي)} النوع={الرصيد_الحالي > 0 ? "مصروف" : "محايد"} />
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>{تسمية_فاتورة}</span>
-                  <نص_مبلغ القيمة={الإجمالي_المالي} />
-                </div>
+                {لها_مرتجعات ? (
+                  <>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>+ مبيعات</span>
+                      <نص_مبلغ القيمة={إجمالي_المبيعات_النموذج} />
+                    </div>
+                    <div className="flex justify-between text-amber-700 dark:text-amber-400">
+                      <span>− مرتجعات</span>
+                      <نص_مبلغ القيمة={إجمالي_المرتجعات_النموذج} النوع="إيراد" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>
+                      {نوع_الفاتورة_الحالي === "PURCHASE" ? "+ فاتورة من المورد" :
+                       نوع_الفاتورة_الحالي === "SUPPLIER_RETURN" ? "− مرتجع إلى المورد" :
+                       "+ هذه الفاتورة"}
+                    </span>
+                    <نص_مبلغ القيمة={الإجمالي_المالي} />
+                  </div>
+                )}
                 {مبلغ_دفعة_فعلي > 0 && (
                   <div className="flex justify-between text-success">
                     <span>− الدفعة المسجّلة</span>
@@ -793,72 +890,70 @@ export function نموذج_فاتورة({
 
       {/* ── تسجيل دفعة ── */}
       <div className="card-soft p-4">
-          <label className="flex cursor-pointer items-center gap-2.5 select-none">
-            <input
-              type="checkbox"
-              checked={دفعة_مفعلة}
-              onChange={(e) => {
-                تعيين_دفعة_مفعلة(e.target.checked);
-                if (e.target.checked && !مبلغ_الدفعة && الإجمالي_المالي > 0) {
-                  تعيين_مبلغ_الدفعة(String(الإجمالي_المالي));
-                }
-              }}
-              className="size-4 rounded accent-primary"
-            />
-            <Wallet className="size-4 text-success" />
-            <span className="font-medium">
-              {نوع_الفاتورة_الحالي === "PURCHASE"
-                ? "تسجيل دفع للمورد مع الفاتورة"
-                : نوع_الفاتورة_الحالي === "CUSTOMER_RETURN"
-                ? "تسجيل تحصيل نقدي مع المرتجع"
-                : "تسجيل دفعة مع الفاتورة"}
-            </span>
-          </label>
+        <label className="flex cursor-pointer items-center gap-2.5 select-none">
+          <input
+            type="checkbox"
+            checked={دفعة_مفعلة}
+            disabled={عميل_زائر} // إجبارية للزائر
+            onChange={(e) => {
+              if (عميل_زائر) return;
+              تعيين_دفعة_مفعلة(e.target.checked);
+              if (e.target.checked && !مبلغ_الدفعة && الإجمالي_المالي > 0) {
+                تعيين_مبلغ_الدفعة(String(الإجمالي_المالي));
+              }
+            }}
+            className="size-4 rounded accent-primary"
+          />
+          <Wallet className="size-4 text-success" />
+          <span className="font-medium">
+            {عميل_زائر
+              ? "تحصيل نقدي فوري (مطلوب)"
+              : نوع_الفاتورة_الحالي === "PURCHASE"
+              ? "تسجيل دفع للمورد مع الفاتورة"
+              : "تسجيل دفعة مع الفاتورة"}
+          </span>
+        </label>
 
-          {دفعة_مفعلة && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 border-t border-border pt-3">
-              <div className="space-y-1.5">
-                <العنوان مطلوب>
-                  {نوع_الفاتورة_الحالي === "PURCHASE" ? "المبلغ المدفوع للمورد" :
-                   نوع_الفاتورة_الحالي === "CUSTOMER_RETURN" ? "المبلغ المحصّل مع المرتجع" :
-                   "المبلغ المدفوع"}
-                </العنوان>
-                <الحقل
-                  selectOnFocus
-                  className="ltr-nums"
-                  value={مبلغ_الدفعة}
-                  onChange={(e) => تعيين_مبلغ_الدفعة(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <العنوان مطلوب>طريقة الدفع / الخزنة</العنوان>
-                <قائمة_اختيار
-                  الخيارات={حسابات_الخزنة.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }))}
-                  القيمة={حساب_الدفعة}
-                  عند_التغيير={(v) => { تعيين_حساب_الدفعة(v); تعيين_حساب_فرعي_الدفعة(""); }}
-                  نص_بديل="اختر"
-                  قابل_للبحث={false}
-                />
-              </div>
-
-              {/* الحساب الفرعي — بنك / فودافون / إنستاباي */}
-              {له_فرعية_دفعة && (
-                <div className="space-y-1.5 sm:col-span-2">
-                  <العنوان مطلوب>
-                    {نوع_حساب_الدفعة === "BANK" ? "البنك" : نوع_حساب_الدفعة === "VODAFONE" ? "المحفظة" : "حساب إنستا"}
-                  </العنوان>
-                  <قائمة_اختيار
-                    الخيارات={خيارات_فرعية_الدفعة.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
-                    القيمة={حساب_فرعي_الدفعة}
-                    عند_التغيير={تعيين_حساب_فرعي_الدفعة}
-                    نص_بديل="اختر…"
-                  />
-                </div>
-              )}
+        {دفعة_مفعلة && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 border-t border-border pt-3">
+            <div className="space-y-1.5">
+              <العنوان مطلوب>
+                {نوع_الفاتورة_الحالي === "PURCHASE" ? "المبلغ المدفوع للمورد" : "المبلغ المحصّل"}
+              </العنوان>
+              <الحقل
+                selectOnFocus
+                className="ltr-nums"
+                value={مبلغ_الدفعة}
+                onChange={(e) => تعيين_مبلغ_الدفعة(e.target.value)}
+                placeholder="0.00"
+              />
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              <العنوان مطلوب>طريقة الدفع / الخزنة</العنوان>
+              <قائمة_اختيار
+                الخيارات={حسابات_الخزنة.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }))}
+                القيمة={حساب_الدفعة}
+                عند_التغيير={(v) => { تعيين_حساب_الدفعة(v); تعيين_حساب_فرعي_الدفعة(""); }}
+                نص_بديل="اختر"
+                قابل_للبحث={false}
+              />
+            </div>
+            {له_فرعية_دفعة && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <العنوان مطلوب>
+                  {نوع_حساب_الدفعة === "BANK" ? "البنك" : نوع_حساب_الدفعة === "VODAFONE" ? "المحفظة" : "حساب إنستا"}
+                </العنوان>
+                <قائمة_اختيار
+                  الخيارات={خيارات_فرعية_الدفعة.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
+                  القيمة={حساب_فرعي_الدفعة}
+                  عند_التغيير={تعيين_حساب_فرعي_الدفعة}
+                  نص_بديل="اختر…"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex justify-end gap-2">
         <الزر variant="outline" onClick={() => router.back()}>{t("common.cancel")}</الزر>

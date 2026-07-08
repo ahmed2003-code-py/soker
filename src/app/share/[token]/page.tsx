@@ -87,12 +87,12 @@ export default async function صفحة_مشاركة_فاتورة({
         <div className="my-4 flex flex-wrap gap-x-10 gap-y-1 text-[15px]">
           <span>
             <span className="font-semibold">العميل: </span>
-            {فاتورة.customer.name}
+            {فاتورة.customer?.name ?? فاتورة.guestName ?? "عميل نقدي"}
           </span>
-          {(فاتورة.phone || فاتورة.customer.phone) && (
+          {(فاتورة.phone || فاتورة.customer?.phone) && (
             <span>
               <span className="font-semibold">الهاتف: </span>
-              <span className="ltr-nums">{فاتورة.phone || فاتورة.customer.phone}</span>
+              <span className="ltr-nums">{فاتورة.phone || فاتورة.customer?.phone}</span>
             </span>
           )}
         </div>
@@ -210,7 +210,7 @@ export default async function صفحة_مشاركة_فاتورة({
         {/* قسم الرصيد — يظهر فقط لو ?balance=1 */}
         {مع_رصيد && (() => {
           const إجمالي_الدفعات = (فاتورة.treasuryTxns ?? []).reduce((s, t) => s + Number(t.amount), 0);
-          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          const الرصيد_السابق = Number(فاتورة.customer?.balance ?? 0) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
           const الرصيد_الجديد = الرصيد_السابق + Number(فاتورة.totalAmount) - إجمالي_الدفعات;
           const نص_رصيد = (r: number) => {
             const مبلغ = Math.abs(r).toLocaleString("en-US", { minimumFractionDigits: 2 });
@@ -219,7 +219,7 @@ export default async function صفحة_مشاركة_فاتورة({
           };
           return (
             <div className="mt-5 rounded-xl border border-gray-300 p-3 text-[13px] space-y-1.5">
-              <p className="font-semibold mb-2">رصيد العميل: {فاتورة.customer.name}</p>
+              <p className="font-semibold mb-2">رصيد العميل: {فاتورة.customer?.name ?? "—"}</p>
               <div className="flex justify-between text-gray-500">
                 <span>الرصيد السابق</span>
                 <span className="ltr-nums">{نص_رصيد(الرصيد_السابق)}</span>

@@ -169,7 +169,7 @@ export async function تقرير_فواتير_يومية(ف: فلاتر) {
   const الصفوف = فواتير.map((f) => ({
     التاريخ: f.date.toISOString(),
     الرقم: f.number,
-    العميل: f.customer.name,
+    العميل: f.customer?.name ?? "عميل نقدي",
     إجمالي_الكمية: Number(f.totalQty),
     إجمالي_الوزن: Number(f.totalWeight),
     الإجمالي: Number(f.totalAmount),
@@ -222,6 +222,7 @@ export async function تقرير_فواتير_حسب_العميل(ف: فلاتر
 
   const م = new Map<number, { العميل: string; عدد: number; الإجمالي: number }>();
   for (const f of فواتير) {
+    if (!f.customerId || !f.customer) continue; // skip walk-in invoices
     const ح = م.get(f.customerId) ?? { العميل: f.customer.name, عدد: 0, الإجمالي: 0 };
     ح.عدد += 1;
     ح.الإجمالي += Number(f.totalAmount);

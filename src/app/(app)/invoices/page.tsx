@@ -18,7 +18,7 @@ export default async function صفحة_الفواتير() {
   const بيانات = فواتير.map((f) => ({
     id: f.id,
     الرقم: f.number,
-    العميل: f.customer.name,
+    العميل: f.customer?.name ?? "عميل نقدي",
     التاريخ: f.date.toISOString(),
     الإجمالي: Number(f.totalAmount),
     إجمالي_الوزن: Number(f.totalWeight),
