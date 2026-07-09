@@ -25,7 +25,9 @@ export default async function صفحة_مشاركة_فاتورة({
 
   const اسم_الشركة_raw = await prisma.setting.findUnique({ where: { key: "اسم_الشركة" } });
   const اسم_الشركة = اسم_الشركة_raw?.value || "مؤسسة سكر للتجارة";
-  const رقم = String(فاتورة.number).padStart(7, "0");
+  const رقم = فاتورة.number
+    ? String(فاتورة.number).padStart(7, "0")
+    : (فاتورة.externalRef ?? "—");
 
   type مجموعة_تصنيف = {
     التصنيف: string;

@@ -124,7 +124,7 @@ model Party {
 // ==================== Invoice (الفاتورة) ====================
 model Invoice {
   id          Int      @id @default(autoincrement())
-  number      Int      @unique @map("number") // تسلسلي فريد
+  number      Int?     @unique @map("number") // تسلسلي — null لفواتير الشراء (رقمها من المورد)
   customerId  Int?     @map("customer_id")   // null = عميل زائر (walk-in)
   customer    Party?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
   guestName   String?  @map("guest_name")   // اسم العميل الزائر للطباعة

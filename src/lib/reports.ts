@@ -163,12 +163,12 @@ export async function تقرير_فواتير_يومية(ف: فلاتر) {
       ...(ف.معرف_الطرف ? { customerId: ف.معرف_الطرف } : {}),
     },
     include: { customer: { select: { name: true } } },
-    orderBy: [{ date: "desc" }, { number: "desc" }],
+    orderBy: [{ date: "desc" }, { id: "desc" }],
   });
 
   const الصفوف = فواتير.map((f) => ({
     التاريخ: f.date.toISOString(),
-    الرقم: f.number,
+    الرقم: f.number ?? f.externalRef ?? "—",
     العميل: f.customer?.name ?? "عميل نقدي",
     إجمالي_الكمية: Number(f.totalQty),
     إجمالي_الوزن: Number(f.totalWeight),

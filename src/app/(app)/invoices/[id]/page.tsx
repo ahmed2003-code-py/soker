@@ -40,7 +40,9 @@ export default async function صفحة_عرض_فاتورة({
   const اسم_الشركة =
     إعدادات.find((s) => s.key === "اسم_الشركة")?.value || "مؤسسة سكر";
   const لها_شعار = !!(إعدادات.find((s) => s.key === "شعار_الشركة")?.value);
-  const رقم = String(فاتورة.number).padStart(7, "0");
+  const رقم = فاتورة.number
+    ? String(فاتورة.number).padStart(7, "0")
+    : (فاتورة.externalRef ?? "—");
   const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   const هو_مورد = نوع_الفاتورة === "PURCHASE" || نوع_الفاتورة === "SUPPLIER_RETURN";
   const عميل_زائر = !فاتورة.customerId;
@@ -89,6 +91,7 @@ export default async function صفحة_عرض_فاتورة({
       <شريط_إجراءات_الفاتورة
         المعرف={فاتورة.id}
         الرقم={فاتورة.number}
+        مرجع_خارجي={فاتورة.externalRef}
         هاتف_العميل={فاتورة.phone || فاتورة.customer?.phone}
         اسم_العميل={اسم_الطرف}
         اسم_الشركة={اسم_الشركة}

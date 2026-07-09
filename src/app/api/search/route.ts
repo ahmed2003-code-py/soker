@@ -35,9 +35,9 @@ export async function GET(req: Request) {
           { customer: { name: c } },
         ],
       },
-      include: { customer: { select: { name: true } } },
+      select: { id: true, number: true, externalRef: true, totalAmount: true, customer: { select: { name: true } } },
       take: حد,
-      orderBy: { number: "desc" },
+      orderBy: { id: "desc" },
     }),
     prisma.cheque.findMany({
       where: {
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
       النوع: "الفواتير",
       العناصر: فواتير.map((f) => ({
         id: f.id,
-        عنوان: `فاتورة ${String(f.number).padStart(7, "0")}`,
+        عنوان: f.number ? `فاتورة ${String(f.number).padStart(7, "0")}` : `فاتورة مورد — ${f.externalRef ?? "—"}`,
         وصف: `${f.customer?.name ?? "عميل نقدي"} — ${تنسيق_مبلغ(f.totalAmount)}`,
         رابط: `/invoices/${f.id}`,
       })),

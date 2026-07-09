@@ -91,7 +91,7 @@ export function نموذج_فاتورة({
   الشركات: string[];
   فاتورة?: {
     id: number;
-    الرقم: number;
+    الرقم: number | null;
     نوع_الفاتورة: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
     معرف_العميل: number | null;
     اسم_الزائر?: string | null;
@@ -141,7 +141,7 @@ export function نموذج_فاتورة({
     فاتورة?.البنود?.length ? فاتورة.البنود : [بند_فارغ()]
   );
   const [رقم_الفاتورة, تعيين_رقم_الفاتورة] = React.useState<string>(
-    فاتورة ? String(فاتورة.الرقم) : ""
+    فاتورة?.الرقم != null ? String(فاتورة.الرقم) : ""
   );
   const [أسعار_تصنيفات, تعيين_أسعار] = React.useState<Record<string, string>>(() => {
     const م: Record<string, string> = {};

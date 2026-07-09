@@ -11,14 +11,26 @@ export const metadata = { title: "الفواتير — سُكر" };
 export default async function صفحة_الفواتير() {
   const { t } = مترجم_الخادم();
   const فواتير = await prisma.invoice.findMany({
-    orderBy: { number: "desc" },
+    orderBy: { id: "desc" },
     take: 500,
-    include: { customer: { select: { name: true } } },
+    select: {
+      id: true,
+      number: true,
+      externalRef: true,
+      invoiceType: true,
+      customer: { select: { name: true } },
+      guestName: true,
+      date: true,
+      totalAmount: true,
+      totalWeight: true,
+    },
   });
   const بيانات = فواتير.map((f) => ({
     id: f.id,
     الرقم: f.number,
-    العميل: f.customer?.name ?? "عميل نقدي",
+    المرجع: f.externalRef,
+    النوع: f.invoiceType as "SALE" | "PURCHASE" | "SUPPLIER_RETURN",
+    الطرف: f.customer?.name ?? f.guestName ?? "عميل نقدي",
     التاريخ: f.date.toISOString(),
     الإجمالي: Number(f.totalAmount),
     إجمالي_الوزن: Number(f.totalWeight),

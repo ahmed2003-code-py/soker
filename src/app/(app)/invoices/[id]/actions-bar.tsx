@@ -23,6 +23,7 @@ function رقم_واتساب(هاتف: string): string {
 export function شريط_إجراءات_الفاتورة({
   المعرف,
   الرقم,
+  مرجع_خارجي,
   هاتف_العميل,
   اسم_العميل,
   اسم_الشركة,
@@ -31,7 +32,8 @@ export function شريط_إجراءات_الفاتورة({
   رمز_المشاركة,
 }: {
   المعرف: number;
-  الرقم: number;
+  الرقم: number | null;
+  مرجع_خارجي?: string | null;
   هاتف_العميل?: string | null;
   اسم_العميل?: string;
   اسم_الشركة?: string;
@@ -63,7 +65,7 @@ export function شريط_إجراءات_الفاتورة({
   }
 
   function ابن_رسالة_واتساب(رقم: string) {
-    const رقم_الفاتورة = String(الرقم).padStart(7, "0");
+    const رقم_الفاتورة = الرقم ? String(الرقم).padStart(7, "0") : (مرجع_خارجي ?? "—");
     const مبلغ = الإجمالي != null
       ? الإجمالي.toLocaleString("en-US", { minimumFractionDigits: 2 }) + " ج.م"
       : "";
@@ -161,7 +163,7 @@ export function شريط_إجراءات_الفاتورة({
       <حوار_تأكيد
         مفتوح={حذف}
         عند_التغيير={تعيين_حذف}
-        العنوان={t("inv.delete_title", { number: String(الرقم).padStart(7, "0") })}
+        العنوان={t("inv.delete_title", { number: الرقم ? String(الرقم).padStart(7, "0") : (مرجع_خارجي ?? "—") })}
         الوصف={t("inv.delete_desc")}
         عند_التأكيد={async () => {
           const r = await حذف_فاتورة(المعرف);

@@ -14,8 +14,10 @@ import { حذف_فاتورة } from "./actions";
 
 type صف = {
   id: number;
-  الرقم: number;
-  العميل: string;
+  الرقم: number | null;
+  المرجع: string | null;
+  النوع: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+  الطرف: string;
   التاريخ: string;
   الإجمالي: number;
   إجمالي_الوزن: number;
@@ -23,7 +25,17 @@ type صف = {
 
 const رقم_مصفّر = (n: number) => String(n).padStart(7, "0");
 
-export function قائمة_الفواتير({ البيانات }: { البيانات: صف[] }) {
+function جدول_فواتير({
+  البيانات,
+  عنوان_الطرف,
+  عنوان_الرقم,
+  منقوص_الرقم,
+}: {
+  البيانات: صف[];
+  عنوان_الطرف: string;
+  عنوان_الرقم: string;
+  منقوص_الرقم?: boolean; // عرض externalRef بدل الرقم التسلسلي
+}) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
@@ -32,12 +44,19 @@ export function قائمة_الفواتير({ البيانات }: { البيان
   const أعمدة: عمود<صف>[] = [
     {
       المفتاح: "الرقم",
-      العنوان: t("inv.col.number"),
+      العنوان: عنوان_الرقم,
       قابل_للفرز: true,
-      قيمة: (ص) => ص.الرقم,
-      خلية: (ص) => <span className="ltr-nums font-medium">{رقم_مصفّر(ص.الرقم)}</span>,
+      قيمة: (ص) => ص.الرقم ?? ص.المرجع ?? "",
+      خلية: (ص) =>
+        منقوص_الرقم ? (
+          <span className="ltr-nums font-medium">{ص.المرجع ?? "—"}</span>
+        ) : (
+          <span className="ltr-nums font-medium">
+            {ص.الرقم ? رقم_مصفّر(ص.الرقم) : "—"}
+          </span>
+        ),
     },
-    { المفتاح: "العميل", العنوان: t("inv.col.customer"), قابل_للفرز: true },
+    { المفتاح: "الطرف", العنوان: عنوان_الطرف, قابل_للفرز: true },
     {
       المفتاح: "التاريخ",
       العنوان: t("inv.col.date"),
@@ -90,7 +109,11 @@ export function قائمة_الفواتير({ البيانات }: { البيان
         <حوار_تأكيد
           مفتوح
           عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={t("inv.delete_title", { number: رقم_مصفّر(حذف.الرقم) })}
+          العنوان={
+            حذف.النوع === "PURCHASE"
+              ? `حذف فاتورة شراء — ${حذف.المرجع ?? "—"}`
+              : `حذف فاتورة ${حذف.الرقم ? رقم_مصفّر(حذف.الرقم) : "—"}`
+          }
           الوصف={t("inv.delete_desc")}
           عند_التأكيد={async () => {
             const r = await حذف_فاتورة(حذف.id);
@@ -100,5 +123,54 @@ export function قائمة_الفواتير({ البيانات }: { البيان
         />
       )}
     </>
+  );
+}
+
+export function قائمة_الفواتير({ البيانات }: { البيانات: صف[] }) {
+  const [التاب, تعيين_التاب] = React.useState<"customers" | "purchases">("customers");
+
+  const فواتير_العملاء = البيانات.filter((f) => f.النوع !== "PURCHASE");
+  const فواتير_الشراء = البيانات.filter((f) => f.النوع === "PURCHASE");
+
+  return (
+    <div>
+      {/* تابات */}
+      <div className="flex gap-1 border-b mb-4">
+        {(
+          [
+            { مفتاح: "customers", تسمية: "فواتير العملاء والموردين", عدد: فواتير_العملاء.length },
+            { مفتاح: "purchases", تسمية: "فواتير الشراء (الجاية)", عدد: فواتير_الشراء.length },
+          ] as const
+        ).map((تاب) => (
+          <button
+            key={تاب.مفتاح}
+            onClick={() => تعيين_التاب(تاب.مفتاح)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              التاب === تاب.مفتاح
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {تاب.تسمية}
+            <span className="mr-1.5 text-xs text-muted-foreground">({تاب.عدد})</span>
+          </button>
+        ))}
+      </div>
+
+      {التاب === "customers" ? (
+        <جدول_فواتير
+          البيانات={فواتير_العملاء}
+          عنوان_الطرف="العميل / المورد"
+          عنوان_الرقم="رقم الفاتورة"
+        />
+      ) : (
+        <جدول_فواتير
+          البيانات={فواتير_الشراء}
+          عنوان_الطرف="المورد"
+          عنوان_الرقم="رقم فاتورة المورد"
+          منقوص_الرقم
+        />
+      )}
+    </div>
   );
 }

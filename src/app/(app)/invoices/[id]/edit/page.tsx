@@ -67,7 +67,9 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
 
   return (
     <div>
-      <ترويسة_الصفحة العنوان={t("inv.edit_title", { number: String(فاتورة.number).padStart(7, "0") })} />
+      <ترويسة_الصفحة العنوان={t("inv.edit_title", {
+          number: فاتورة.number ? String(فاتورة.number).padStart(7, "0") : (فاتورة.externalRef ?? "—"),
+        })} />
       <نموذج_فاتورة
         العملاء={عملاء_معدّلة}
         الموردون={موردون_معدّلة}
