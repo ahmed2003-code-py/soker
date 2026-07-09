@@ -438,32 +438,54 @@ export function نموذج_فاتورة({
 
       {/* الترويسة */}
       <div className="card-soft p-5 space-y-4">
-        {/* مفتاح نوع الطرف (عميل/مورد) */}
+        {/* بادج نوع الفاتورة في وضع التعديل */}
+        {فاتورة && (
+          <span className="inline-block rounded-lg border border-border bg-muted/40 px-3 py-1 text-sm font-medium text-muted-foreground">
+            {نوع_الفاتورة_الحالي === "PURCHASE"
+              ? "شراء من مورد"
+              : نوع_الفاتورة_الحالي === "SUPPLIER_RETURN"
+              ? "مورد رايح (مرتجع)"
+              : "عميل (بيع)"}
+          </span>
+        )}
+
+        {/* مفتاح نوع الفاتورة — ثلاثة أوضاع */}
         {!فاتورة && (
           <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
-            {(["CUSTOMER", "SUPPLIER"] as const).map((نوع) => (
-              <button
-                key={نوع}
-                type="button"
-                onClick={() => {
-                  تعيين_نوع_الطرف(نوع);
-                  تعيين_عميل("");
-                  تعيين_هاتف("");
-                  if (نوع === "SUPPLIER") { تعيين_عميل_زائر(false); }
-                }}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                  نوع_الطرف === نوع
-                    ? "bg-white shadow text-foreground dark:bg-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {نوع === "CUSTOMER" ? "عميل" : "مورد"}
-              </button>
-            ))}
+            {([
+              { وضع: "CUSTOMER" as const, اتجاه: "SALE" as const,            تسمية: "عميل (بيع)" },
+              { وضع: "SUPPLIER" as const, اتجاه: "SUPPLIER_RETURN" as const, تسمية: "مورد رايح (مرتجع)" },
+              { وضع: "SUPPLIER" as const, اتجاه: "PURCHASE" as const,        تسمية: "شراء من مورد" },
+            ]).map(({ وضع, اتجاه, تسمية }) => {
+              const محدد =
+                وضع === "CUSTOMER"
+                  ? نوع_الطرف === "CUSTOMER"
+                  : نوع_الطرف === "SUPPLIER" && اتجاه_المورد === اتجاه;
+              return (
+                <button
+                  key={اتجاه}
+                  type="button"
+                  onClick={() => {
+                    تعيين_نوع_الطرف(وضع);
+                    if (وضع === "SUPPLIER") تعيين_اتجاه_المورد(اتجاه as "PURCHASE" | "SUPPLIER_RETURN");
+                    تعيين_عميل("");
+                    تعيين_هاتف("");
+                    if (وضع === "SUPPLIER") تعيين_عميل_زائر(false);
+                  }}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                    محدد
+                      ? "bg-white shadow text-foreground dark:bg-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {تسمية}
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* زر عميل زائر (walk-in) — للعملاء فقط */}
+        {/* زر عميل زائر — للعملاء فقط */}
         {نوع_الطرف === "CUSTOMER" && !فاتورة && (
           <label className="flex cursor-pointer items-center gap-2 w-fit select-none text-sm">
             <input
@@ -483,26 +505,6 @@ export function نموذج_فاتورة({
             <UserX className="size-4 text-muted-foreground" />
             <span className="text-muted-foreground">عميل زائر (بيع نقدي مباشر — بلا حساب)</span>
           </label>
-        )}
-
-        {/* اتجاه فاتورة المورد */}
-        {نوع_الطرف === "SUPPLIER" && (
-          <div className="flex gap-1 rounded-xl border border-border bg-muted/40 p-1 w-fit">
-            {([["PURCHASE", "جاية — من المورد"], ["SUPPLIER_RETURN", "رايحة — إليه"]] as const).map(([نوع, تسمية]) => (
-              <button
-                key={نوع}
-                type="button"
-                onClick={() => تعيين_اتجاه_المورد(نوع)}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-                  اتجاه_المورد === نوع
-                    ? "bg-white shadow text-foreground dark:bg-background"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {تسمية}
-              </button>
-            ))}
-          </div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-4">
