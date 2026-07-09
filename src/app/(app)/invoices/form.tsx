@@ -442,7 +442,7 @@ export function نموذج_فاتورة({
         {فاتورة && (
           <span className="inline-block rounded-lg border border-border bg-muted/40 px-3 py-1 text-sm font-medium text-muted-foreground">
             {نوع_الفاتورة_الحالي === "PURCHASE"
-              ? "(شراء) مورد"
+              ? "مورد (شراء)"
               : نوع_الفاتورة_الحالي === "SUPPLIER_RETURN"
               ? "مورد (بيع)"
               : "عميل (بيع)"}
@@ -455,7 +455,7 @@ export function نموذج_فاتورة({
             {([
               { وضع: "CUSTOMER" as const, اتجاه: "SALE" as const,            تسمية: "عميل (بيع)" },
               { وضع: "SUPPLIER" as const, اتجاه: "SUPPLIER_RETURN" as const, تسمية: "مورد (بيع)" },
-              { وضع: "SUPPLIER" as const, اتجاه: "PURCHASE" as const,        تسمية: "(شراء) مورد" },
+              { وضع: "SUPPLIER" as const, اتجاه: "PURCHASE" as const,        تسمية: "مورد (شراء)" },
             ]).map(({ وضع, اتجاه, تسمية }) => {
               const محدد =
                 وضع === "CUSTOMER"
