@@ -17,7 +17,7 @@ import {
   اعكس_قيود_الفاتورة,
 } from "@/lib/invoice";
 import { أنشئ_عملية_مرتبطة } from "@/lib/integration";
-import { أضف_حركة_خزنة } from "@/lib/treasury";
+import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 import { مخطط_فاتورة } from "@/lib/schemas/invoice";
 
 /** يُرجع رقم الفاتورة التالي دون تعديل العدّاد (للعرض المبدئي في النموذج) */
@@ -240,6 +240,14 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
   }
 
   await prisma.$transaction(async (tx) => {
+    // عكس حركات الخزنة المرتبطة بالفاتورة القديمة (دفعات + مبيعات نقدية)
+    const حركات_قديمة = await tx.treasuryTxn.findMany({
+      where: { invoiceId: id, deletedAt: null },
+      select: { id: true },
+    });
+    for (const ح of حركات_قديمة) {
+      await احذف_حركة_خزنة_ناعم(tx, ح.id);
+    }
     await اعكس_قيود_الفاتورة(tx, id, حالية.customerId);
     await tx.invoiceLine.deleteMany({ where: { invoiceId: id } });
     await tx.invoice.update({
@@ -391,6 +399,14 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
   if (!فاتورة) return فشل("الفاتورة غير موجودة");
 
   await prisma.$transaction(async (tx) => {
+    // عكس حركات الخزنة المرتبطة بهذه الفاتورة (دفعات + مبيعات نقدية)
+    const حركات_الخزنة = await tx.treasuryTxn.findMany({
+      where: { invoiceId: id, deletedAt: null },
+      select: { id: true },
+    });
+    for (const ح of حركات_الخزنة) {
+      await احذف_حركة_خزنة_ناعم(tx, ح.id);
+    }
     await اعكس_قيود_الفاتورة(tx, id, فاتورة.customerId);
     await tx.invoice.delete({ where: { id } }); // البنود Cascade
     await tx.$executeRaw`
