@@ -29,6 +29,11 @@ export default async function صفحة_عرض_فاتورة({
           where: { deletedAt: null },
           select: { amount: true },
         },
+        ledgerEntries: {
+          where: { treasuryTxnId: null },
+          select: { debit: true, credit: true, balanceAfter: true },
+          orderBy: { id: "asc" },
+        },
       },
     }),
     prisma.setting.findMany({
@@ -359,7 +364,12 @@ export default async function صفحة_عرض_فاتورة({
         {/* مبدّل الرصيد — للعملاء المسجّلين */}
         {!هو_مورد && !عميل_زائر && فاتورة.customer && (() => {
           const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-          const الرصيد_السابق = Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات;
+          // استخدم أول قيد دفتر أستاذ للفاتورة (مرتّب بالمعرف تصاعديًا)
+          // رصيد_سابق = balanceAfter − مدين + دائن (عميل: المدين يزيد الرصيد)
+          const أول_قيد = فاتورة.ledgerEntries[0];
+          const الرصيد_السابق = أول_قيد
+            ? Number(أول_قيد.balanceAfter) - Number(أول_قيد.debit) + Number(أول_قيد.credit)
+            : 0;
           return (
             <مبدّل_رصيد_الفاتورة
               الرصيد_السابق={الرصيد_السابق}
@@ -375,11 +385,12 @@ export default async function صفحة_عرض_فاتورة({
         {/* مبدّل الرصيد — للموردين */}
         {هو_مورد && فاتورة.customer && (() => {
           const إجمالي_الدفعات = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-          // PURCHASE: رفع رصيد المورد (دائن) — السابق = الحالي − الفاتورة + الدفعات
-          // SUPPLIER_RETURN: خفض رصيد المورد (مدين) — السابق = الحالي + الفاتورة − الدفعات
-          const الرصيد_السابق = نوع_الفاتورة === "PURCHASE"
-            ? Number(فاتورة.customer.balance) - Number(فاتورة.totalAmount) + إجمالي_الدفعات
-            : Number(فاتورة.customer.balance) + Number(فاتورة.totalAmount) - إجمالي_الدفعات;
+          // استخدم أول قيد دفتر أستاذ للفاتورة
+          // مورد: رصيد_سابق = balanceAfter + مدين − دائن (الدائن يزيد رصيد المورد)
+          const أول_قيد = فاتورة.ledgerEntries[0];
+          const الرصيد_السابق = أول_قيد
+            ? Number(أول_قيد.balanceAfter) + Number(أول_قيد.debit) - Number(أول_قيد.credit)
+            : 0;
           return (
             <مبدّل_رصيد_الفاتورة
               الرصيد_السابق={الرصيد_السابق}
