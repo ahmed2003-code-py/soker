@@ -32,7 +32,7 @@ export default async function صفحة_الرئيسية() {
       <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.treasury_total")} القيمة={<نص_مبلغ القيمة={د.الخزنة.الإجمالي} />} أيقونة={<Wallet className="size-5" />} لون="navy" رابط="/treasury" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.customer_debt")} القيمة={<نص_مبلغ القيمة={د.العملاء.إجمالي_المديونية} />} أيقونة={<Users className="size-5" />} لون="danger" وصف={t("dash.customers_count", { count: د.العملاء.عدد })} رابط="/customers" /></عنصر_متدرج>
-        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.supplier_payable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_المستحقات} />} أيقونة={<Truck className="size-5" />} لون="warning" وصف={t("dash.suppliers_count", { count: د.الموردون.عدد })} رابط="/suppliers" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.supplier_receivable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_مستحقاتي} />} أيقونة={<Truck className="size-5" />} لون="success" وصف={t("dash.suppliers_owe_count", { count: د.الموردون.عدد_مدينون_لنا })} رابط="/suppliers" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.month_sales")} القيمة={<نص_مبلغ القيمة={د.الفواتير.مبيعات_الشهر} />} أيقونة={<FileText className="size-5" />} لون="success" وصف={t("dash.invoices_count_month", { count: د.الفواتير.عدد_الشهر })} رابط="/invoices" /></عنصر_متدرج>
       </قائمة_متدرجة>
 

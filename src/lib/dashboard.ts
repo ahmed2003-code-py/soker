@@ -17,6 +17,7 @@ export async function بيانات_اللوحة() {
     حسابات,
     عملاء_مدينون,
     موردون_دائنون,
+    موردون_مدينون_لنا,
     مبيعات_اليوم_إجمالي,
     مشتريات_اليوم_إجمالي,
     مبيعات_الشهر_إجمالي,
@@ -33,6 +34,11 @@ export async function بيانات_اللوحة() {
     prisma.party.findMany({
       where: { type: "SUPPLIER", balance: { gt: 0 } },
       orderBy: { balance: "desc" },
+    }),
+    // موردون مدينون لنا: رصيد سالب = هم دفعونا أو رجّعنا بضاعة أكتر مما اشتريناه منهم
+    prisma.party.findMany({
+      where: { type: "SUPPLIER", balance: { lt: 0 } },
+      orderBy: { balance: "asc" },
     }),
     // مبيعات اليوم: SALE + SUPPLIER_RETURN فقط
     prisma.invoice.aggregate({
@@ -79,6 +85,8 @@ export async function بيانات_اللوحة() {
   const إجمالي_الخزنة = حسابات.reduce((س, h) => س + Number(h.balance), 0);
   const إجمالي_مديونية = عملاء_مدينون.reduce((س, p) => س + Number(p.balance), 0);
   const إجمالي_مستحقات = موردون_دائنون.reduce((س, p) => س + Number(p.balance), 0);
+  // مجموع ما يدين به الموردون لنا (رصيد سالب → نأخذ القيمة المطلقة)
+  const إجمالي_مستحقاتي_من_الموردين = موردون_مدينون_لنا.reduce((س, p) => س + Math.abs(Number(p.balance)), 0);
 
   // سلاسل 12 شهراً
   const أشهر: string[] = [];
@@ -126,6 +134,8 @@ export async function بيانات_اللوحة() {
     },
     الموردون: {
       إجمالي_المستحقات: إجمالي_مستحقات,
+      إجمالي_مستحقاتي: إجمالي_مستحقاتي_من_الموردين,
+      عدد_مدينون_لنا: موردون_مدينون_لنا.length,
       عدد: موردون_دائنون.length,
       الأعلى: موردون_دائنون.slice(0, 10).map((p) => ({ id: p.id, الاسم: p.name, الرصيد: Number(p.balance) })),
     },
