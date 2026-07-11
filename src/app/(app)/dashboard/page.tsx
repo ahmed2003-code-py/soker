@@ -28,15 +28,16 @@ export default async function صفحة_الرئيسية() {
     <div className="space-y-6">
       <ترويسة_الصفحة العنوان={t("dash.title")} الوصف={t("dash.subtitle")} />
 
-      {/* مؤشرات رئيسية */}
-      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.treasury_total")} القيمة={<نص_مبلغ القيمة={د.الخزنة.الإجمالي} />} أيقونة={<Wallet className="size-5" />} لون="navy" رابط="/treasury" /></عنصر_متدرج>
+      {/* مؤشرات رئيسية — 5 بطاقات */}
+      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.customer_debt")} القيمة={<نص_مبلغ القيمة={د.العملاء.إجمالي_المديونية} />} أيقونة={<Users className="size-5" />} لون="danger" وصف={t("dash.customers_count", { count: د.العملاء.عدد })} رابط="/customers" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.supplier_payable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_المستحقات} />} أيقونة={<Truck className="size-5" />} لون="warning" وصف={t("dash.suppliers_count", { count: د.الموردون.عدد })} رابط="/suppliers" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.supplier_receivable")} القيمة={<نص_مبلغ القيمة={د.الموردون.إجمالي_مستحقاتي} />} أيقونة={<Truck className="size-5" />} لون="success" وصف={t("dash.suppliers_owe_count", { count: د.الموردون.عدد_مدينون_لنا })} رابط="/suppliers" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.month_sales")} القيمة={<نص_مبلغ القيمة={د.الفواتير.مبيعات_الشهر} />} أيقونة={<FileText className="size-5" />} لون="success" وصف={t("dash.invoices_count_month", { count: د.الفواتير.عدد_الشهر })} رابط="/invoices" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.kpi.month_purchases")} القيمة={<نص_مبلغ القيمة={د.الفواتير.مشتريات_الشهر} />} أيقونة={<FileText className="size-5" />} لون="warning" وصف={t("dash.invoices_count_month", { count: د.الفواتير.عدد_مشتريات_الشهر })} رابط="/invoices" /></عنصر_متدرج>
       </قائمة_متدرجة>
 
-      {/* الخزنة بالتفصيل */}
+      {/* الخزنة بالتفصيل + الإجمالي */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {د.الخزنة.حسابات.map((h) => (
           <div key={h.التسمية} className="card-soft card-hover p-4">
@@ -47,6 +48,13 @@ export default async function صفحة_الرئيسية() {
             {h.تحت_الحد && <p className="mt-1 text-xs text-warning">{t("dash.under_threshold")}</p>}
           </div>
         ))}
+        {/* إجمالي الخزنة — بعد الحسابات الأربعة */}
+        <div className="card-soft card-hover p-4 border-primary/30 bg-primary/5">
+          <p className="text-sm text-muted-foreground font-medium">{t("dash.kpi.treasury_total")}</p>
+          <div className={`mt-1 text-lg font-bold ${د.الخزنة.الإجمالي < 0 ? "text-danger" : "text-primary"}`}>
+            <نص_مبلغ القيمة={د.الخزنة.الإجمالي} />
+          </div>
+        </div>
       </div>
 
       {/* مركز التنبيهات */}

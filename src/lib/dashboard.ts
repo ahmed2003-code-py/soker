@@ -21,6 +21,7 @@ export async function بيانات_اللوحة() {
     مبيعات_اليوم_إجمالي,
     مشتريات_اليوم_إجمالي,
     مبيعات_الشهر_إجمالي,
+    مشتريات_الشهر_إجمالي,
     تنبيهات,
     فواتير_12,
     حركات_12,
@@ -63,6 +64,15 @@ export async function بيانات_اللوحة() {
       where: {
         date: { gte: بداية_شهر, lte: نهاية_شهر },
         invoiceType: { in: ["SALE", "SUPPLIER_RETURN"] },
+      },
+      _count: true,
+      _sum: { totalAmount: true },
+    }),
+    // مشتريات الشهر: PURCHASE فقط
+    prisma.invoice.aggregate({
+      where: {
+        date: { gte: بداية_شهر, lte: نهاية_شهر },
+        invoiceType: "PURCHASE",
       },
       _count: true,
       _sum: { totalAmount: true },
@@ -146,6 +156,8 @@ export async function بيانات_اللوحة() {
       إجمالي_مشتريات_اليوم: Number(مشتريات_اليوم_إجمالي._sum.totalAmount ?? 0),
       عدد_الشهر: مبيعات_الشهر_إجمالي._count,
       مبيعات_الشهر: Number(مبيعات_الشهر_إجمالي._sum.totalAmount ?? 0),
+      عدد_مشتريات_الشهر: مشتريات_الشهر_إجمالي._count,
+      مشتريات_الشهر: Number(مشتريات_الشهر_إجمالي._sum.totalAmount ?? 0),
     },
     الشيكات: تنبيهات,
     السلسلة: سلسلة,
