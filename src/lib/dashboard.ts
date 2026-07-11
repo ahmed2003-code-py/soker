@@ -17,8 +17,9 @@ export async function بيانات_اللوحة() {
     حسابات,
     عملاء_مدينون,
     موردون_دائنون,
-    فواتير_اليوم,
-    فواتير_الشهر,
+    مبيعات_اليوم_إجمالي,
+    مشتريات_اليوم_إجمالي,
+    مبيعات_الشهر_إجمالي,
     تنبيهات,
     فواتير_12,
     حركات_12,
@@ -33,19 +34,36 @@ export async function بيانات_اللوحة() {
       where: { type: "SUPPLIER", balance: { gt: 0 } },
       orderBy: { balance: "desc" },
     }),
+    // مبيعات اليوم: SALE + SUPPLIER_RETURN فقط
     prisma.invoice.aggregate({
-      where: { date: { gte: بداية_اليوم, lte: نهاية_اليوم } },
+      where: {
+        date: { gte: بداية_اليوم, lte: نهاية_اليوم },
+        invoiceType: { in: ["SALE", "SUPPLIER_RETURN"] },
+      },
       _count: true,
       _sum: { totalAmount: true },
     }),
+    // مشتريات اليوم: PURCHASE فقط
     prisma.invoice.aggregate({
-      where: { date: { gte: بداية_شهر, lte: نهاية_شهر } },
+      where: {
+        date: { gte: بداية_اليوم, lte: نهاية_اليوم },
+        invoiceType: "PURCHASE",
+      },
+      _count: true,
+      _sum: { totalAmount: true },
+    }),
+    // مبيعات الشهر: SALE + SUPPLIER_RETURN فقط
+    prisma.invoice.aggregate({
+      where: {
+        date: { gte: بداية_شهر, lte: نهاية_شهر },
+        invoiceType: { in: ["SALE", "SUPPLIER_RETURN"] },
+      },
       _count: true,
       _sum: { totalAmount: true },
     }),
     تنبيهات_الشيكات(),
     prisma.invoice.findMany({
-      where: { date: { gte: قبل_12 } },
+      where: { date: { gte: قبل_12 }, invoiceType: { in: ["SALE", "SUPPLIER_RETURN"] } },
       select: { date: true, totalAmount: true },
     }),
     prisma.treasuryTxn.findMany({
@@ -112,10 +130,12 @@ export async function بيانات_اللوحة() {
       الأعلى: موردون_دائنون.slice(0, 10).map((p) => ({ id: p.id, الاسم: p.name, الرصيد: Number(p.balance) })),
     },
     الفواتير: {
-      عدد_اليوم: فواتير_اليوم._count,
-      مبيعات_اليوم: Number(فواتير_اليوم._sum.totalAmount ?? 0),
-      عدد_الشهر: فواتير_الشهر._count,
-      مبيعات_الشهر: Number(فواتير_الشهر._sum.totalAmount ?? 0),
+      عدد_مبيعات_اليوم: مبيعات_اليوم_إجمالي._count,
+      إجمالي_مبيعات_اليوم: Number(مبيعات_اليوم_إجمالي._sum.totalAmount ?? 0),
+      عدد_مشتريات_اليوم: مشتريات_اليوم_إجمالي._count,
+      إجمالي_مشتريات_اليوم: Number(مشتريات_اليوم_إجمالي._sum.totalAmount ?? 0),
+      عدد_الشهر: مبيعات_الشهر_إجمالي._count,
+      مبيعات_الشهر: Number(مبيعات_الشهر_إجمالي._sum.totalAmount ?? 0),
     },
     الشيكات: تنبيهات,
     السلسلة: سلسلة,

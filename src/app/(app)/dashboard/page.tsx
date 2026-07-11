@@ -73,12 +73,14 @@ export default async function صفحة_الرئيسية() {
       )}
 
       {/* بطاقات إضافية */}
-      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.invoices_today")} القيمة={<رقم_متحرك القيمة={د.الفواتير.عدد_اليوم} />} وصف={t("dash.sales_label", { amount: د.الفواتير.مبيعات_اليوم.toLocaleString("en-US") })} أيقونة={<FileText className="size-5" />} /></عنصر_متدرج>
+      <قائمة_متدرجة className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.sales_today")} القيمة={<رقم_متحرك القيمة={د.الفواتير.عدد_مبيعات_اليوم} />} وصف={t("dash.amount_label", { amount: د.الفواتير.إجمالي_مبيعات_اليوم.toLocaleString("en-US", { minimumFractionDigits: 2 }) })} أيقونة={<FileText className="size-5" />} لون="success" /></عنصر_متدرج>
+        <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.purchases_today")} القيمة={<رقم_متحرك القيمة={د.الفواتير.عدد_مشتريات_اليوم} />} وصف={t("dash.amount_label", { amount: د.الفواتير.إجمالي_مشتريات_اليوم.toLocaleString("en-US", { minimumFractionDigits: 2 }) })} أيقونة={<FileText className="size-5" />} لون="warning" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_due_month")} القيمة={<رقم_متحرك القيمة={د.الشيكات.عدد_هذا_الشهر} />} أيقونة={<Receipt className="size-5" />} لون="navy" رابط="/cheques" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_overdue")} القيمة={<رقم_متحرك القيمة={د.الشيكات.عدد_متأخر} />} أيقونة={<Receipt className="size-5" />} لون="danger" رابط="/cheques" /></عنصر_متدرج>
         <عنصر_متدرج className="h-full"><بطاقة_مؤشر العنوان={t("dash.cheques_total_due")} القيمة={<نص_مبلغ القيمة={د.الشيكات.إجمالي_المستحق} />} أيقونة={<Receipt className="size-5" />} لون="warning" /></عنصر_متدرج>
       </قائمة_متدرجة>
+
 
       {/* الرسوم */}
       <رسوم_اللوحة السلسلة={د.السلسلة} />
