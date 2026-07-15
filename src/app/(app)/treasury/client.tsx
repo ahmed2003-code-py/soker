@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X } from "lucide-react";
+import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X, ArrowLeftRight, Send } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -26,7 +26,7 @@ import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
-import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة } from "./actions";
+import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد } from "./actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 
 type حساب = {
@@ -71,13 +71,15 @@ export function شاشة_الخزنة({
 }: {
   الحسابات: حساب[];
   الحركات: حركة[];
-  الأطراف: { id: number; name: string }[];
+  الأطراف: { id: number; name: string; type: "CUSTOMER" | "SUPPLIER" }[];
   حسابات_فرعية: خريطة_حسابات_فرعية;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t, لغة } = استخدام_اللغة();
   const [نموذج, تعيين_نموذج] = React.useState<{ حركة?: حركة } | null>(null);
+  const [نموذج_تحويل, تعيين_نموذج_تحويل] = React.useState(false);
+  const [نموذج_دفع_مباشر, تعيين_نموذج_دفع_مباشر] = React.useState(false);
   const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
   const [فلتر_نوع, تعيين_فلتر_نوع] = React.useState("");
@@ -370,6 +372,12 @@ export function شاشة_الخزنة({
         <الزر onClick={() => تعيين_نموذج({})}>
           <Plus className="size-4" /> {t("treasury.record")}
         </الزر>
+        <الزر variant="outline" onClick={() => تعيين_نموذج_تحويل(true)}>
+          <ArrowLeftRight className="size-4" /> تحويل بين الخزائن
+        </الزر>
+        <الزر variant="outline" onClick={() => تعيين_نموذج_دفع_مباشر(true)}>
+          <Send className="size-4" /> دفع مباشر
+        </الزر>
         {محددة.size > 0 && (
           <الزر variant="danger" size="sm" onClick={() => تعيين_حذف_جماعي(true)}>
             <Trash2 className="size-4" /> حذف المحدد ({محددة.size})
@@ -438,6 +446,18 @@ export function شاشة_الخزنة({
           عند_الإغلاق={() => تعيين_نموذج(null)}
         />
       )}
+      {نموذج_تحويل && (
+        <حوار_تحويل_خزنة
+          الحسابات={الحسابات}
+          عند_الإغلاق={() => تعيين_نموذج_تحويل(false)}
+        />
+      )}
+      {نموذج_دفع_مباشر && (
+        <حوار_دفع_مباشر
+          الأطراف={الأطراف}
+          عند_الإغلاق={() => تعيين_نموذج_دفع_مباشر(false)}
+        />
+      )}
       {حذف && (
         <حوار_تأكيد
           مفتوح
@@ -483,6 +503,173 @@ export function شاشة_الخزنة({
         />
       )}
     </div>
+  );
+}
+
+// ─── حوار تحويل بين الخزائن ─────────────────────────────────────────────────
+
+function حوار_تحويل_خزنة({
+  الحسابات,
+  عند_الإغلاق,
+}: {
+  الحسابات: حساب[];
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
+  const [مبلغ, تعيين_مبلغ] = React.useState("");
+  const [من, تعيين_من] = React.useState(String(الحسابات[0]?.id ?? ""));
+  const [إلى, تعيين_إلى] = React.useState(String(الحسابات[1]?.id ?? ""));
+  const [بيان, تعيين_بيان] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  const خيارات = الحسابات.map((h) => ({ القيمة: String(h.id), التسمية: h.التسمية }));
+
+  async function حفظ() {
+    تعيين_جارٍ(true);
+    const r = await تحويل_بين_الخزائن({
+      التاريخ: تاريخ,
+      المبلغ: مبلغ,
+      من_الحساب: Number(من),
+      إلى_الحساب: Number(إلى),
+      البيان: بيان || undefined,
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <ArrowLeftRight className="size-5 text-primary" /> تحويل بين الخزائن
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>التاريخ</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>المبلغ</العنوان>
+            <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>من حساب</العنوان>
+            <قائمة_اختيار الخيارات={خيارات} القيمة={من} عند_التغيير={تعيين_من} قابل_للبحث={false} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>إلى حساب</العنوان>
+            <قائمة_اختيار الخيارات={خيارات} القيمة={إلى} عند_التغيير={تعيين_إلى} قابل_للبحث={false} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>بيان (اختياري)</العنوان>
+            <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} placeholder="يُملأ تلقائيًا إذا تُرك فارغًا" />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? "جارٍ التحويل…" : "تأكيد التحويل"}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+// ─── حوار دفع مباشر من عميل إلى مورد ────────────────────────────────────────
+
+function حوار_دفع_مباشر({
+  الأطراف,
+  عند_الإغلاق,
+}: {
+  الأطراف: { id: number; name: string; type: "CUSTOMER" | "SUPPLIER" }[];
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const العملاء = الأطراف.filter((p) => p.type === "CUSTOMER");
+  const الموردون = الأطراف.filter((p) => p.type === "SUPPLIER");
+  const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
+  const [مبلغ, تعيين_مبلغ] = React.useState("");
+  const [عميل, تعيين_عميل] = React.useState("");
+  const [مورد, تعيين_مورد] = React.useState("");
+  const [بيان, تعيين_بيان] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  async function حفظ() {
+    تعيين_جارٍ(true);
+    const r = await دفع_مباشر_من_عميل_لمورد({
+      التاريخ: تاريخ,
+      المبلغ: مبلغ,
+      معرف_العميل: Number(عميل),
+      معرف_المورد: Number(مورد),
+      البيان: بيان || undefined,
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <Send className="size-5 text-primary" /> دفع مباشر من عميل إلى مورد
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
+          الفلوس بتروح من العميل للمورد على طول — بدون ما تعدي الخزنة. يتحسب من رصيد العميل ورصيد المورد بس.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>التاريخ</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>المبلغ</العنوان>
+            <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>العميل (المُدفِع)</العنوان>
+            <قائمة_اختيار
+              الخيارات={العملاء.map((p) => ({ القيمة: String(p.id), التسمية: p.name }))}
+              القيمة={عميل}
+              عند_التغيير={تعيين_عميل}
+              نص_بديل="اختر العميل…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>المورد (المُستلِم)</العنوان>
+            <قائمة_اختيار
+              الخيارات={الموردون.map((p) => ({ القيمة: String(p.id), التسمية: p.name }))}
+              القيمة={مورد}
+              عند_التغيير={تعيين_مورد}
+              نص_بديل="اختر المورد…"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>بيان (اختياري)</العنوان>
+            <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} placeholder="يُملأ تلقائيًا إذا تُرك فارغًا" />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? "جارٍ التسجيل…" : "تأكيد الدفع المباشر"}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
   );
 }
 
@@ -646,7 +833,7 @@ function حوار_حركة({
 }: {
   الحركة?: حركة;
   الحسابات: حساب[];
-  الأطراف: { id: number; name: string }[];
+  الأطراف: { id: number; name: string; type: "CUSTOMER" | "SUPPLIER" }[];
   حسابات_فرعية: خريطة_حسابات_فرعية;
   عند_إضافة_فرعي: (النوع: TreasuryAccountType, الاسم: string) => Promise<number | null>;
   عند_الإغلاق: () => void;

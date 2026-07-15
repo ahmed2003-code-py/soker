@@ -27,7 +27,7 @@ export default async function صفحة_الخزنة() {
         createdBy: { select: { name: true } },
       },
     }),
-    prisma.party.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.party.findMany({ select: { id: true, name: true, type: true }, orderBy: { name: "asc" } }),
     اجلب_خريطة_حسابات_فرعية(),
   ]);
 

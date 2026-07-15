@@ -4,12 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
+import { TxnKind } from "@prisma/client";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
 import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, type اتجاه } from "@/lib/integration";
+import { أضف_قيد } from "@/lib/ledger";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مسار_صفحة_الطرف } from "@/lib/paths";
-import { مخطط_حركة_خزنة } from "@/lib/schemas/treasury";
+import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مخطط_حركة_خزنة, مخطط_تحويل_خزنة, مخطط_دفع_مباشر } from "@/lib/schemas/treasury";
 
 /** هل ستجعل الحركة رصيد الحساب سالباً؟ (للتنبيه فقط — مسموح) */
 async function سيصبح_سالباً(معرف_الحساب: number): Promise<boolean> {
@@ -310,4 +313,130 @@ export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> 
     undefined,
     قيد_مرتبط ? "تم حذف العملية وعكس قيدها من حساب الطرف" : "تم حذف الحركة وإعادة حساب الرصيد"
   );
+}
+
+/**
+ * تحويل مبلغ بين حسابَي خزنة — معاملة ذرّية:
+ * مصروف من الحساب المصدر + إيراد إلى الحساب الوجهة.
+ */
+export async function تحويل_بين_الخزائن(مدخلات: unknown): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_تحويل_خزنة.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+
+  const [من, إلى] = await Promise.all([
+    prisma.treasuryAccount.findUnique({ where: { id: ب.من_الحساب } }),
+    prisma.treasuryAccount.findUnique({ where: { id: ب.إلى_الحساب } }),
+  ]);
+  if (!من || !إلى) return فشل("حساب غير موجود");
+
+  const اسم_من = تسمية_حساب_الخزنة[من.type];
+  const اسم_إلى = تسمية_حساب_الخزنة[إلى.type];
+  const بيان_خروج = ب.البيان?.trim() || `تحويل إلى ${اسم_إلى}`;
+  const بيان_دخول = ب.البيان?.trim() ? ب.البيان.trim() : `تحويل من ${اسم_من}`;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const خروج = await أضف_حركة_خزنة(tx, {
+        التاريخ: تاريخ,
+        النوع: TxnKind.EXPENSE,
+        المبلغ: ب.المبلغ,
+        معرف_الحساب: ب.من_الحساب,
+        البيان: بيان_خروج,
+        أنشأ: فاعل.id,
+      });
+      const دخول = await أضف_حركة_خزنة(tx, {
+        التاريخ: تاريخ,
+        النوع: TxnKind.INCOME,
+        المبلغ: ب.المبلغ,
+        معرف_الحساب: ب.إلى_الحساب,
+        البيان: بيان_دخول,
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "حركة_الخزنة",
+        معرف_الكيان: خروج.id,
+        التفاصيل: {
+          نوع: "تحويل",
+          من: اسم_من,
+          إلى: اسم_إلى,
+          المبلغ: String(ب.المبلغ),
+          معرف_حركة_الدخول: دخول.id,
+        },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء التحويل");
+  }
+
+  revalidatePath("/treasury");
+  return نجح(undefined, `تم التحويل من ${اسم_من} إلى ${اسم_إلى} بنجاح`);
+}
+
+/**
+ * دفع مباشر من عميل إلى مورد بدون المرور بالخزنة:
+ * قيد دائن على العميل (يقلل مديونيته) + قيد مدين على المورد (يقلل مستحقاته).
+ */
+export async function دفع_مباشر_من_عميل_لمورد(مدخلات: unknown): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_دفع_مباشر.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+
+  const [عميل, مورد] = await Promise.all([
+    prisma.party.findUnique({ where: { id: ب.معرف_العميل } }),
+    prisma.party.findUnique({ where: { id: ب.معرف_المورد } }),
+  ]);
+  if (!عميل || عميل.type !== "CUSTOMER") return فشل("العميل غير موجود");
+  if (!مورد || مورد.type !== "SUPPLIER") return فشل("المورد غير موجود");
+
+  const بيان = ب.البيان?.trim() || `دفع مباشر: ${عميل.name} ← ${مورد.name}`;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // دائن على العميل → يقلل ما يدين به لنا
+      const قيد_عميل = await أضف_قيد(tx, {
+        معرف_الطرف: عميل.id,
+        التاريخ: تاريخ,
+        البيان: بيان,
+        دائن: ب.المبلغ,
+        أنشأ: فاعل.id,
+      });
+      // مدين على المورد → يقلل ما نستحقه له
+      const قيد_مورد = await أضف_قيد(tx, {
+        معرف_الطرف: مورد.id,
+        التاريخ: تاريخ,
+        البيان: بيان,
+        مدين: ب.المبلغ,
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "حركة_الحساب",
+        معرف_الكيان: قيد_عميل.id,
+        التفاصيل: {
+          نوع: "دفع_مباشر",
+          عميل: عميل.name,
+          مورد: مورد.name,
+          المبلغ: String(ب.المبلغ),
+          معرف_قيد_المورد: قيد_مورد.id,
+        },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء الدفع المباشر");
+  }
+
+  revalidatePath("/treasury");
+  revalidatePath(مسار_صفحة_الطرف("CUSTOMER", عميل.id));
+  revalidatePath(مسار_صفحة_الطرف("SUPPLIER", مورد.id));
+  return نجح(undefined, `تم الدفع المباشر — ${عميل.name} ✓ ${مورد.name}`);
 }

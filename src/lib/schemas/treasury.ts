@@ -21,3 +21,24 @@ export const مخطط_حركة_خزنة = z.object({
 });
 
 export type مدخلات_حركة_خزنة = z.infer<typeof مخطط_حركة_خزنة>;
+
+export const مخطط_تحويل_خزنة = z
+  .object({
+    التاريخ: z.string().min(1, "التاريخ مطلوب"),
+    المبلغ: مبلغ_موجب,
+    من_الحساب: z.number().int().positive("اختر الحساب المصدر"),
+    إلى_الحساب: z.number().int().positive("اختر الحساب الوجهة"),
+    البيان: z.string().trim().optional(),
+  })
+  .refine((d) => d.من_الحساب !== d.إلى_الحساب, {
+    message: "لا يمكن التحويل من الحساب لنفسه",
+    path: ["إلى_الحساب"],
+  });
+
+export const مخطط_دفع_مباشر = z.object({
+  التاريخ: z.string().min(1, "التاريخ مطلوب"),
+  المبلغ: مبلغ_موجب,
+  معرف_العميل: z.number().int().positive("اختر العميل"),
+  معرف_المورد: z.number().int().positive("اختر المورد"),
+  البيان: z.string().trim().optional(),
+});
