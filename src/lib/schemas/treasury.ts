@@ -28,6 +28,8 @@ export const مخطط_تحويل_خزنة = z
     المبلغ: مبلغ_موجب,
     من_الحساب: z.number().int().positive("اختر الحساب المصدر"),
     إلى_الحساب: z.number().int().positive("اختر الحساب الوجهة"),
+    معرف_حساب_فرعي_من: z.number().int().positive().optional().nullable(),
+    معرف_حساب_فرعي_إلى: z.number().int().positive().optional().nullable(),
     البيان: z.string().trim().optional(),
   })
   .refine((d) => d.من_الحساب !== d.إلى_الحساب, {

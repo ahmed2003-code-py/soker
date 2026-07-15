@@ -327,14 +327,16 @@ export async function تحويل_بين_الخزائن(مدخلات: unknown): P
   const ب = t.data;
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
-  const [من, إلى] = await Promise.all([
+  const [من, إلى, فرعي_من, فرعي_إلى] = await Promise.all([
     prisma.treasuryAccount.findUnique({ where: { id: ب.من_الحساب } }),
     prisma.treasuryAccount.findUnique({ where: { id: ب.إلى_الحساب } }),
+    ب.معرف_حساب_فرعي_من ? prisma.subAccount.findUnique({ where: { id: ب.معرف_حساب_فرعي_من } }) : Promise.resolve(null),
+    ب.معرف_حساب_فرعي_إلى ? prisma.subAccount.findUnique({ where: { id: ب.معرف_حساب_فرعي_إلى } }) : Promise.resolve(null),
   ]);
   if (!من || !إلى) return فشل("حساب غير موجود");
 
-  const اسم_من = تسمية_حساب_الخزنة[من.type];
-  const اسم_إلى = تسمية_حساب_الخزنة[إلى.type];
+  const اسم_من = فرعي_من ? `${تسمية_حساب_الخزنة[من.type]} — ${فرعي_من.name}` : تسمية_حساب_الخزنة[من.type];
+  const اسم_إلى = فرعي_إلى ? `${تسمية_حساب_الخزنة[إلى.type]} — ${فرعي_إلى.name}` : تسمية_حساب_الخزنة[إلى.type];
   const بيان_خروج = ب.البيان?.trim() || `تحويل إلى ${اسم_إلى}`;
   const بيان_دخول = ب.البيان?.trim() ? ب.البيان.trim() : `تحويل من ${اسم_من}`;
 
@@ -346,6 +348,7 @@ export async function تحويل_بين_الخزائن(مدخلات: unknown): P
         المبلغ: ب.المبلغ,
         معرف_الحساب: ب.من_الحساب,
         البيان: بيان_خروج,
+        معرف_حساب_فرعي: ب.معرف_حساب_فرعي_من ?? null,
         أنشأ: فاعل.id,
       });
       const دخول = await أضف_حركة_خزنة(tx, {
@@ -354,6 +357,7 @@ export async function تحويل_بين_الخزائن(مدخلات: unknown): P
         المبلغ: ب.المبلغ,
         معرف_الحساب: ب.إلى_الحساب,
         البيان: بيان_دخول,
+        معرف_حساب_فرعي: ب.معرف_حساب_فرعي_إلى ?? null,
         أنشأ: فاعل.id,
       });
       await تسجيل_عملية(tx, {
