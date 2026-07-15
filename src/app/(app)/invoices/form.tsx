@@ -202,6 +202,66 @@ export function نموذج_فاتورة({
     }
   }
 
+  // التنقل بالأسهم: أعلى/أسفل بين الصفوف، يمين/يسار بين الأعمدة
+  function على_سهم(
+    e: React.KeyboardEvent<HTMLElement>,
+    i: number,
+    حقل: keyof مراجع_صف,
+    اتجاه_النص: "rtl" | "ltr" = "rtl"
+  ) {
+    const idx = ترتيب.indexOf(حقل);
+    const el = e.currentTarget;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (i < بنود.length - 1) {
+        (مراجع.current[i + 1]?.[حقل] as HTMLElement | null)?.focus();
+      } else {
+        تعيين_بنود((س) => [...س, بند_فارغ()]);
+        requestAnimationFrame(() =>
+          (مراجع.current[i + 1]?.[حقل] as HTMLElement | null)?.focus()
+        );
+      }
+      return;
+    }
+
+    if (e.key === "ArrowUp" && i > 0) {
+      e.preventDefault();
+      (مراجع.current[i - 1]?.[حقل] as HTMLElement | null)?.focus();
+      return;
+    }
+
+    // ArrowLeft في جدول RTL = انتقل للعمود التالي (يسار البصري = idx أكبر)
+    if (e.key === "ArrowLeft" && idx < ترتيب.length - 1) {
+      let عند_الحافة = true;
+      if (el instanceof HTMLInputElement) {
+        عند_الحافة = اتجاه_النص === "ltr"
+          ? el.selectionStart === 0
+          : el.selectionStart === el.value.length;
+      }
+      if (عند_الحافة) {
+        e.preventDefault();
+        (مراجع.current[i]?.[ترتيب[idx + 1]] as HTMLElement | null)?.focus();
+      }
+      return;
+    }
+
+    // ArrowRight في جدول RTL = انتقل للعمود السابق (يمين البصري = idx أصغر)
+    if (e.key === "ArrowRight" && idx > 0) {
+      let عند_الحافة = true;
+      if (el instanceof HTMLInputElement) {
+        عند_الحافة = اتجاه_النص === "ltr"
+          ? el.selectionStart === el.value.length
+          : el.selectionStart === 0;
+      }
+      if (عند_الحافة) {
+        e.preventDefault();
+        (مراجع.current[i]?.[ترتيب[idx - 1]] as HTMLElement | null)?.focus();
+      }
+      return;
+    }
+  }
+
   // ─── استرداد المسودة ──────────────────────────────────────
   React.useEffect(() => {
     if (فاتورة) return;
@@ -641,7 +701,10 @@ export function نموذج_فاتورة({
                       ref={(el) => { صف(i).اللون = el; }}
                       value={ب.اللون}
                       onChange={(e) => حدّث(i, "اللون", e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "اللون"); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); انتقل(i, "اللون"); return; }
+                        على_سهم(e, i, "اللون", "rtl");
+                      }}
                       placeholder={t("inv.f.color")}
                     />
                   </td>
@@ -662,6 +725,7 @@ export function نموذج_فاتورة({
                       عند_الحذف={احذف_شركة}
                       تسمية_الإضافة="إضافة شركة"
                       نص_بديل="الشركة"
+                      onKeyDown={(e) => على_سهم(e, i, "شركة")}
                     />
                   </td>
                   {/* التصنيف */}
@@ -692,6 +756,7 @@ export function نموذج_فاتورة({
                       عند_الحذف={احذف_تصنيف}
                       تسمية_الإضافة={t("inv.f.new_category")}
                       نص_بديل={t("inv.f.category")}
+                      onKeyDown={(e) => على_سهم(e, i, "تصنيف")}
                     />
                   </td>
                   {/* الكمية */}
@@ -702,7 +767,10 @@ export function نموذج_فاتورة({
                       selectOnFocus
                       value={ب.الكمية}
                       onChange={(e) => حدّث(i, "الكمية", e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الكمية"); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الكمية"); return; }
+                        على_سهم(e, i, "الكمية", "ltr");
+                      }}
                       placeholder="0"
                     />
                   </td>
@@ -714,7 +782,10 @@ export function نموذج_فاتورة({
                       selectOnFocus
                       value={ب.الوزن}
                       onChange={(e) => حدّث(i, "الوزن", e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الوزن"); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); انتقل(i, "الوزن"); return; }
+                        على_سهم(e, i, "الوزن", "ltr");
+                      }}
                       placeholder="0.00"
                     />
                   </td>

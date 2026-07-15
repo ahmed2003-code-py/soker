@@ -20,6 +20,8 @@ type الخصائص = {
   عند_الاختيار?: () => void;
   /** ref للزر المُشغِّل — للتركيز الخارجي */
   triggerRef?: React.RefCallback<HTMLButtonElement>;
+  /** keydown على زر المُشغِّل — للتنقل بالسهام */
+  onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>;
   /** تعديل خيار موجود: (قديم، جديد) */
   عند_التعديل?: (قديم: string, جديد: string) => void;
   /** حذف خيار موجود */
@@ -39,6 +41,7 @@ export function قائمة_اختيار({
   تسمية_الإضافة = "إضافة",
   عند_الاختيار,
   triggerRef,
+  onKeyDown,
   عند_التعديل,
   عند_الحذف,
   className,
@@ -106,6 +109,7 @@ export function قائمة_اختيار({
           type="button"
           ref={triggerRef}
           disabled={disabled}
+          onKeyDown={onKeyDown}
           className={cn(
             "flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
             className
