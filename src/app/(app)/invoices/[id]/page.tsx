@@ -216,10 +216,14 @@ export default async function صفحة_عرض_فاتورة({
             </tr>
           </thead>
           <tbody>
-            {مجموعات.map((مجموعة) => (
-              <>
-                {/* بنود التصنيف */}
-                {مجموعة.بنود.map((بند) => (
+            {/* المبيعات أولاً ثم المرتجعات، مرتّبة حسب التصنيف داخل كل مجموعة */}
+            {[...فاتورة.lines]
+              .sort((a, b) => {
+                if (a.lineType !== b.lineType)
+                  return a.lineType === "RETURN" ? 1 : -1;
+                return a.category.localeCompare(b.category) || a.id - b.id;
+              })
+              .map((بند) => (
                   <tr
                     key={بند.id}
                     className={`border-b border-foreground/10 print:border-black/15 ${
@@ -260,10 +264,7 @@ export default async function صفحة_عرض_فاتورة({
                         : "—"}
                     </td>
                   </tr>
-                ))}
-
-              </>
-            ))}
+              ))}
           </tbody>
         </table>
 
