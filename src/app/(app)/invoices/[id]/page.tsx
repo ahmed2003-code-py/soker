@@ -280,121 +280,108 @@ export default async function صفحة_عرض_فاتورة({
           </tbody>
         </table>
 
-        {/* الإجماليات: عمود واحد ناحية اليمين — ملخص التصنيف + العدد/الوزن مدمجَين */}
-        <div className="mt-6 flex justify-start">
-          <div className="w-full space-y-4">
-
-            {/* ملخص حسب التصنيف — يحافظ على الفصل بين الأنواع */}
-            {مجموعات.length > 0 && (
-              <div>
-                <h3 className="mb-1.5 text-sm font-bold">
-                  {t("inv.f.summary_by_cat")}
-                </h3>
-                <table className="w-full border-collapse text-[13px]">
-                  <thead>
-                    <tr className="border-b border-foreground/40 print:border-black/50">
-                      <th className="py-1 text-start font-semibold">{t("inv.f.category")}</th>
-                      <th className="py-1 text-end font-semibold">{t("inv.v.count")}</th>
-                      <th className="py-1 text-end font-semibold">{t("inv.v.weight")}</th>
-                      <th className="py-1 text-end font-semibold">{t("inv.f.price_kg")}</th>
-                      <th className="py-1 text-end font-semibold">المبلغ</th>
+        {/* جدول الملخص الموحّد */}
+        {مجموعات.length > 0 && (
+          <div className="mt-6">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr className="border-y-2 border-foreground/70 bg-foreground/5 print:border-black">
+                  <th className="px-2 py-2 text-start font-bold">التصنيف / البيان</th>
+                  <th className="px-2 py-2 text-end font-bold w-20">الشكارة</th>
+                  <th className="px-2 py-2 text-end font-bold w-24">الوزن (كجم)</th>
+                  <th className="px-2 py-2 text-end font-bold w-24">السعر/كجم</th>
+                  <th className="px-2 py-2 text-end font-bold w-28">المبلغ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* صفوف التصنيفات */}
+                {مجموعات.map((م) => {
+                  const أسعار_م = [...م.أسعار];
+                  const سعر_نص_م =
+                    أسعار_م.length === 1
+                      ? أسعار_م[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                      : أسعار_م.length > 1
+                        ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}`
+                        : "—";
+                  const مبلغ_م = م.إجمالي_المبلغ;
+                  const هو_سالب = مبلغ_م < 0;
+                  return (
+                    <tr
+                      key={م.التصنيف}
+                      className={`border-b border-foreground/10 print:border-black/10 ${هو_سالب ? "text-amber-700 dark:text-amber-400" : ""}`}
+                    >
+                      <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">
+                        {هو_سالب ? `(${Math.abs(م.إجمالي_الكمية)})` : م.إجمالي_الكمية}
+                      </td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">
+                        {هو_سالب ? `(${Math.abs(م.إجمالي_الوزن).toFixed(2)})` : م.إجمالي_الوزن.toFixed(2)}
+                      </td>
+                      <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">
+                        {مبلغ_م !== 0
+                          ? هو_سالب
+                            ? `(${Math.abs(مبلغ_م).toLocaleString("en-US", { minimumFractionDigits: 2 })})`
+                            : مبلغ_م.toLocaleString("en-US", { minimumFractionDigits: 2 })
+                          : "—"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {مجموعات.map((م) => {
-                      const أسعار_م = [...م.أسعار];
-                      const سعر_نص_م = أسعار_م.length === 1
-                        ? أسعار_م[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
-                        : أسعار_م.length > 1
-                          ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}`
-                          : "—";
-                      return (
-                        <tr key={م.التصنيف} className="border-b border-foreground/10 print:border-black/10">
-                          <td className="py-1">{م.التصنيف}</td>
-                          <td className="py-1 text-end ltr-nums">{م.إجمالي_الكمية}</td>
-                          <td className="py-1 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
-                          <td className="py-1 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
-                          <td className="py-1 text-end ltr-nums">
-                            {م.إجمالي_المبلغ !== 0
-                              ? Math.abs(م.إجمالي_المبلغ).toLocaleString("en-US", { minimumFractionDigits: 2 })
-                              : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  );
+                })}
 
-            {/* الإجماليات — العدد والوزن على نفس السطر */}
-            <div className="space-y-1">
-              {لها_مرتجعات ? (
-                <>
-                  {/* مبيعات: عدد + وزن */}
-                  <div className="flex items-center justify-between py-1 text-sm">
-                    <span>إجمالي المبيعات</span>
-                    <div className="flex items-center gap-4 ltr-nums font-medium">
-                      <span>{إجمالي_مبيعات_كمية} شكاير</span>
-                      <span>{إجمالي_مبيعات_وزن.toFixed(2)} {t("inv.kg")}</span>
-                    </div>
-                  </div>
-                  {/* مرتجعات: عدد + وزن */}
-                  <div className="flex items-center justify-between py-1 text-sm text-amber-700 dark:text-amber-400">
-                    <span>إجمالي المرتجعات</span>
-                    <div className="flex items-center gap-4 ltr-nums font-medium">
-                      <span>({إجمالي_مرتجعات_كمية}) شكاير</span>
-                      <span>({إجمالي_مرتجعات_وزن.toFixed(2)}) {t("inv.kg")}</span>
-                    </div>
-                  </div>
-                  {/* صافي: عدد + وزن */}
-                  <div className="flex items-center justify-between py-1 text-sm font-semibold border-t border-foreground/10 pt-1">
-                    <span>الصافي</span>
-                    <div className="flex items-center gap-4 ltr-nums">
-                      <span>{صافي_الكمية} شكاير</span>
-                      <span>{صافي_الوزن.toFixed(2)} {t("inv.kg")}</span>
-                    </div>
-                  </div>
-                  {/* قيم مالية */}
-                  <div className="flex justify-between py-1 text-sm border-t border-foreground/20 pt-2 mt-1">
-                    <span>إجمالي المبيعات</span>
-                    <span className="ltr-nums font-medium">
-                      {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1 text-sm text-amber-700 dark:text-amber-400">
-                    <span>إجمالي المرتجعات</span>
-                    <span className="ltr-nums font-medium">
-                      ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between py-1 text-sm">
-                    <span>{t("inv.f.total_count")}</span>
-                    <span className="ltr-nums font-medium">{Number(فاتورة.totalQty)} شكاير</span>
-                  </div>
-                  <div className="flex justify-between py-1 text-sm">
-                    <span>{t("inv.col.total_weight")}</span>
-                    <span className="ltr-nums font-medium">
-                      {Number(فاتورة.totalWeight).toFixed(2)} {t("inv.kg")}
-                    </span>
-                  </div>
-                </>
-              )}
+                {/* فاصل + صفوف الإجماليات عند وجود مرتجعات */}
+                {لها_مرتجعات && (
+                  <>
+                    <tr className="border-t-2 border-foreground/40 bg-green-50/60 dark:bg-green-900/10 print:border-black/40 print:bg-green-50/30">
+                      <td className="px-2 py-1.5 font-semibold text-green-800 dark:text-green-300">إجمالي المبيعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_كمية}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_وزن.toFixed(2)}</td>
+                      <td />
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">
+                        {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="bg-amber-50/60 dark:bg-amber-900/10 print:bg-amber-50/30">
+                      <td className="px-2 py-1.5 font-semibold text-amber-700 dark:text-amber-400">إجمالي المرتجعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_كمية})</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_وزن.toFixed(2)})</td>
+                      <td />
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
+                        ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                      </td>
+                    </tr>
+                    <tr className="border-y border-foreground/25 bg-foreground/5 print:border-black/25">
+                      <td className="px-2 py-1.5 font-bold">الصافي</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الكمية}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الوزن.toFixed(2)}</td>
+                      <td />
+                      <td />
+                    </tr>
+                  </>
+                )}
 
-              <div className="mt-1 flex items-center justify-between border-t-2 border-foreground/80 pt-2 text-lg font-bold print:border-black">
-                <span>{لها_مرتجعات ? "صافي الفاتورة" : t("inv.col.total")}</span>
-                <نص_مبلغ القيمة={فاتورة.totalAmount} />
-              </div>
-              <p className="mt-2 text-[13px]">
-                <span className="font-semibold">{t("inv.v.in_words")} </span>
-                {تفقيط(Math.abs(Number(فاتورة.totalAmount)))}
-              </p>
-            </div>
+                {/* الإجمالي الكلي */}
+                <tr className="border-t-2 border-foreground/80 print:border-black">
+                  <td
+                    colSpan={4}
+                    className="px-2 py-2.5 text-base font-bold"
+                  >
+                    {لها_مرتجعات ? "صافي الفاتورة" : t("inv.col.total")}
+                  </td>
+                  <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
+                    <نص_مبلغ القيمة={فاتورة.totalAmount} />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* التفقيط */}
+            <p className="mt-2 text-[13px] text-muted-foreground">
+              <span className="font-semibold text-foreground">{t("inv.v.in_words")} </span>
+              {تفقيط(Math.abs(Number(فاتورة.totalAmount)))}
+            </p>
           </div>
-        </div>
+        )}
 
         {فاتورة.notes && (
           <p className="mt-5 border-t border-foreground/15 pt-3 text-sm print:border-black/20">
