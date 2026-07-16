@@ -373,21 +373,17 @@ export default async function صفحة_عرض_فاتورة({
                       </td>
                     </tr>
                     <tr className="border-b border-foreground/10">
-                      <td className="px-2 py-1 text-sm text-muted-foreground">صافي الوزن</td>
-                      <td />
-                      <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الوزن.toFixed(2)}</td>
-                      <td colSpan={2} />
+                      <td colSpan={4} className="px-2 py-1 text-sm text-muted-foreground">صافي الوزن</td>
+                      <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الوزن.toFixed(2)} كجم</td>
                     </tr>
                     <tr className="border-b border-foreground/10">
-                      <td className="px-2 py-1 text-sm text-muted-foreground">إجمالي المبيعات</td>
-                      <td colSpan={3} />
+                      <td colSpan={4} className="px-2 py-1 text-sm text-muted-foreground">إجمالي المبيعات</td>
                       <td className="px-2 py-1 text-end ltr-nums font-semibold text-green-700 dark:text-green-400">
                         {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                     <tr className="border-b border-foreground/10">
-                      <td className="px-2 py-1 text-sm text-muted-foreground">إجمالي المرتجعات</td>
-                      <td colSpan={3} />
+                      <td colSpan={4} className="px-2 py-1 text-sm text-muted-foreground">إجمالي المرتجعات</td>
                       <td className="px-2 py-1 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
                         ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
                       </td>
