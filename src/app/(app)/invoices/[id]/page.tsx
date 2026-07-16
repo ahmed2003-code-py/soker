@@ -373,11 +373,6 @@ export default async function صفحة_عرض_فاتورة({
                       </td>
                     </tr>
                     <tr className="border-b border-foreground/10">
-                      <td className="px-2 py-1 text-sm text-muted-foreground">صافي الشكارة</td>
-                      <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الكمية}</td>
-                      <td colSpan={3} />
-                    </tr>
-                    <tr className="border-b border-foreground/10">
                       <td className="px-2 py-1 text-sm text-muted-foreground">صافي الوزن</td>
                       <td />
                       <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الوزن.toFixed(2)}</td>
