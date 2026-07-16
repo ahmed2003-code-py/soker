@@ -28,6 +28,7 @@ import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 import { TreasuryAccountType } from "@prisma/client";
+import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 
 export type حركة = {
   id: number;
@@ -73,9 +74,7 @@ export function حركات_الطرف({
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const [دفعة, تعيين_دفعة] = React.useState(false);
-  const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
-  const [حذف_خزنة, تعيين_حذف_خزنة] = React.useState<حركة | null>(null);
-  const [حذف_فاتورة_مؤكد, تعيين_حذف_فاتورة_مؤكد] = React.useState<حركة | null>(null);
+  const { احذف, معلقة } = استخدم_تراجع_الحذف();
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [تعديل_خزنة, تعيين_تعديل_خزنة] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
@@ -86,6 +85,7 @@ export function حركات_الطرف({
   const [قيمة_رصيد_ابتدائي, تعيين_قيمة_رصيد_ابتدائي] = React.useState("");
 
   const حركات_معروضة = الحركات.filter((ح) => {
+    if (معلقة.has(ح.id)) return false;
     const d = ح.التاريخ.slice(0, 10);
     if (من && d < من) return false;
     if (إلى && d > إلى) return false;
@@ -254,12 +254,14 @@ export function حركات_الطرف({
         رسالة_فراغ={t("ledger.empty")}
         إجراءات_الصف={(ص) => {
           // في وضع التحديد الجماعي (أكثر من صف) → زر حذف فقط لكل صف
+          // دالة الحذف حسب نوع الصف
+          const على_الحذف = () => {
+            if (ص.معرف_الفاتورة) احذف(ص.id, () => حذف_فاتورة(ص.معرف_الفاتورة!));
+            else if (ص.معرف_خزنة) احذف(ص.id, () => حذف_حركة_مرتبطة_بخزنة(ص.id));
+            else احذف(ص.id, () => حذف_حركة(ص.id));
+          };
+
           if (محددة.size > 1) {
-            const على_الحذف = () => {
-              if (ص.معرف_الفاتورة) تعيين_حذف_فاتورة_مؤكد(ص);
-              else if (ص.معرف_خزنة) تعيين_حذف_خزنة(ص);
-              else تعيين_حذف(ص);
-            };
             return (
               <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف">
                 <Trash2 className="size-4 text-danger" />
@@ -283,12 +285,7 @@ export function حركات_الطرف({
                     <Pencil className="size-4 text-primary" />
                   </الزر>
                 </Link>
-                <الزر
-                  size="sm"
-                  variant="ghost"
-                  title="حذف الفاتورة"
-                  onClick={() => تعيين_حذف_فاتورة_مؤكد(ص)}
-                >
+                <الزر size="sm" variant="ghost" title="حذف الفاتورة" onClick={على_الحذف}>
                   <Trash2 className="size-4 text-danger" />
                 </الزر>
               </div>
@@ -300,12 +297,7 @@ export function حركات_الطرف({
                 <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_خزنة(ص)} title="تعديل">
                   <Pencil className="size-4 text-primary" />
                 </الزر>
-                <الزر
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => تعيين_حذف_خزنة(ص)}
-                  title="حذف وعكس من الخزنة"
-                >
+                <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف وعكس من الخزنة">
                   <Trash2 className="size-4 text-danger" />
                 </الزر>
               </div>
@@ -316,7 +308,7 @@ export function حركات_الطرف({
               <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل(ص)} title="تعديل">
                 <Pencil className="size-4 text-primary" />
               </الزر>
-              <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)} title="حذف">
+              <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف">
                 <Trash2 className="size-4 text-danger" />
               </الزر>
             </div>
@@ -345,49 +337,6 @@ export function حركات_الطرف({
           حسابات_الخزنة={حسابات_الخزنة}
           حسابات_فرعية={حسابات_فرعية}
           عند_الإغلاق={() => تعيين_تعديل_خزنة(null)}
-        />
-      )}
-      {حذف && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={t("ledger.delete_title")}
-          الوصف={t("ledger.delete_desc")}
-          عند_التأكيد={async () => {
-            const r = await حذف_حركة(حذف.id);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) {
-              تعيين_محددة((prev) => { const next = new Set(prev); next.delete(حذف.id); return next; });
-              router.refresh();
-            }
-          }}
-        />
-      )}
-      {حذف_خزنة && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف_خزنة(null)}
-          العنوان="حذف وعكس الحركة"
-          الوصف="سيُحذف هذا القيد وحركة الخزنة المرتبطة به، ويُعاد حساب الرصيدين. لا يمكن التراجع."
-          عند_التأكيد={async () => {
-            const r = await حذف_حركة_مرتبطة_بخزنة(حذف_خزنة.id);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) router.refresh();
-          }}
-        />
-      )}
-      {حذف_فاتورة_مؤكد && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف_فاتورة_مؤكد(null)}
-          العنوان="حذف الفاتورة"
-          الوصف={`سيُحذف الفاتورة رقم ${حذف_فاتورة_مؤكد.رقم_المستند ?? ""} وقيدها في الحساب ويُعاد الحساب. لا يمكن التراجع.`}
-          عند_التأكيد={async () => {
-            if (!حذف_فاتورة_مؤكد.معرف_الفاتورة) return;
-            const r = await حذف_فاتورة(حذف_فاتورة_مؤكد.معرف_الفاتورة);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) router.refresh();
-          }}
         />
       )}
       {حذف_جماعي && (

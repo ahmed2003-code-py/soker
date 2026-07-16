@@ -24,6 +24,7 @@ import { استخدام_اللغة } from "@/components/providers/i18n-provider"
 import type { مفتاح_ترجمة } from "@/lib/i18n";
 import type { هاتف_طرف } from "@/lib/schemas/party";
 import { إنشاء_طرف, تعديل_طرف, حذف_طرف } from "./actions";
+import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 
 export type صف_طرف = {
   id: number;
@@ -58,13 +59,12 @@ export function قائمة_الأطراف({
   البيانات: صف_طرف[];
 }) {
   const router = useRouter();
-  const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const أساس = النوع === "CUSTOMER" ? "/customers" : "/suppliers";
   const نص_الإضافة = النوع === "CUSTOMER" ? t("party.add_customer") : t("party.add_supplier");
   const نص_الفراغ = النوع === "CUSTOMER" ? t("party.empty_customers") : t("party.empty_suppliers");
   const [نموذج, تعيين_نموذج] = React.useState<{ صف?: صف_طرف } | null>(null);
-  const [حذف, تعيين_حذف] = React.useState<صف_طرف | null>(null);
+  const { احذف, معلقة } = استخدم_تراجع_الحذف();
 
   const أعمدة: عمود<صف_طرف>[] = [
     { المفتاح: "الاسم", العنوان: t("party.col.name"), قابل_للفرز: true },
@@ -112,7 +112,7 @@ export function قائمة_الأطراف({
 
       <جدول_بيانات
         الأعمدة={أعمدة}
-        البيانات={البيانات}
+        البيانات={البيانات.filter((ص) => !معلقة.has(ص.id))}
         مفتاح_الصف={(ص) => ص.id}
         عند_النقر={(ص) => router.push(`${أساس}/${ص.id}`)}
         رسالة_فراغ={نص_الفراغ}
@@ -125,7 +125,11 @@ export function قائمة_الأطراف({
             <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ صف: ص })}>
               <Pencil className="size-4" />
             </الزر>
-            <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
+            <الزر
+              size="sm"
+              variant="ghost"
+              onClick={() => احذف(ص.id, () => حذف_طرف(ص.id))}
+            >
               <Trash2 className="size-4 text-danger" />
             </الزر>
           </div>
@@ -137,19 +141,6 @@ export function قائمة_الأطراف({
           النوع={النوع}
           الصف={نموذج.صف}
           عند_الإغلاق={() => تعيين_نموذج(null)}
-        />
-      )}
-      {حذف && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={t("party.delete_title", { name: حذف.الاسم })}
-          الوصف={t("party.delete_desc")}
-          عند_التأكيد={async () => {
-            const r = await حذف_طرف(حذف.id);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) router.refresh();
-          }}
         />
       )}
     </>

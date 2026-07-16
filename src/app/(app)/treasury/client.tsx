@@ -28,6 +28,7 @@ import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد } from "./actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
+import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 
 type حساب = {
   id: number;
@@ -80,7 +81,7 @@ export function شاشة_الخزنة({
   const [نموذج, تعيين_نموذج] = React.useState<{ حركة?: حركة } | null>(null);
   const [نموذج_تحويل, تعيين_نموذج_تحويل] = React.useState(false);
   const [نموذج_دفع_مباشر, تعيين_نموذج_دفع_مباشر] = React.useState(false);
-  const [حذف, تعيين_حذف] = React.useState<حركة | null>(null);
+  const { احذف: احذف_مع_تراجع, معلقة } = استخدم_تراجع_الحذف();
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
   const [فلتر_نوع, تعيين_فلتر_نوع] = React.useState("");
   const [من, تعيين_من] = React.useState("");
@@ -117,6 +118,7 @@ export function شاشة_الخزنة({
   const صافي_الفترة_الكلي = بالفترة.reduce((س, ح) => س + (ح.النوع === "INCOME" ? ح.المبلغ : -ح.المبلغ), 0);
 
   const حركات_مصفّاة = الحركات.filter((ح) => {
+    if (معلقة.has(ح.id)) return false;
     if (فلتر_حساب && ح.معرف_الحساب !== Number(فلتر_حساب)) return false;
     if (فلتر_نوع && ح.النوع !== فلتر_نوع) return false;
     const d = ح.التاريخ.slice(0, 10);
@@ -429,7 +431,11 @@ export function شاشة_الخزنة({
                 <Pencil className="size-4" />
               </الزر>
             )}
-            <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
+            <الزر
+              size="sm"
+              variant="ghost"
+              onClick={() => احذف_مع_تراجع(ص.id, () => حذف_حركة_خزنة(ص.id))}
+            >
               <Trash2 className="size-4 text-danger" />
             </الزر>
           </div>
@@ -457,22 +463,6 @@ export function شاشة_الخزنة({
         <حوار_دفع_مباشر
           الأطراف={الأطراف}
           عند_الإغلاق={() => تعيين_نموذج_دفع_مباشر(false)}
-        />
-      )}
-      {حذف && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={t("ledger.delete_title")}
-          الوصف={t("treasury.delete_desc")}
-          عند_التأكيد={async () => {
-            const r = await حذف_حركة_خزنة(حذف.id);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
-            if (r.نجاح) {
-              تعيين_محددة((prev) => { const next = new Set(prev); next.delete(حذف.id); return next; });
-              router.refresh();
-            }
-          }}
         />
       )}
       {حذف_جماعي && (

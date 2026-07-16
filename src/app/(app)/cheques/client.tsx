@@ -26,6 +26,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
 import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك } from "./actions";
+import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي } from "@/app/(app)/treasury/sub-account-actions";
 
 const حالات_الشيك = ["PENDING", "COLLECTED", "BOUNCED"] as const;
@@ -93,6 +94,7 @@ export function شاشة_الشيكات({
   const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
   const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك; اتجاه_افتراضي?: ChequeDirection } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
+  const { احذف: احذف_مع_تراجع, معلقة } = استخدم_تراجع_الحذف();
   const [تبويب, تعيين_تبويب] = React.useState<ChequeDirection>("INCOMING");
   const [تحصيل_شيك, تعيين_تحصيل_شيك] = React.useState<شيك | null>(null);
   const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
@@ -223,7 +225,11 @@ export function شاشة_الشيكات({
           <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ شيك: ص })}>
             <Pencil className="size-4" />
           </الزر>
-          <الزر size="sm" variant="ghost" onClick={() => تعيين_حذف(ص)}>
+          <الزر
+            size="sm"
+            variant="ghost"
+            onClick={() => احذف_مع_تراجع(ص.id, () => حذف_شيك(ص.id))}
+          >
             <Trash2 className="size-4 text-danger" />
           </الزر>
         </div>
@@ -418,18 +424,6 @@ export function شاشة_الشيكات({
             const r = await تغيير_حالة_شيك(تحصيل_شيك.id, "COLLECTED", معرف_بنك ?? null);
             r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
             تعيين_تحصيل_شيك(null);
-            if (r.نجاح) router.refresh();
-          }}
-        />
-      )}
-      {حذف && (
-        <حوار_تأكيد
-          مفتوح
-          عند_التغيير={(o) => !o && تعيين_حذف(null)}
-          العنوان={t("cheque.delete_title", { name: حذف.اسم_المدين })}
-          عند_التأكيد={async () => {
-            const r = await حذف_شيك(حذف.id);
-            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
             if (r.نجاح) router.refresh();
           }}
         />
