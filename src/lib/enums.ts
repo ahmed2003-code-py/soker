@@ -32,6 +32,7 @@ export const تسمية_حساب_الخزنة: Record<TreasuryAccountType, strin
 export const تسمية_نوع_الحركة: Record<TxnKind, string> = {
   INCOME: "إيراد",
   EXPENSE: "مصروف",
+  TRANSFER: "تحويل مباشر",
 };
 
 export const تسمية_حالة_الشيك: Record<ChequeStatus, string> = {

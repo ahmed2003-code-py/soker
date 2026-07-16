@@ -11,7 +11,9 @@ type عميل_معاملة = Prisma.TransactionClient;
  */
 
 function أثر(النوع: TxnKind, المبلغ: Prisma.Decimal.Value): Prisma.Decimal {
-  return النوع === TxnKind.INCOME ? د(المبلغ) : د(المبلغ).negated();
+  if (النوع === TxnKind.INCOME) return د(المبلغ);
+  if (النوع === TxnKind.EXPENSE) return د(المبلغ).negated();
+  return د(0); // TRANSFER: لا أثر على الرصيد
 }
 
 /** إعادة حساب سلسلة حركات حساب خزنة وتحديث رصيده. تُرجع الرصيد النهائي. */
@@ -23,7 +25,7 @@ export async function أعد_حساب_حساب_الخزنة(
   await tx.$executeRaw`
     WITH running AS (
       SELECT id,
-        SUM(CASE WHEN kind = 'INCOME' THEN amount ELSE -amount END)
+        SUM(CASE WHEN kind = 'INCOME' THEN amount WHEN kind = 'EXPENSE' THEN -amount ELSE 0 END)
         OVER (ORDER BY date ASC, id ASC) AS nb
       FROM treasury_txns WHERE account_id = ${معرف_الحساب} AND deleted_at IS NULL
     )
@@ -153,10 +155,12 @@ export async function احذف_حركة_خزنة_ناعم(
   // الخطوة 1: حذف ناعم (فوري)
   await tx.treasuryTxn.update({ where: { id: معرف_الحركة }, data: { deletedAt: new Date() } });
 
-  // الخطوة 2: دلتا الأثر المعاكس للحركة المحذوفة
-  const دلتا = حركة.kind === "INCOME"
-    ? د(حركة.amount).negated()
-    : د(حركة.amount);
+  // الخطوة 2: دلتا الأثر المعاكس للحركة المحذوفة (TRANSFER = صفر)
+  const دلتا = حركة.kind === "TRANSFER"
+    ? د(0)
+    : حركة.kind === "INCOME"
+      ? د(حركة.amount).negated()
+      : د(حركة.amount);
 
   // الخطوة 3: تعديل أرصدة الحركات اللاحقة فقط
   await tx.$executeRaw`

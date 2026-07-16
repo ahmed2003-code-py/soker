@@ -36,6 +36,7 @@ enum TreasuryAccountType {
 enum TxnKind {
   INCOME // إيراد
   EXPENSE // مصروف
+  TRANSFER // تحويل مباشر (لا يؤثر على رصيد الخزنة)
 }
 
 enum ChequeStatus {
