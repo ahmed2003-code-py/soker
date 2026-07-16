@@ -62,6 +62,19 @@ export default async function صفحة_عرض_فاتورة({
     .reduce((s, l) => s + Number(l.lineTotal), 0);
   const لها_مرتجعات = !هو_مورد && إجمالي_مرتجعات_الفاتورة > 0;
 
+  const إجمالي_مبيعات_كمية = فاتورة.lines
+    .filter((l) => l.lineType !== "RETURN")
+    .reduce((s, l) => s + Number(l.qty), 0);
+  const إجمالي_مرتجعات_كمية = فاتورة.lines
+    .filter((l) => l.lineType === "RETURN")
+    .reduce((s, l) => s + Number(l.qty), 0);
+  const إجمالي_مبيعات_وزن = فاتورة.lines
+    .filter((l) => l.lineType !== "RETURN")
+    .reduce((s, l) => s + Number(l.weight), 0);
+  const إجمالي_مرتجعات_وزن = فاتورة.lines
+    .filter((l) => l.lineType === "RETURN")
+    .reduce((s, l) => s + Number(l.weight), 0);
+
   // تجميع البنود حسب التصنيف مع الإجماليات
   type مجموعة_تصنيف = {
     التصنيف: string;
@@ -314,21 +327,53 @@ export default async function صفحة_عرض_فاتورة({
 
           {/* الإجمالي المالي الكلي */}
           <div className="w-full sm:max-w-xs space-y-1">
-            <div className="flex justify-between py-1 text-sm">
-              <span>{t("inv.f.total_count")}</span>
-              <span className="ltr-nums font-medium">{Number(فاتورة.totalQty)}</span>
-            </div>
-            <div className="flex justify-between py-1 text-sm">
-              <span>{t("inv.col.total_weight")}</span>
-              <span className="ltr-nums font-medium">
-                {Number(فاتورة.totalWeight).toFixed(2)} {t("inv.kg")}
-              </span>
-            </div>
+            {/* الكميات والأوزان */}
+            {لها_مرتجعات ? (
+              <>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>إجمالي مبيعات الكمية</span>
+                  <span className="ltr-nums font-medium">{إجمالي_مبيعات_كمية}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm text-amber-700 dark:text-amber-400">
+                  <span>إجمالي مرتجعات الكمية</span>
+                  <span className="ltr-nums font-medium">({إجمالي_مرتجعات_كمية})</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm font-semibold">
+                  <span>صافي الكمية</span>
+                  <span className="ltr-nums">{Number(فاتورة.totalQty)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm mt-1">
+                  <span>إجمالي مبيعات الوزن</span>
+                  <span className="ltr-nums font-medium">{إجمالي_مبيعات_وزن.toFixed(2)} {t("inv.kg")}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm text-amber-700 dark:text-amber-400">
+                  <span>إجمالي مرتجعات الوزن</span>
+                  <span className="ltr-nums font-medium">({إجمالي_مرتجعات_وزن.toFixed(2)}) {t("inv.kg")}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm font-semibold">
+                  <span>صافي الوزن</span>
+                  <span className="ltr-nums">{Number(فاتورة.totalWeight).toFixed(2)} {t("inv.kg")}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>{t("inv.f.total_count")}</span>
+                  <span className="ltr-nums font-medium">{Number(فاتورة.totalQty)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>{t("inv.col.total_weight")}</span>
+                  <span className="ltr-nums font-medium">
+                    {Number(فاتورة.totalWeight).toFixed(2)} {t("inv.kg")}
+                  </span>
+                </div>
+              </>
+            )}
 
-            {/* تفصيل المبيعات والمرتجعات */}
+            {/* تفصيل قيم المبيعات والمرتجعات */}
             {لها_مرتجعات && (
               <>
-                <div className="flex justify-between py-1 text-sm border-t border-foreground/20 pt-2">
+                <div className="flex justify-between py-1 text-sm border-t border-foreground/20 pt-2 mt-1">
                   <span>إجمالي المبيعات</span>
                   <span className="ltr-nums font-medium">
                     {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -344,7 +389,7 @@ export default async function صفحة_عرض_فاتورة({
             )}
 
             <div className="mt-1 flex items-center justify-between border-t-2 border-foreground/80 pt-2 text-lg font-bold print:border-black">
-              <span>{لها_مرتجعات ? "الصافي" : t("inv.col.total")}</span>
+              <span>{لها_مرتجعات ? "صافي الفاتورة" : t("inv.col.total")}</span>
               <نص_مبلغ القيمة={فاتورة.totalAmount} />
             </div>
             <p className="mt-2 text-[13px]">
