@@ -78,34 +78,48 @@ export default async function صفحة_عرض_فاتورة({
     .reduce((s, l) => s + Number(l.weight), 0);
   const صافي_الوزن = إجمالي_مبيعات_وزن - إجمالي_مرتجعات_وزن;
 
-  // تجميع البنود حسب التصنيف مع الإجماليات
-  type مجموعة_تصنيف = {
+  // مجموعات الجدول الرئيسي (كل البنود، مع بنود للعرض)
+  type مجموعة_جدول = {
     التصنيف: string;
     إجمالي_الكمية: number;
     إجمالي_الوزن: number;
-    إجمالي_المبلغ: number; // صافي = مبيعات − مرتجعات
+    إجمالي_المبلغ: number;
     بنود: typeof فاتورة.lines;
     أسعار: Set<number>;
   };
-  const تجميع = new Map<string, مجموعة_تصنيف>();
+  const خريطة_جدول = new Map<string, مجموعة_جدول>();
   for (const بند of فاتورة.lines) {
-    const مجموعة = تجميع.get(بند.category) ?? {
-      التصنيف: بند.category,
-      إجمالي_الكمية: 0,
-      إجمالي_الوزن: 0,
-      إجمالي_المبلغ: 0,
-      بنود: [],
-      أسعار: new Set<number>(),
+    const م = خريطة_جدول.get(بند.category) ?? {
+      التصنيف: بند.category, إجمالي_الكمية: 0, إجمالي_الوزن: 0,
+      إجمالي_المبلغ: 0, بنود: [], أسعار: new Set<number>(),
     };
     const إشارة = بند.lineType === "RETURN" ? -1 : 1;
-    مجموعة.بنود.push(بند);
-    مجموعة.إجمالي_الكمية += Number(بند.qty) * إشارة;
-    مجموعة.إجمالي_الوزن += Number(بند.weight) * إشارة;
-    مجموعة.إجمالي_المبلغ += Number(بند.lineTotal) * إشارة;
-    if (Number(بند.price) > 0) مجموعة.أسعار.add(Number(بند.price));
-    تجميع.set(بند.category, مجموعة);
+    م.بنود.push(بند);
+    م.إجمالي_الكمية += Number(بند.qty) * إشارة;
+    م.إجمالي_الوزن  += Number(بند.weight) * إشارة;
+    م.إجمالي_المبلغ += Number(بند.lineTotal) * إشارة;
+    if (Number(بند.price) > 0) م.أسعار.add(Number(بند.price));
+    خريطة_جدول.set(بند.category, م);
   }
-  const مجموعات = [...تجميع.values()];
+  const مجموعات = [...خريطة_جدول.values()];
+
+  // مجموعات الملخص — مبيعات ومرتجعات منفصلَين
+  type مجموعة_ملخص = { التصنيف: string; إجمالي_الكمية: number; إجمالي_الوزن: number; إجمالي_المبلغ: number; أسعار: Set<number> };
+  type بند_فاتورة = (typeof فاتورة)["lines"][number];
+  function اجمع_ملخص(بنود: بند_فاتورة[]): مجموعة_ملخص[] {
+    const خريطة = new Map<string, مجموعة_ملخص>();
+    for (const بند of بنود) {
+      const م = خريطة.get(بند.category) ?? { التصنيف: بند.category, إجمالي_الكمية: 0, إجمالي_الوزن: 0, إجمالي_المبلغ: 0, أسعار: new Set<number>() };
+      م.إجمالي_الكمية += Number(بند.qty);
+      م.إجمالي_الوزن  += Number(بند.weight);
+      م.إجمالي_المبلغ += Number(بند.lineTotal);
+      if (Number(بند.price) > 0) م.أسعار.add(Number(بند.price));
+      خريطة.set(بند.category, م);
+    }
+    return [...خريطة.values()];
+  }
+  const مجموعات_مبيعات  = اجمع_ملخص(فاتورة.lines.filter(l => l.lineType !== "RETURN"));
+  const مجموعات_مرتجعات = اجمع_ملخص(فاتورة.lines.filter(l => l.lineType === "RETURN"));
 
   return (
     <div>
@@ -294,80 +308,127 @@ export default async function صفحة_عرض_فاتورة({
                 </tr>
               </thead>
               <tbody>
-                {/* ── إجمالي المبيعات / المرتجعات / الصافي (أولاً عند وجود مرتجعات) ── */}
-                {لها_مرتجعات && (
+                {لها_مرتجعات ? (
                   <>
-                    <tr className="bg-green-50/60 dark:bg-green-900/10 print:bg-green-50/30">
-                      <td className="px-2 py-1.5 font-semibold text-green-800 dark:text-green-300">إجمالي المبيعات</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_كمية}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_وزن.toFixed(2)}</td>
+                    {/* ══ قسم المبيعات ══ */}
+                    <tr className="bg-green-100/50 dark:bg-green-900/20 print:bg-green-50">
+                      <td colSpan={5} className="px-2 py-1.5 text-[12px] font-bold text-green-800 dark:text-green-300">
+                        المبيعات
+                      </td>
+                    </tr>
+                    {مجموعات_مبيعات.map((م) => {
+                      const أسعار = [...م.أسعار];
+                      const سعر = أسعار.length === 1 ? أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                        : أسعار.length > 1 ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}` : "—";
+                      return (
+                        <tr key={`s-${م.التصنيف}`} className="border-b border-foreground/10 print:border-black/10">
+                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الكمية}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_المبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-y border-green-300/50 bg-green-50/70 dark:bg-green-900/15 font-semibold text-green-800 dark:text-green-300 print:border-green-200">
+                      <td className="px-2 py-1.5">إجمالي المبيعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">{إجمالي_مبيعات_كمية}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">{إجمالي_مبيعات_وزن.toFixed(2)}</td>
                       <td />
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">
+                      <td className="px-2 py-1.5 text-end ltr-nums">{إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                    </tr>
+
+                    {/* ══ قسم المرتجعات ══ */}
+                    <tr className="bg-amber-100/50 dark:bg-amber-900/20 print:bg-amber-50">
+                      <td colSpan={5} className="px-2 py-1.5 text-[12px] font-bold text-amber-800 dark:text-amber-300">
+                        المرتجعات
+                      </td>
+                    </tr>
+                    {مجموعات_مرتجعات.map((م) => {
+                      const أسعار = [...م.أسعار];
+                      const سعر = أسعار.length === 1 ? أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                        : أسعار.length > 1 ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}` : "—";
+                      return (
+                        <tr key={`r-${م.التصنيف}`} className="border-b border-foreground/10 text-amber-700 dark:text-amber-400 print:border-black/10">
+                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">({م.إجمالي_الكمية})</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">({م.إجمالي_الوزن.toFixed(2)})</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">({م.إجمالي_المبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })})</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-y border-amber-300/50 bg-amber-50/70 dark:bg-amber-900/15 font-semibold text-amber-700 dark:text-amber-400 print:border-amber-200">
+                      <td className="px-2 py-1.5">إجمالي المرتجعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">({إجمالي_مرتجعات_كمية})</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums">({إجمالي_مرتجعات_وزن.toFixed(2)})</td>
+                      <td />
+                      <td className="px-2 py-1.5 text-end ltr-nums">({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})</td>
+                    </tr>
+
+                    {/* ══ الملخص النهائي ══ */}
+                    <tr className="border-t-2 border-foreground/40 bg-foreground/5 print:border-black/40">
+                      <td colSpan={5} className="px-2 py-1.5 text-[12px] font-bold text-foreground/60">
+                        الملخص
+                      </td>
+                    </tr>
+                    <tr className="border-b border-foreground/10">
+                      <td className="px-2 py-1 text-sm text-muted-foreground">صافي الشكارة</td>
+                      <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الكمية}</td>
+                      <td colSpan={3} />
+                    </tr>
+                    <tr className="border-b border-foreground/10">
+                      <td className="px-2 py-1 text-sm text-muted-foreground">صافي الوزن</td>
+                      <td />
+                      <td className="px-2 py-1 text-end ltr-nums font-semibold">{صافي_الوزن.toFixed(2)}</td>
+                      <td colSpan={2} />
+                    </tr>
+                    <tr className="border-b border-foreground/10">
+                      <td className="px-2 py-1 text-sm text-muted-foreground">إجمالي المبيعات</td>
+                      <td colSpan={3} />
+                      <td className="px-2 py-1 text-end ltr-nums font-semibold text-green-700 dark:text-green-400">
                         {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
-                    <tr className="bg-amber-50/60 dark:bg-amber-900/10 print:bg-amber-50/30">
-                      <td className="px-2 py-1.5 font-semibold text-amber-700 dark:text-amber-400">إجمالي المرتجعات</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_كمية})</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_وزن.toFixed(2)})</td>
-                      <td />
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
+                    <tr className="border-b border-foreground/10">
+                      <td className="px-2 py-1 text-sm text-muted-foreground">إجمالي المرتجعات</td>
+                      <td colSpan={3} />
+                      <td className="px-2 py-1 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
                         ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
                       </td>
                     </tr>
-                    {/* ── ملخص التصنيفات (تفصيل) ── */}
-                    <tr className="border-t border-foreground/10">
-                      <td colSpan={5} className="px-2 pt-2 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                        ملخص التصنيفات
+                    <tr className="border-t-2 border-foreground/80 print:border-black">
+                      <td colSpan={4} className="px-2 py-2.5 text-base font-bold">صافي الفاتورة</td>
+                      <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
+                        <نص_مبلغ القيمة={فاتورة.totalAmount} />
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <>
+                    {/* فاتورة بدون مرتجعات — تصنيفات بسيطة */}
+                    {مجموعات.map((م) => {
+                      const أسعار_م = [...م.أسعار];
+                      const سعر_نص_م = أسعار_م.length === 1 ? أسعار_م[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
+                        : أسعار_م.length > 1 ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}` : "—";
+                      return (
+                        <tr key={م.التصنيف} className="border-b border-foreground/10 print:border-black/10">
+                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الكمية}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_المبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t-2 border-foreground/80 print:border-black">
+                      <td colSpan={4} className="px-2 py-2.5 text-base font-bold">{t("inv.col.total")}</td>
+                      <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
+                        <نص_مبلغ القيمة={فاتورة.totalAmount} />
                       </td>
                     </tr>
                   </>
                 )}
-
-                {/* صفوف التصنيفات */}
-                {مجموعات.map((م) => {
-                  const أسعار_م = [...م.أسعار];
-                  const سعر_نص_م =
-                    أسعار_م.length === 1
-                      ? أسعار_م[0].toLocaleString("en-US", { minimumFractionDigits: 2 })
-                      : أسعار_م.length > 1
-                        ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}`
-                        : "—";
-                  const مبلغ_م = م.إجمالي_المبلغ;
-                  const هو_سالب = مبلغ_م < 0;
-                  return (
-                    <tr
-                      key={م.التصنيف}
-                      className={`border-b border-foreground/10 print:border-black/10 ${هو_سالب ? "text-amber-700 dark:text-amber-400" : ""}`}
-                    >
-                      <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums">
-                        {هو_سالب ? `(${Math.abs(م.إجمالي_الكمية)})` : م.إجمالي_الكمية}
-                      </td>
-                      <td className="px-2 py-1.5 text-end ltr-nums">
-                        {هو_سالب ? `(${Math.abs(م.إجمالي_الوزن).toFixed(2)})` : م.إجمالي_الوزن.toFixed(2)}
-                      </td>
-                      <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums">
-                        {مبلغ_م !== 0
-                          ? هو_سالب
-                            ? `(${Math.abs(مبلغ_م).toLocaleString("en-US", { minimumFractionDigits: 2 })})`
-                            : مبلغ_م.toLocaleString("en-US", { minimumFractionDigits: 2 })
-                          : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {/* الإجمالي الكلي */}
-                <tr className="border-t-2 border-foreground/80 print:border-black">
-                  <td colSpan={4} className="px-2 py-2.5 text-base font-bold">
-                    {لها_مرتجعات ? "صافي الفاتورة" : t("inv.col.total")}
-                  </td>
-                  <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
-                    <نص_مبلغ القيمة={فاتورة.totalAmount} />
-                  </td>
-                </tr>
               </tbody>
             </table>
 
