@@ -315,14 +315,6 @@ export default async function صفحة_عرض_فاتورة({
                         ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
                       </td>
                     </tr>
-                    <tr className="border-b-2 border-foreground/30 bg-foreground/5 print:border-black/30">
-                      <td className="px-2 py-1.5 font-bold">الصافي</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الكمية}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الوزن.toFixed(2)}</td>
-                      <td />
-                      <td />
-                    </tr>
-
                     {/* ── ملخص التصنيفات (تفصيل) ── */}
                     <tr className="border-t border-foreground/10">
                       <td colSpan={5} className="px-2 pt-2 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
