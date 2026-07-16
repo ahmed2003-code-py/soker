@@ -262,33 +262,6 @@ export default async function صفحة_عرض_فاتورة({
                   </tr>
                 ))}
 
-                {/* صف إجمالي التصنيف */}
-                <tr className="border-y border-foreground/30 bg-foreground/5 font-semibold print:border-black/30 print:bg-black/5">
-                  <td className="px-2 py-1.5 text-sm">
-                    إجمالي: {مجموعة.التصنيف}
-                  </td>
-                  <td className="px-2 py-1.5 text-end ltr-nums text-sm">
-                    {مجموعة.إجمالي_الكمية}
-                  </td>
-                  <td className="px-2 py-1.5 text-end ltr-nums text-sm">
-                    {مجموعة.إجمالي_الوزن.toFixed(2)}
-                  </td>
-                  <td className="px-2 py-1.5 text-end ltr-nums text-sm text-muted-foreground font-normal">
-                    {(() => {
-                      const أسعار = [...مجموعة.أسعار];
-                      if (أسعار.length === 1) return أسعار[0].toLocaleString("en-US", { minimumFractionDigits: 2 });
-                      if (أسعار.length > 1) return `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}`;
-                      return "—";
-                    })()}
-                  </td>
-                  <td className="px-2 py-1.5 text-end ltr-nums text-sm">
-                    {مجموعة.إجمالي_المبلغ !== 0
-                      ? Math.abs(مجموعة.إجمالي_المبلغ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })
-                      : "—"}
-                  </td>
-                </tr>
               </>
             ))}
           </tbody>
