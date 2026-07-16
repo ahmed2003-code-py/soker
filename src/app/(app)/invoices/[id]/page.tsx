@@ -281,7 +281,8 @@ export default async function صفحة_عرض_فاتورة({
         </table>
 
         {/* الإجماليات الكلية — ملخص التصنيفات + الأرقام، مجمّعان ناحية اليمين */}
-        <div className="mt-6 flex justify-end">
+        {/* في RTL: justify-start = ناحية اليمين البصري */}
+        <div className="mt-6 flex justify-start">
           <div className="w-full sm:max-w-xs space-y-4">
 
           {/* ملخص التصنيفات */}
