@@ -294,6 +294,44 @@ export default async function صفحة_عرض_فاتورة({
                 </tr>
               </thead>
               <tbody>
+                {/* ── إجمالي المبيعات / المرتجعات / الصافي (أولاً عند وجود مرتجعات) ── */}
+                {لها_مرتجعات && (
+                  <>
+                    <tr className="bg-green-50/60 dark:bg-green-900/10 print:bg-green-50/30">
+                      <td className="px-2 py-1.5 font-semibold text-green-800 dark:text-green-300">إجمالي المبيعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_كمية}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_وزن.toFixed(2)}</td>
+                      <td />
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">
+                        {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="bg-amber-50/60 dark:bg-amber-900/10 print:bg-amber-50/30">
+                      <td className="px-2 py-1.5 font-semibold text-amber-700 dark:text-amber-400">إجمالي المرتجعات</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_كمية})</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_وزن.toFixed(2)})</td>
+                      <td />
+                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
+                        ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                      </td>
+                    </tr>
+                    <tr className="border-b-2 border-foreground/30 bg-foreground/5 print:border-black/30">
+                      <td className="px-2 py-1.5 font-bold">الصافي</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الكمية}</td>
+                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الوزن.toFixed(2)}</td>
+                      <td />
+                      <td />
+                    </tr>
+
+                    {/* ── ملخص التصنيفات (تفصيل) ── */}
+                    <tr className="border-t border-foreground/10">
+                      <td colSpan={5} className="px-2 pt-2 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        ملخص التصنيفات
+                      </td>
+                    </tr>
+                  </>
+                )}
+
                 {/* صفوف التصنيفات */}
                 {مجموعات.map((م) => {
                   const أسعار_م = [...م.أسعار];
@@ -329,43 +367,9 @@ export default async function صفحة_عرض_فاتورة({
                   );
                 })}
 
-                {/* فاصل + صفوف الإجماليات عند وجود مرتجعات */}
-                {لها_مرتجعات && (
-                  <>
-                    <tr className="border-t-2 border-foreground/40 bg-green-50/60 dark:bg-green-900/10 print:border-black/40 print:bg-green-50/30">
-                      <td className="px-2 py-1.5 font-semibold text-green-800 dark:text-green-300">إجمالي المبيعات</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_كمية}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">{إجمالي_مبيعات_وزن.toFixed(2)}</td>
-                      <td />
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-green-800 dark:text-green-300">
-                        {إجمالي_مبيعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                    <tr className="bg-amber-50/60 dark:bg-amber-900/10 print:bg-amber-50/30">
-                      <td className="px-2 py-1.5 font-semibold text-amber-700 dark:text-amber-400">إجمالي المرتجعات</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_كمية})</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">({إجمالي_مرتجعات_وزن.toFixed(2)})</td>
-                      <td />
-                      <td className="px-2 py-1.5 text-end ltr-nums font-semibold text-amber-700 dark:text-amber-400">
-                        ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
-                      </td>
-                    </tr>
-                    <tr className="border-y border-foreground/25 bg-foreground/5 print:border-black/25">
-                      <td className="px-2 py-1.5 font-bold">الصافي</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الكمية}</td>
-                      <td className="px-2 py-1.5 text-end ltr-nums font-bold">{صافي_الوزن.toFixed(2)}</td>
-                      <td />
-                      <td />
-                    </tr>
-                  </>
-                )}
-
                 {/* الإجمالي الكلي */}
                 <tr className="border-t-2 border-foreground/80 print:border-black">
-                  <td
-                    colSpan={4}
-                    className="px-2 py-2.5 text-base font-bold"
-                  >
+                  <td colSpan={4} className="px-2 py-2.5 text-base font-bold">
                     {لها_مرتجعات ? "صافي الفاتورة" : t("inv.col.total")}
                   </td>
                   <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
