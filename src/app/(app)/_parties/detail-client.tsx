@@ -24,6 +24,7 @@ import { استخدام_اللغة } from "@/components/providers/i18n-provider"
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي } from "./actions";
+import { تعديل_دفع_مباشر } from "@/app/(app)/treasury/actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -44,6 +45,7 @@ export type حركة = {
   معرف_الفاتورة: number | null;
   معرف_خزنة: number | null;
   معرف_حساب_خزنة: number | null;
+  معرف_دفع_مباشر: number | null;
   مرتبط: boolean;
 };
 
@@ -77,6 +79,7 @@ export function حركات_الطرف({
   const { احذف, معلقة } = استخدم_تراجع_الحذف();
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [تعديل_خزنة, تعيين_تعديل_خزنة] = React.useState<حركة | null>(null);
+  const [تعديل_دفع, تعيين_تعديل_دفع] = React.useState<حركة | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
   const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
@@ -291,6 +294,19 @@ export function حركات_الطرف({
               </div>
             );
           }
+          if (ص.معرف_دفع_مباشر) {
+            return (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground bg-appgray rounded px-1">مباشر</span>
+                <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_دفع(ص)} title="تعديل الدفع المباشر">
+                  <Pencil className="size-4 text-primary" />
+                </الزر>
+                <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف وعكس من الكل">
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </div>
+            );
+          }
           if (ص.معرف_خزنة) {
             return (
               <div className="flex items-center gap-1">
@@ -337,6 +353,14 @@ export function حركات_الطرف({
           حسابات_الخزنة={حسابات_الخزنة}
           حسابات_فرعية={حسابات_فرعية}
           عند_الإغلاق={() => تعيين_تعديل_خزنة(null)}
+        />
+      )}
+      {تعديل_دفع && (
+        <حوار_تعديل_دفع_مباشر
+          الحركة={تعديل_دفع}
+          حسابات_الخزنة={حسابات_الخزنة}
+          حسابات_فرعية={حسابات_فرعية}
+          عند_الإغلاق={() => تعيين_تعديل_دفع(null)}
         />
       )}
       {حذف_جماعي && (
@@ -703,6 +727,7 @@ function حوار_تعديل_حركة({
   );
   const [دائن, تعيين_دائن] = React.useState(
     الحركة.دائن ? String(الحركة.دائن) : ""
+
   );
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
@@ -758,6 +783,100 @@ function حوار_تعديل_حركة({
               onChange={(e) => تعيين_دائن(e.target.value)}
               placeholder="0.00"
             />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? t("common.saving") : t("common.save")}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>
+            {t("common.cancel")}
+          </الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+function حوار_تعديل_دفع_مباشر({
+  الحركة,
+  حسابات_الخزنة,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  حسابات_فرعية: _,
+  عند_الإغلاق,
+}: {
+  الحركة: حركة;
+  حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const { t } = استخدام_اللغة();
+  const القيمة = الحركة.مدين || الحركة.دائن;
+  const [تاريخ, تعيين_تاريخ] = React.useState(الحركة.التاريخ.slice(0, 10));
+  const [مبلغ, تعيين_مبلغ] = React.useState(String(القيمة));
+  const [بيان, تعيين_بيان] = React.useState(الحركة.البيان);
+  const [حساب, تعيين_حساب] = React.useState(
+    String(الحركة.معرف_حساب_خزنة ?? حسابات_الخزنة[0]?.id ?? "")
+  );
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  async function حفظ() {
+    تعيين_جارٍ(true);
+    const r = await تعديل_دفع_مباشر(الحركة.id, {
+      التاريخ: تاريخ,
+      المبلغ: مبلغ,
+      معرف_الحساب: Number(حساب),
+      البيان: بيان,
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار>تعديل دفع مباشر</عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
+          التعديل يُطبَّق تلقائياً على حساب العميل والمورد والخزنة معاً.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("common.date")}</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>{t("pay.amount")}</العنوان>
+            <الحقل
+              autoFocus
+              selectOnFocus
+              className="ltr-nums"
+              value={مبلغ}
+              onChange={(e) => تعيين_مبلغ(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان مطلوب>{t("pay.account")}</العنوان>
+            <قائمة_اختيار
+              الخيارات={حسابات_الخزنة.map((a) => ({
+                القيمة: String(a.id),
+                التسمية: a.التسمية,
+              }))}
+              القيمة={حساب}
+              عند_التغيير={تعيين_حساب}
+              قابل_للبحث={false}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>{t("ledger.col.statement")}</العنوان>
+            <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} />
           </div>
         </div>
         <تذييل_الحوار>

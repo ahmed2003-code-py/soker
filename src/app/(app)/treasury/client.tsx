@@ -26,7 +26,7 @@ import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
-import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد } from "./actions";
+import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد, تعديل_دفع_مباشر_من_خزنة } from "./actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 
@@ -51,6 +51,7 @@ type حركة = {
   اسم_حساب_فرعي: string | null;
   معرف_الطرف: number | null;
   مرتبط: boolean;
+  معرف_دفع_مباشر: number | null;
   أنشأ_بواسطة: string;
 };
 
@@ -97,6 +98,7 @@ export function شاشة_الخزنة({
   // Multi-select
   const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
   const [حذف_جماعي, تعيين_حذف_جماعي] = React.useState(false);
+  const [تعديل_دفع, تعيين_تعديل_دفع] = React.useState<حركة | null>(null);
 
   const الإجمالي = الحسابات.reduce((س, ح) => س + ح.الرصيد, 0);
 
@@ -425,19 +427,40 @@ export function شاشة_الخزنة({
         رسالة_فراغ={t("treasury.empty")}
         إجراءات_الصف={(ص) => (
           <div className="flex items-center justify-end gap-1">
-            {ص.مرتبط && <الشارة variant="navy">{t("ledger.linked")}</الشارة>}
-            {محددة.size <= 1 && (
-              <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
-                <Pencil className="size-4" />
-              </الزر>
+            {ص.معرف_دفع_مباشر != null ? (
+              <>
+                <span className="text-[10px] text-muted-foreground bg-appgray rounded px-1">دفع مباشر</span>
+                {محددة.size <= 1 && (
+                  <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_دفع(ص)} title="تعديل الدفع المباشر">
+                    <Pencil className="size-4 text-primary" />
+                  </الزر>
+                )}
+                <الزر
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => احذف_مع_تراجع(ص.id, () => حذف_حركة_خزنة(ص.id))}
+                  title="حذف وعكس من الكل"
+                >
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </>
+            ) : (
+              <>
+                {ص.مرتبط && <الشارة variant="navy">{t("ledger.linked")}</الشارة>}
+                {محددة.size <= 1 && (
+                  <الزر size="sm" variant="ghost" onClick={() => تعيين_نموذج({ حركة: ص })}>
+                    <Pencil className="size-4" />
+                  </الزر>
+                )}
+                <الزر
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => احذف_مع_تراجع(ص.id, () => حذف_حركة_خزنة(ص.id))}
+                >
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </>
             )}
-            <الزر
-              size="sm"
-              variant="ghost"
-              onClick={() => احذف_مع_تراجع(ص.id, () => حذف_حركة_خزنة(ص.id))}
-            >
-              <Trash2 className="size-4 text-danger" />
-            </الزر>
           </div>
         )}
       />
@@ -462,7 +485,15 @@ export function شاشة_الخزنة({
       {نموذج_دفع_مباشر && (
         <حوار_دفع_مباشر
           الأطراف={الأطراف}
+          الحسابات={الحسابات}
           عند_الإغلاق={() => تعيين_نموذج_دفع_مباشر(false)}
+        />
+      )}
+      {تعديل_دفع && (
+        <حوار_تعديل_دفع_مباشر_خزنة
+          الحركة={تعديل_دفع}
+          الحسابات={الحسابات}
+          عند_الإغلاق={() => تعيين_تعديل_دفع(null)}
         />
       )}
       {حذف_جماعي && (
@@ -633,9 +664,11 @@ function حوار_تحويل_خزنة({
 
 function حوار_دفع_مباشر({
   الأطراف,
+  الحسابات,
   عند_الإغلاق,
 }: {
   الأطراف: { id: number; name: string; type: "CUSTOMER" | "SUPPLIER" }[];
+  الحسابات: حساب[];
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
@@ -646,16 +679,19 @@ function حوار_دفع_مباشر({
   const [مبلغ, تعيين_مبلغ] = React.useState("");
   const [عميل, تعيين_عميل] = React.useState("");
   const [مورد, تعيين_مورد] = React.useState("");
+  const [حساب, تعيين_حساب] = React.useState(String(الحسابات[0]?.id ?? ""));
   const [بيان, تعيين_بيان] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   async function حفظ() {
+    if (!حساب) return إشعار.خطأ("اختر حساب الخزنة");
     تعيين_جارٍ(true);
     const r = await دفع_مباشر_من_عميل_لمورد({
       التاريخ: تاريخ,
       المبلغ: مبلغ,
       معرف_العميل: Number(عميل),
       معرف_المورد: Number(مورد),
+      معرف_الحساب: Number(حساب),
       البيان: بيان || undefined,
     });
     تعيين_جارٍ(false);
@@ -674,7 +710,7 @@ function حوار_دفع_مباشر({
           </عنوان_الحوار>
         </رأس_الحوار>
         <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
-          الفلوس بتروح من العميل للمورد على طول — بدون ما تعدي الخزنة. يتحسب من رصيد العميل ورصيد المورد بس.
+          يخصم من رصيد العميل، يضاف لرصيد المورد، وتُسجَّل حركة إيراد في الخزنة — كل ذلك في عملية واحدة مرتبطة.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -701,6 +737,16 @@ function حوار_دفع_مباشر({
               القيمة={مورد}
               عند_التغيير={تعيين_مورد}
               نص_بديل="اختر المورد…"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان مطلوب>حساب الخزنة</العنوان>
+            <قائمة_اختيار
+              الخيارات={الحسابات.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+              القيمة={حساب}
+              عند_التغيير={تعيين_حساب}
+              قابل_للبحث={false}
+              نص_بديل="اختر الحساب…"
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -1084,6 +1130,95 @@ function حوار_حركة({
           <الزر variant="outline" onClick={عند_الإغلاق}>
             {t("common.cancel")}
           </الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+// ─── حوار تعديل دفع مباشر (من صفحة الخزنة) ─────────────────────────────────
+
+function حوار_تعديل_دفع_مباشر_خزنة({
+  الحركة,
+  الحسابات,
+  عند_الإغلاق,
+}: {
+  الحركة: حركة;
+  الحسابات: حساب[];
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const [تاريخ, تعيين_تاريخ] = React.useState(الحركة.التاريخ.slice(0, 10));
+  const [مبلغ, تعيين_مبلغ] = React.useState(String(الحركة.المبلغ));
+  const [بيان, تعيين_بيان] = React.useState(الحركة.البيان ?? "");
+  const [حساب, تعيين_حساب] = React.useState(String(الحركة.معرف_الحساب));
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  async function حفظ() {
+    تعيين_جارٍ(true);
+    const r = await تعديل_دفع_مباشر_من_خزنة(الحركة.id, {
+      التاريخ: تاريخ,
+      المبلغ: مبلغ,
+      معرف_الحساب: Number(حساب),
+      البيان: بيان,
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار>تعديل دفع مباشر</عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
+          التعديل يُطبَّق تلقائياً على حساب العميل والمورد والخزنة معاً.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>التاريخ</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>المبلغ</العنوان>
+            <الحقل
+              autoFocus
+              selectOnFocus
+              className="ltr-nums"
+              value={مبلغ}
+              onChange={(e) => تعيين_مبلغ(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان مطلوب>حساب الخزنة</العنوان>
+            <قائمة_اختيار
+              الخيارات={الحسابات.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+              القيمة={حساب}
+              عند_التغيير={تعيين_حساب}
+              قابل_للبحث={false}
+              نص_بديل="اختر الحساب…"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <العنوان>بيان (اختياري)</العنوان>
+            <الحقل
+              value={بيان}
+              onChange={(e) => تعيين_بيان(e.target.value)}
+              placeholder="يُملأ تلقائيًا إذا تُرك فارغًا"
+            />
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
+            {جارٍ ? "جارٍ الحفظ…" : "حفظ التعديل"}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>

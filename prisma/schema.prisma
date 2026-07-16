@@ -200,6 +200,8 @@ model LedgerEntry {
   invoice       Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   treasuryTxnId Int?         @unique @map("treasury_txn_id")
   treasuryTxn   TreasuryTxn? @relation(fields: [treasuryTxnId], references: [id], onDelete: SetNull)
+  directPaymentId Int?           @map("direct_payment_id")
+  directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
 
   createdById Int       @map("created_by_id")
   createdBy   User      @relation("LedgerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -211,6 +213,7 @@ model LedgerEntry {
 
   @@index([partyId, date])
   @@index([invoiceId])
+  @@index([directPaymentId])
   @@map("ledger_entries")
 }
 
@@ -265,7 +268,9 @@ model TreasuryTxn {
   subAccount   SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: SetNull)
 
   // الجهة المقابلة في دفتر الأستاذ (تحصيل/صرف)
-  ledgerEntry LedgerEntry? @relation
+  ledgerEntry     LedgerEntry?  @relation
+  directPaymentId Int?           @map("direct_payment_id")
+  directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
 
   createdById Int       @map("created_by_id")
   createdBy   User      @relation("TreasuryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -277,9 +282,22 @@ model TreasuryTxn {
 
   @@index([accountId, date])
   @@index([kind])
+  @@index([directPaymentId])
   // فهرس trigram لتسريع البحث (contains/ILIKE) في البيان ضمن البحث الموحّد
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "treasury_txns_description_trgm_idx")
   @@map("treasury_txns")
+}
+
+// ==================== DirectPayment (الدفع المباشر — ربط ثلاثي) ====================
+model DirectPayment {
+  id        Int       @id @default(autoincrement())
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  ledgerEntries LedgerEntry[]
+  treasuryTxns  TreasuryTxn[]
+
+  @@map("direct_payments")
 }
 
 // ==================== Cheque (الشيك) ====================

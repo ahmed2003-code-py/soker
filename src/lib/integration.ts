@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { TxnKind, PartyType } from "@prisma/client";
-import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
-import { أضف_قيد, احذف_قيد_ناعم } from "@/lib/ledger";
+import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
+import { أضف_قيد, احذف_قيد_ناعم, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 
 type عميل_معاملة = Prisma.TransactionClient;
 export type اتجاه = "تحصيل" | "صرف"; // تحصيل من عميل / صرف لمورد
@@ -93,4 +93,27 @@ export async function اعكس_عملية_مرتبطة(tx: عميل_معاملة
     طريقة_الدفع: حركة.method,
     معرف_الفاتورة: حركة.invoiceId,
   };
+}
+
+/**
+ * حذف دفع مباشر بالكامل: قيد العميل + قيد المورد + حركة الخزنة — يعكس كل الأرصدة.
+ */
+export async function حذف_دفع_مباشر(tx: عميل_معاملة, معرف_الدفع_المباشر: number) {
+  const قيود = await tx.ledgerEntry.findMany({
+    where: { directPaymentId: معرف_الدفع_المباشر, deletedAt: null },
+    select: { id: true, partyId: true },
+  });
+  const حركات = await tx.treasuryTxn.findMany({
+    where: { directPaymentId: معرف_الدفع_المباشر, deletedAt: null },
+    select: { id: true, accountId: true },
+  });
+
+  for (const قيد of قيود) await احذف_قيد_ناعم(tx, قيد.id);
+  for (const حركة of حركات) await احذف_حركة_خزنة_ناعم(tx, حركة.id);
+
+  const أطراف = [...new Set(قيود.map((q) => q.partyId))];
+  for (const partyId of أطراف) await أعد_حساب_سلسلة_الطرف(tx, partyId);
+
+  const حسابات = [...new Set(حركات.map((h) => h.accountId))];
+  for (const accountId of حسابات) await أعد_حساب_حساب_الخزنة(tx, accountId);
 }

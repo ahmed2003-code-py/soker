@@ -47,6 +47,7 @@ export async function تفاصيل_الطرف({
           invoiceId: true,
           treasuryTxnId: true,
           treasuryTxn: { select: { accountId: true } },
+          directPaymentId: true,
         },
       },
     },
@@ -83,7 +84,8 @@ export async function تفاصيل_الطرف({
     معرف_الفاتورة: ح.invoiceId,
     معرف_خزنة: ح.treasuryTxnId,
     معرف_حساب_خزنة: ح.treasuryTxn?.accountId ?? null,
-    مرتبط: ح.invoiceId != null || ح.treasuryTxnId != null,
+    معرف_دفع_مباشر: ح.directPaymentId,
+    مرتبط: ح.invoiceId != null || ح.treasuryTxnId != null || ح.directPaymentId != null,
   }));
 
   return (

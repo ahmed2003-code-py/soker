@@ -55,6 +55,7 @@ export default async function صفحة_الخزنة() {
     اسم_حساب_فرعي: ح.subAccount?.name ?? null,
     معرف_الطرف: ح.partyId ?? null,
     مرتبط: ح.partyId != null,
+    معرف_دفع_مباشر: ح.directPaymentId ?? null,
     أنشأ_بواسطة: ح.createdBy.name,
   }));
 
