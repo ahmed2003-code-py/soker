@@ -7,6 +7,7 @@ import { نص_مبلغ } from "@/components/money-text";
 import { الشارة } from "@/components/ui/badge";
 import { سطر_المساءلة } from "@/components/accountability-line";
 import { سجل_التغييرات } from "@/components/record-history";
+import { زر_تحويل_مؤقت } from "./convert-temp";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { حركات_الطرف } from "./detail-client";
@@ -120,7 +121,19 @@ export async function تفاصيل_الطرف({
             </span>
           )}
           <الشارة variant="navy">{عميل ? t("party.badge_customer") : t("party.badge_supplier")}</الشارة>
+          {طرف.isTemporary && <الشارة variant="warning">حساب مؤقت</الشارة>}
         </div>
+        {طرف.isTemporary && عميل && (
+          <div className="mt-3">
+            <زر_تحويل_مؤقت
+              المعرف={طرف.id}
+              الاسم_الحالي={طرف.name}
+              الهاتف_الحالي={طرف.phone}
+              العنوان_الحالي={طرف.address}
+              ملاحظات_حالية={طرف.notes}
+            />
+          </div>
+        )}
         {طرف.notes && <p className="mt-2 text-sm text-muted-foreground">{طرف.notes}</p>}
         <div className="mt-3 border-t border-border pt-3">
           <سطر_المساءلة

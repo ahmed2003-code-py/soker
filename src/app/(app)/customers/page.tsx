@@ -7,8 +7,9 @@ export const metadata = { title: "العملاء — سُكر" };
 
 export default async function صفحة_العملاء() {
   const { t } = مترجم_الخادم();
+  // نُخفي الحسابات المؤقتة المؤرشفة (سُدّدت بالكامل) — تبقى المؤقتة النشطة ظاهرة
   const أطراف = await prisma.party.findMany({
-    where: { type: "CUSTOMER" },
+    where: { type: "CUSTOMER", archivedAt: null },
     orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
   });
   const بيانات = أطراف.map((p) => ({
@@ -21,6 +22,7 @@ export default async function صفحة_العملاء() {
     رصيد_ابتدائي: Number(p.openingBalance),
     حد_الائتمان: p.creditLimit != null ? Number(p.creditLimit) : null,
     ملاحظات: p.notes,
+    مؤقت: p.isTemporary,
     آخر_تحديث: p.updatedAt.toISOString(),
   }));
   return (

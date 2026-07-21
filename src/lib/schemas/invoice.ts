@@ -36,8 +36,9 @@ export const مخطط_فاتورة = z.object({
   نوع_الفاتورة: z.enum(["SALE", "PURCHASE", "SUPPLIER_RETURN"]).default("SALE"),
   مرجع_خارجي: z.string().trim().optional().nullable(),
   رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
-  معرف_العميل: z.number().int().positive().optional().nullable(), // null = عميل زائر
-  اسم_الزائر: z.string().trim().optional().nullable(),           // للطباعة عند الزائر
+  معرف_العميل: z.number().int().positive().optional().nullable(), // null = عميل زائر/مؤقت
+  اسم_الزائر: z.string().trim().optional().nullable(),           // للطباعة عند الزائر / اسم العميل المؤقت
+  عميل_مؤقت: z.boolean().optional(),                             // إنشاء حساب مؤقت له رصيد متابَع (بدل الزائر بلا حساب)
   الهاتف: z.string().trim().optional().nullable(),
   التاريخ: z.string().min(1, "التاريخ مطلوب"),
   ملاحظات: z.string().trim().optional().nullable(),

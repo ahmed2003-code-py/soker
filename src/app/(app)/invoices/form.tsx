@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save, RotateCcw, UserX } from "lucide-react";
+import { Plus, Trash2, Save, RotateCcw, UserX, UserPlus } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
@@ -127,6 +127,8 @@ export function نموذج_فاتورة({
   const [عميل_زائر, تعيين_عميل_زائر] = React.useState(
     فاتورة ? فاتورة.معرف_العميل === null : false
   );
+  // وضع العميل المؤقت (حساب له رصيد متابَع) — عند الإنشاء فقط
+  const [عميل_مؤقت, تعيين_عميل_مؤقت] = React.useState(false);
   const [اسم_الزائر, تعيين_اسم_الزائر] = React.useState(فاتورة?.اسم_الزائر ?? "");
 
   const [عميل, تعيين_عميل] = React.useState<string>(
@@ -431,7 +433,7 @@ export function نموذج_فاتورة({
 
   async function احفظ() {
     if (نوع_الطرف === "SUPPLIER" && !عميل) return إشعار.خطأ("اختر المورد");
-    if (نوع_الطرف === "CUSTOMER" && !عميل_زائر && !عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
+    if (نوع_الطرف === "CUSTOMER" && !عميل_زائر && !عميل_مؤقت && !عميل) return إشعار.خطأ(t("inv.f.pick_customer_err"));
     if (عميل_زائر && !دفعة_مفعلة) return إشعار.خطأ("العميل الزائر يتطلب تحصيل فوري — فعّل الدفعة");
     if (دفعة_مفعلة && له_فرعية_دفعة && !حساب_فرعي_الدفعة) {
       const تسمية = نوع_حساب_الدفعة === "BANK" ? "البنك" : نوع_حساب_الدفعة === "VODAFONE" ? "المحفظة" : "حساب إنستا";
@@ -443,8 +445,9 @@ export function نموذج_فاتورة({
       نوع_الفاتورة: نوع_الفاتورة_الحالي,
       مرجع_خارجي: نوع_الفاتورة_الحالي === "PURCHASE" ? (مرجع_خارجي.trim() || null) : null,
       رقم_الفاتورة_المحدد: رقم_مُحدد && رقم_مُحدد > 0 ? رقم_مُحدد : null,
-      معرف_العميل: عميل_زائر ? null : (عميل ? Number(عميل) : null),
-      اسم_الزائر: عميل_زائر ? (اسم_الزائر.trim() || null) : null,
+      معرف_العميل: (عميل_زائر || عميل_مؤقت) ? null : (عميل ? Number(عميل) : null),
+      اسم_الزائر: (عميل_زائر || عميل_مؤقت) ? (اسم_الزائر.trim() || null) : null,
+      عميل_مؤقت: عميل_مؤقت || undefined,
       الهاتف: هاتف,
       التاريخ: تاريخ,
       ملاحظات,
@@ -545,26 +548,47 @@ export function نموذج_فاتورة({
           </div>
         )}
 
-        {/* زر عميل زائر — للعملاء فقط */}
+        {/* أوضاع العميل غير المسجّل — للعملاء فقط عند الإنشاء */}
         {نوع_الطرف === "CUSTOMER" && !فاتورة && (
-          <label className="flex cursor-pointer items-center gap-2 w-fit select-none text-sm">
-            <input
-              type="checkbox"
-              checked={عميل_زائر}
-              onChange={(e) => {
-                const ف = e.target.checked;
-                تعيين_عميل_زائر(ف);
-                if (ف) {
-                  تعيين_عميل("");
-                  تعيين_هاتف("");
-                  تعيين_دفعة_مفعلة(true);
-                }
-              }}
-              className="size-4 rounded accent-primary"
-            />
-            <UserX className="size-4 text-muted-foreground" />
-            <span className="text-muted-foreground">عميل زائر (بيع نقدي مباشر — بلا حساب)</span>
-          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-5">
+            <label className="flex cursor-pointer items-center gap-2 w-fit select-none text-sm">
+              <input
+                type="checkbox"
+                checked={عميل_زائر}
+                onChange={(e) => {
+                  const ف = e.target.checked;
+                  تعيين_عميل_زائر(ف);
+                  if (ف) {
+                    تعيين_عميل_مؤقت(false);
+                    تعيين_عميل("");
+                    تعيين_هاتف("");
+                    تعيين_دفعة_مفعلة(true);
+                  }
+                }}
+                className="size-4 rounded accent-primary"
+              />
+              <UserX className="size-4 text-muted-foreground" />
+              <span className="text-muted-foreground">عميل زائر (بيع نقدي مباشر — بلا حساب)</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 w-fit select-none text-sm">
+              <input
+                type="checkbox"
+                checked={عميل_مؤقت}
+                onChange={(e) => {
+                  const ف = e.target.checked;
+                  تعيين_عميل_مؤقت(ف);
+                  if (ف) {
+                    تعيين_عميل_زائر(false);
+                    تعيين_عميل("");
+                    تعيين_هاتف("");
+                  }
+                }}
+                className="size-4 rounded accent-primary"
+              />
+              <UserPlus className="size-4 text-muted-foreground" />
+              <span className="text-muted-foreground">عميل مؤقت (بحساب — يُتابَع رصيده حتى السداد)</span>
+            </label>
+          </div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-4">
@@ -591,13 +615,13 @@ export function نموذج_فاتورة({
 
           {/* اختيار الطرف */}
           <div className="space-y-1.5">
-            <العنوان مطلوب={!عميل_زائر}>{نوع_الطرف === "CUSTOMER" ? t("inv.col.customer") : "المورد"}</العنوان>
-            {عميل_زائر ? (
+            <العنوان مطلوب={!عميل_زائر && !عميل_مؤقت}>{نوع_الطرف === "CUSTOMER" ? t("inv.col.customer") : "المورد"}</العنوان>
+            {عميل_زائر || عميل_مؤقت ? (
               <الحقل
                 autoFocus
                 value={اسم_الزائر}
                 onChange={(e) => تعيين_اسم_الزائر(e.target.value)}
-                placeholder="اسم العميل للطباعة (اختياري)"
+                placeholder={عميل_مؤقت ? "اسم العميل المؤقت (اختياري — يُولّد تلقائياً)" : "اسم العميل للطباعة (اختياري)"}
               />
             ) : نوع_الطرف === "CUSTOMER" ? (
               <قائمة_اختيار

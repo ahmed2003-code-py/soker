@@ -12,12 +12,12 @@ export default async function صفحة_فاتورة_جديدة() {
   const { t } = مترجم_الخادم();
   const [عملاء, موردون, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
     prisma.party.findMany({
-      where: { type: "CUSTOMER" },
+      where: { type: "CUSTOMER", archivedAt: null },
       select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),
     prisma.party.findMany({
-      where: { type: "SUPPLIER" },
+      where: { type: "SUPPLIER", archivedAt: null },
       select: { id: true, name: true, phone: true, balance: true },
       orderBy: { name: "asc" },
     }),

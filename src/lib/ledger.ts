@@ -21,6 +21,28 @@ function أثر_الحركة(
 }
 
 /**
+ * تصفية الحساب المؤقت: إن كان الطرف مؤقتاً ورصيده صفر → أرشفة تلقائية.
+ * وإن عاد له رصيد (≠ صفر) بعد الأرشفة → إلغاء الأرشفة (شفاء ذاتي).
+ * لا أثر على الأطراف الدائمة إطلاقاً. تُستدعى بعد كل تحديث لرصيد الطرف.
+ */
+export async function صفِّ_الطرف_المؤقت(
+  tx: عميل_معاملة,
+  معرف_الطرف: number
+): Promise<void> {
+  const طرف = await tx.party.findUnique({
+    where: { id: معرف_الطرف },
+    select: { isTemporary: true, balance: true, archivedAt: true },
+  });
+  if (!طرف || !طرف.isTemporary) return;
+  const مسدّد = د(طرف.balance).isZero();
+  if (مسدّد && !طرف.archivedAt) {
+    await tx.party.update({ where: { id: معرف_الطرف }, data: { archivedAt: new Date() } });
+  } else if (!مسدّد && طرف.archivedAt) {
+    await tx.party.update({ where: { id: معرف_الطرف }, data: { archivedAt: null } });
+  }
+}
+
+/**
  * إعادة حساب سلسلة حركات الطرف ترتيباً زمنياً وتحديث الأرصدة.
  * تُستدعى بعد أي إضافة/تعديل/حذف لضمان صحة "الرصيد_بعد_الحركة" و Party.balance.
  * تُرجع الرصيد النهائي.
@@ -73,6 +95,7 @@ export async function أعد_حساب_سلسلة_الطرف(
     where: { id: معرف_الطرف },
     data: { balance: تراكمي },
   });
+  await صفِّ_الطرف_المؤقت(tx, معرف_الطرف);
   return تراكمي;
 }
 
@@ -147,6 +170,7 @@ export async function أضف_قيد(
       where: { id: بيانات.معرف_الطرف },
       data: { balance: رصيد_جديد },
     });
+    await صفِّ_الطرف_المؤقت(tx, بيانات.معرف_الطرف);
   } else {
     await أعد_حساب_سلسلة_الطرف(tx, بيانات.معرف_الطرف);
   }
@@ -194,6 +218,7 @@ export async function احذف_قيد_ناعم(
     where: { id: قيد.partyId },
     data: { balance: { increment: دلتا } },
   });
+  await صفِّ_الطرف_المؤقت(tx, قيد.partyId);
 }
 
 /** تسمية الرصيد حسب نوع الطرف (مديونية/مستحق + دائن/مدين) */

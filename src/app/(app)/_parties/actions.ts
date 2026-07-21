@@ -132,6 +132,54 @@ export async function تعديل_طرف(id: number, مدخلات: unknown): Prom
   return نجح(undefined, "تم حفظ التعديلات");
 }
 
+/**
+ * تحويل حساب مؤقت إلى عميل دائم — يحافظ على كل الفواتير والحركات والرصيد.
+ * التحويل = رفع علم isTemporary وإلغاء الأرشفة على نفس السجل، فتبقى كل الروابط كما هي.
+ */
+export async function حوّل_مؤقت_لدائم(
+  id: number,
+  مدخلات: unknown
+): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const حالي = await prisma.party.findUnique({ where: { id } });
+  if (!حالي) return فشل("الطرف غير موجود");
+  if (!حالي.isTemporary) return فشل("هذا العميل دائم بالفعل");
+  const t = مخطط_طرف.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  if (ب.النوع !== "CUSTOMER") return فشل("الحساب المؤقت يُحوَّل إلى عميل فقط");
+
+  await prisma.$transaction(async (tx) => {
+    const أرقام = (ب.أرقام_الهواتف ?? []).filter((h) => h.رقم.trim());
+    await tx.party.update({
+      where: { id },
+      data: {
+        name: ب.الاسم,
+        phone: أرقام[0]?.رقم || ب.الهاتف || null,
+        phones: أرقام as object[],
+        address: ب.العنوان || null,
+        creditLimit: ب.حد_الائتمان ?? null,
+        notes: ب.ملاحظات || null,
+        isTemporary: false,
+        archivedAt: null,
+        updatedById: فاعل.id,
+      },
+    });
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "UPDATE",
+      نوع_الكيان: "الطرف",
+      معرف_الكيان: id,
+      التفاصيل: { تحويل: "مؤقت→دائم", الاسم: ب.الاسم },
+    });
+  });
+
+  revalidatePath(مسار_قائمة_الطرف("CUSTOMER"));
+  revalidatePath(مسار_صفحة_الطرف("CUSTOMER", id));
+  return نجح(undefined, "تم تحويل الحساب المؤقت إلى عميل دائم");
+}
+
 export async function حذف_طرف(id: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "حذف");

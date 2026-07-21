@@ -102,6 +102,8 @@ model Party {
   phones          Json      @default("[]") @map("phones")
   notes           String?   @map("notes")
   active      Boolean   @default(true) @map("active")
+  isTemporary Boolean   @default(false) @map("is_temporary") // عميل مؤقت (بيع نقدي غير مسجّل)
+  archivedAt  DateTime? @map("archived_at")                  // أُرشف تلقائياً عند تصفية رصيده
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("PartyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -116,6 +118,7 @@ model Party {
 
   @@index([type])
   @@index([name])
+  @@index([isTemporary, archivedAt])
   // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "parties_name_trgm_idx")
   @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "parties_phone_trgm_idx")
