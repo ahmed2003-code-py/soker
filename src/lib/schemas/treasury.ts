@@ -18,6 +18,9 @@ export const مخطط_حركة_خزنة = z.object({
   اسم_الطرف_الخارجي: z.string().trim().optional().nullable(),
   رقم_الفاتورة: z.string().trim().optional().nullable(),
   طريقة_الدفع: z.string().trim().optional().nullable(),
+  // العميل يتحكم بالطرف صراحةً (فورم الخزنة) → يسمح بفك الربط عن طرف مسجّل.
+  // تُترك غير مُرسلة من صفحة الطرف حيث الطرف ضمني ولا يُفك تلقائياً.
+  صريح_الطرف: z.boolean().optional(),
 });
 
 export type مدخلات_حركة_خزنة = z.infer<typeof مخطط_حركة_خزنة>;
