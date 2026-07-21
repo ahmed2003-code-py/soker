@@ -677,7 +677,9 @@ function حوار_دفع_مباشر({
   const الموردون = الأطراف.filter((p) => p.type === "SUPPLIER");
   const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
   const [مبلغ, تعيين_مبلغ] = React.useState("");
+  const [نوع_العميل, تعيين_نوع_العميل] = React.useState<"registered" | "external">("registered");
   const [عميل, تعيين_عميل] = React.useState("");
+  const [عميل_خارجي, تعيين_عميل_خارجي] = React.useState("");
   const [مورد, تعيين_مورد] = React.useState("");
   const [حساب, تعيين_حساب] = React.useState(String(الحسابات[0]?.id ?? ""));
   const [بيان, تعيين_بيان] = React.useState("");
@@ -685,11 +687,15 @@ function حوار_دفع_مباشر({
 
   async function حفظ() {
     if (!حساب) return إشعار.خطأ("اختر حساب الخزنة");
+    if (نوع_العميل === "registered" && !عميل) return إشعار.خطأ("اختر العميل");
+    if (نوع_العميل === "external" && !عميل_خارجي.trim()) return إشعار.خطأ("اكتب اسم العميل");
+    if (!مورد) return إشعار.خطأ("اختر المورد");
     تعيين_جارٍ(true);
     const r = await دفع_مباشر_من_عميل_لمورد({
       التاريخ: تاريخ,
       المبلغ: مبلغ,
-      معرف_العميل: Number(عميل),
+      معرف_العميل: نوع_العميل === "registered" && عميل ? Number(عميل) : null,
+      اسم_العميل_الخارجي: نوع_العميل === "external" && عميل_خارجي.trim() ? عميل_خارجي.trim() : null,
       معرف_المورد: Number(مورد),
       معرف_الحساب: Number(حساب),
       البيان: بيان || undefined,
@@ -710,7 +716,7 @@ function حوار_دفع_مباشر({
           </عنوان_الحوار>
         </رأس_الحوار>
         <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
-          يخصم من رصيد العميل، يضاف لرصيد المورد، وتُسجَّل حركة إيراد في الخزنة — كل ذلك في عملية واحدة مرتبطة.
+          يقلّل مديونية العميل (لو مسجّل) ويقلّل المستحق للمورد، وتُسجَّل حركة في الخزنة بلا تأثير على رصيدها — كل ذلك في عملية واحدة مرتبطة.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -722,13 +728,39 @@ function حوار_دفع_مباشر({
             <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
-            <العنوان مطلوب>العميل (المُدفِع)</العنوان>
-            <قائمة_اختيار
-              الخيارات={العملاء.map((p) => ({ القيمة: String(p.id), التسمية: p.name }))}
-              القيمة={عميل}
-              عند_التغيير={تعيين_عميل}
-              نص_بديل="اختر العميل…"
-            />
+            <div className="flex items-center justify-between gap-2">
+              <العنوان مطلوب className="mb-0">العميل (المُدفِع)</العنوان>
+              <div className="flex rounded-lg border border-border overflow-hidden text-[11px]">
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 transition-colors ${نوع_العميل === "registered" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_العميل("registered"); تعيين_عميل_خارجي(""); }}
+                >
+                  مسجّل
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 transition-colors ${نوع_العميل === "external" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_العميل("external"); تعيين_عميل(""); }}
+                >
+                  عابر
+                </button>
+              </div>
+            </div>
+            {نوع_العميل === "registered" ? (
+              <قائمة_اختيار
+                الخيارات={العملاء.map((p) => ({ القيمة: String(p.id), التسمية: p.name }))}
+                القيمة={عميل}
+                عند_التغيير={تعيين_عميل}
+                نص_بديل="اختر العميل…"
+              />
+            ) : (
+              <الحقل
+                placeholder="اسم العميل العابر…"
+                value={عميل_خارجي}
+                onChange={(e) => تعيين_عميل_خارجي(e.target.value)}
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>المورد (المُستلِم)</العنوان>

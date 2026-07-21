@@ -484,34 +484,42 @@ export async function دفع_مباشر_من_عميل_لمورد(مدخلات: u
   const ب = t.data;
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
 
+  const عميل_خارجي = ب.اسم_العميل_الخارجي?.trim() || null;
   const [عميل, مورد, حساب] = await Promise.all([
-    prisma.party.findUnique({ where: { id: ب.معرف_العميل } }),
+    ب.معرف_العميل ? prisma.party.findUnique({ where: { id: ب.معرف_العميل } }) : Promise.resolve(null),
     prisma.party.findUnique({ where: { id: ب.معرف_المورد } }),
     prisma.treasuryAccount.findUnique({ where: { id: ب.معرف_الحساب } }),
   ]);
-  if (!عميل || عميل.type !== "CUSTOMER") return فشل("العميل غير موجود");
+  // العميل: إمّا مسجّل صحيح، أو عابر بالاسم — أحدهما مطلوب
+  if (ب.معرف_العميل && (!عميل || عميل.type !== "CUSTOMER")) return فشل("العميل غير موجود");
+  if (!عميل && !عميل_خارجي) return فشل("اختر العميل أو اكتب اسمه");
   if (!مورد || مورد.type !== "SUPPLIER") return فشل("المورد غير موجود");
   if (!حساب) return فشل("حساب الخزنة غير موجود");
 
-  const بيان = ب.البيان?.trim() || `دفع مباشر: ${عميل.name} ← ${مورد.name}`;
+  const اسم_العميل = عميل?.name ?? عميل_خارجي!;
+  const بيان = ب.البيان?.trim() || `دفع مباشر: ${اسم_العميل} ← ${مورد.name}`;
 
   try {
     await prisma.$transaction(async (tx) => {
       // 1. سجل الربط الثلاثي
       const رابط = await tx.directPayment.create({ data: {} });
 
-      // 2. قيد دائن على العميل → يقلل مديونيته
-      const قيد_عميل = await أضف_قيد(tx, {
-        معرف_الطرف: عميل.id,
-        التاريخ: تاريخ,
-        البيان: بيان,
-        دائن: ب.المبلغ,
-        أنشأ: فاعل.id,
-      });
-      await tx.ledgerEntry.update({
-        where: { id: قيد_عميل.id },
-        data: { directPaymentId: رابط.id },
-      });
+      // 2. قيد دائن على العميل → يقلل مديونيته (فقط لو العميل مسجّل)
+      let معرف_قيد_العميل: number | null = null;
+      if (عميل) {
+        const قيد_عميل = await أضف_قيد(tx, {
+          معرف_الطرف: عميل.id,
+          التاريخ: تاريخ,
+          البيان: بيان,
+          دائن: ب.المبلغ,
+          أنشأ: فاعل.id,
+        });
+        await tx.ledgerEntry.update({
+          where: { id: قيد_عميل.id },
+          data: { directPaymentId: رابط.id },
+        });
+        معرف_قيد_العميل = قيد_عميل.id;
+      }
 
       // 3. قيد مدين على المورد → يقلل المستحق له
       const قيد_مورد = await أضف_قيد(tx, {
@@ -534,7 +542,8 @@ export async function دفع_مباشر_من_عميل_لمورد(مدخلات: u
         معرف_الحساب: ب.معرف_الحساب,
         معرف_حساب_فرعي: ب.معرف_حساب_فرعي ?? null,
         البيان: بيان,
-        معرف_الطرف: عميل.id,
+        معرف_الطرف: عميل?.id ?? null,
+        اسم_الطرف_الخارجي: عميل ? null : عميل_خارجي,
         أنشأ: فاعل.id,
       });
       await tx.treasuryTxn.update({
@@ -548,11 +557,12 @@ export async function دفع_مباشر_من_عميل_لمورد(مدخلات: u
         نوع_الكيان: "دفع_مباشر",
         معرف_الكيان: رابط.id,
         التفاصيل: {
-          عميل: عميل.name,
+          عميل: اسم_العميل,
+          عميل_خارجي: !عميل,
           مورد: مورد.name,
           المبلغ: String(ب.المبلغ),
           الحساب: حساب.type,
-          معرف_قيد_العميل: قيد_عميل.id,
+          معرف_قيد_العميل,
           معرف_قيد_المورد: قيد_مورد.id,
           معرف_حركة_الخزنة: حركة_خزنة.id,
         },
@@ -563,9 +573,9 @@ export async function دفع_مباشر_من_عميل_لمورد(مدخلات: u
   }
 
   revalidatePath("/treasury");
-  revalidatePath(مسار_صفحة_الطرف("CUSTOMER", عميل.id));
+  if (عميل) revalidatePath(مسار_صفحة_الطرف("CUSTOMER", عميل.id));
   revalidatePath(مسار_صفحة_الطرف("SUPPLIER", مورد.id));
-  return نجح(undefined, `تم الدفع المباشر — ${عميل.name} ✓ ${مورد.name}`);
+  return نجح(undefined, `تم الدفع المباشر — ${اسم_العميل} ✓ ${مورد.name}`);
 }
 
 /**
@@ -598,35 +608,38 @@ export async function تعديل_دفع_مباشر(
     }),
     prisma.treasuryTxn.findMany({
       where: { directPaymentId: معرف_الدفع, deletedAt: null },
-      select: { id: true, accountId: true },
+      select: { id: true, accountId: true, partyId: true, externalPartyName: true },
     }),
   ]);
 
-  if (!قيود.length) return فشل("لم يُعثر على قيود الدفع المباشر");
-
-  const عميل_قيد = قيود.find((q) => Number(q.credit) > 0);
   const مورد_قيد = قيود.find((q) => Number(q.debit) > 0);
-  if (!عميل_قيد || !مورد_قيد) return فشل("هيكل الدفع المباشر غير مكتمل");
+  if (!مورد_قيد) return فشل("هيكل الدفع المباشر غير مكتمل");
+  // قيد العميل قد لا يوجد (عميل عابر بالاسم) — الاسم محفوظ في حركة الخزنة
+  const عميل_قيد = قيود.find((q) => Number(q.credit) > 0) ?? null;
+  const حركة_قديمة = حركات[0] ?? null;
+  const اسم_عميل_خارجي = عميل_قيد ? null : (حركة_قديمة?.externalPartyName ?? null);
 
-  const بيان = ب.البيان?.trim() || عميل_قيد.description;
+  const بيان = ب.البيان?.trim() || مورد_قيد.description;
 
   try {
     await prisma.$transaction(async (tx) => {
       // 1. حذف ناعم لكل السجلات القديمة + إعادة حساب أرصدة الجانبين
       await حذف_دفع_مباشر(tx, معرف_الدفع);
 
-      // 2. إعادة إنشاء قيد العميل
-      const قيد_عميل_جديد = await أضف_قيد(tx, {
-        معرف_الطرف: عميل_قيد.partyId,
-        التاريخ: تاريخ,
-        البيان: بيان,
-        دائن: ب.المبلغ,
-        أنشأ: فاعل.id,
-      });
-      await tx.ledgerEntry.update({
-        where: { id: قيد_عميل_جديد.id },
-        data: { directPaymentId: معرف_الدفع },
-      });
+      // 2. إعادة إنشاء قيد العميل (فقط لو العميل مسجّل)
+      if (عميل_قيد) {
+        const قيد_عميل_جديد = await أضف_قيد(tx, {
+          معرف_الطرف: عميل_قيد.partyId,
+          التاريخ: تاريخ,
+          البيان: بيان,
+          دائن: ب.المبلغ,
+          أنشأ: فاعل.id,
+        });
+        await tx.ledgerEntry.update({
+          where: { id: قيد_عميل_جديد.id },
+          data: { directPaymentId: معرف_الدفع },
+        });
+      }
 
       // 3. إعادة إنشاء قيد المورد
       const قيد_مورد_جديد = await أضف_قيد(tx, {
@@ -641,15 +654,16 @@ export async function تعديل_دفع_مباشر(
         data: { directPaymentId: معرف_الدفع },
       });
 
-      // 4. إعادة إنشاء حركة الخزنة
+      // 4. إعادة إنشاء حركة الخزنة (TRANSFER = بلا تأثير على الرصيد)
       const حركة_جديدة = await أضف_حركة_خزنة(tx, {
         التاريخ: تاريخ,
-        النوع: TxnKind.INCOME,
+        النوع: TxnKind.TRANSFER,
         المبلغ: ب.المبلغ,
         معرف_الحساب: ب.معرف_الحساب,
         معرف_حساب_فرعي: ب.معرف_حساب_فرعي ?? null,
         البيان: بيان,
-        معرف_الطرف: عميل_قيد.partyId,
+        معرف_الطرف: عميل_قيد?.partyId ?? null,
+        اسم_الطرف_الخارجي: اسم_عميل_خارجي,
         أنشأ: فاعل.id,
       });
       await tx.treasuryTxn.update({
@@ -670,7 +684,7 @@ export async function تعديل_دفع_مباشر(
   }
 
   revalidatePath("/treasury");
-  revalidatePath(مسار_صفحة_الطرف(عميل_قيد.party.type, عميل_قيد.partyId));
+  if (عميل_قيد) revalidatePath(مسار_صفحة_الطرف(عميل_قيد.party.type, عميل_قيد.partyId));
   revalidatePath(مسار_صفحة_الطرف(مورد_قيد.party.type, مورد_قيد.partyId));
   return نجح(undefined, "تم تعديل الدفع المباشر وتحديث جميع الأطراف");
 }

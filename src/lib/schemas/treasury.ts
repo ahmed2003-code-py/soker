@@ -40,15 +40,22 @@ export const مخطط_تحويل_خزنة = z
     path: ["إلى_الحساب"],
   });
 
-export const مخطط_دفع_مباشر = z.object({
-  التاريخ: z.string().min(1, "التاريخ مطلوب"),
-  المبلغ: مبلغ_موجب,
-  معرف_العميل: z.number().int().positive("اختر العميل"),
-  معرف_المورد: z.number().int().positive("اختر المورد"),
-  معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
-  معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
-  البيان: z.string().trim().optional(),
-});
+export const مخطط_دفع_مباشر = z
+  .object({
+    التاريخ: z.string().min(1, "التاريخ مطلوب"),
+    المبلغ: مبلغ_موجب,
+    // العميل: إمّا مسجّل (معرف_العميل) أو عميل عابر بالاسم (اسم_العميل_الخارجي)
+    معرف_العميل: z.number().int().positive().optional().nullable(),
+    اسم_العميل_الخارجي: z.string().trim().optional().nullable(),
+    معرف_المورد: z.number().int().positive("اختر المورد"),
+    معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
+    معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
+    البيان: z.string().trim().optional(),
+  })
+  .refine((d) => !!d.معرف_العميل || !!d.اسم_العميل_الخارجي?.trim(), {
+    message: "اختر العميل أو اكتب اسمه",
+    path: ["معرف_العميل"],
+  });
 
 export const مخطط_تعديل_دفع_مباشر = z.object({
   التاريخ: z.string().min(1, "التاريخ مطلوب"),
