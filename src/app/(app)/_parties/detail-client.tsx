@@ -663,7 +663,6 @@ function حوار_دفعة_موزعة({
   }), [حسابات_الخزنة]);
 
   const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
-  const [إجمالي, تعيين_إجمالي] = React.useState("");
   const [بيان, تعيين_بيان] = React.useState("");
   const [بنود, تعيين_بنود] = React.useState<بند_موزّع[]>(() => [بند_جديد()]);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
@@ -676,7 +675,6 @@ function حوار_دفعة_موزعة({
       const r = await اجلب_دفعة_موزعة(معرف_للتعديل);
       if (r.نجاح && r.بيانات) {
         تعيين_تاريخ(r.بيانات.التاريخ);
-        تعيين_إجمالي(String(r.بيانات.الإجمالي));
         تعيين_بيان(r.بيانات.البيان ?? "");
         تعيين_بنود(
           r.بيانات.بنود.map((ب) => ({
@@ -695,10 +693,9 @@ function حوار_دفعة_موزعة({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [معرف_للتعديل]);
 
+  // الإجمالي يُحسب تلقائياً من مجموع البنود (لا يُدخله المستخدم)
   const مجموع = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
-  const هدف = Number(إجمالي.replace(/,/g, "")) || 0;
-  const فرق = +(هدف - مجموع).toFixed(2);
-  const متساوٍ = هدف > 0 && Math.abs(فرق) < 0.005;
+  const صالح = مجموع > 0;
 
   function حدّث_بند(معرف_محلي: number, تعديل: Partial<بند_موزّع>) {
     تعيين_بنود((س) => س.map((ب) => (ب.معرف_محلي === معرف_محلي ? { ...ب, ...تعديل } : ب)));
@@ -708,7 +705,7 @@ function حوار_دفعة_موزعة({
   }
 
   async function حفظ() {
-    if (!متساوٍ) return إشعار.خطأ("مجموع المبالغ الموزّعة يجب أن يساوي الإجمالي تماماً");
+    if (!صالح) return إشعار.خطأ("أدخل مبلغاً في بند واحد على الأقل");
     // تحقق من الحسابات الفرعية الإجبارية
     for (const ب of بنود) {
       const نوع = نوع_حساب(ب.حساب);
@@ -723,7 +720,7 @@ function حوار_دفعة_موزعة({
     const payload = {
       معرف_الطرف: الطرف.id,
       التاريخ: تاريخ,
-      الإجمالي: إجمالي.replace(/,/g, ""),
+      الإجمالي: String(مجموع),
       البيان: بيان || null,
       بنود: بنود.map((ب) => ({
         معرف_الحساب: Number(ب.حساب),
@@ -757,15 +754,9 @@ function حوار_دفعة_موزعة({
           <p className="py-6 text-center text-sm text-muted-foreground">جارٍ التحميل…</p>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <العنوان مطلوب>التاريخ</العنوان>
-                <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
-              </div>
-              <div className="space-y-1.5">
-                <العنوان مطلوب>الإجمالي</العنوان>
-                <الحقل selectOnFocus value={إجمالي} onChange={(e) => تعيين_إجمالي(e.target.value)} placeholder="0.00" className="ltr-nums" />
-              </div>
+            <div className="space-y-1.5">
+              <العنوان مطلوب>التاريخ</العنوان>
+              <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
             </div>
 
             {/* بنود التوزيع */}
@@ -815,20 +806,10 @@ function حوار_دفعة_موزعة({
               })}
             </div>
 
-            {/* ملخص المجموع والفرق */}
-            <div className="mt-3 rounded-lg bg-appgray p-3 text-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">الموزّع</span>
-                <نص_مبلغ القيمة={مجموع} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">الإجمالي المطلوب</span>
-                <نص_مبلغ القيمة={هدف} />
-              </div>
-              <div className={`flex items-center justify-between font-medium ${متساوٍ ? "text-success" : "text-danger"}`}>
-                <span>{متساوٍ ? "مطابق ✓" : "الفرق"}</span>
-                {!متساوٍ && <نص_مبلغ القيمة={Math.abs(فرق)} النوع="مصروف" />}
-              </div>
+            {/* الإجمالي التلقائي (مجموع البنود) */}
+            <div className="mt-3 rounded-lg bg-appgray p-3 flex items-center justify-between">
+              <span className="text-sm font-medium">الإجمالي (تلقائي)</span>
+              <span className="text-lg font-bold text-primary"><نص_مبلغ القيمة={مجموع} /></span>
             </div>
 
             <div className="space-y-1.5 mt-3">
@@ -837,7 +818,7 @@ function حوار_دفعة_موزعة({
             </div>
 
             <تذييل_الحوار>
-              <الزر variant="success" onClick={حفظ} disabled={جارٍ || !متساوٍ}>
+              <الزر variant="success" onClick={حفظ} disabled={جارٍ || !صالح}>
                 {جارٍ ? "جارٍ الحفظ…" : معرف_للتعديل != null ? "حفظ التعديل" : "تأكيد الدفعة"}
               </الزر>
               <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>

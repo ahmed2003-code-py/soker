@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X, ArrowLeftRight, Send } from "lucide-react";
+import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X, ArrowLeftRight, Send, Layers } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد, تعديل_دفع_مباشر_من_خزنة } from "./actions";
+import { سجل_دفعة_موزعة } from "@/app/(app)/_parties/actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 
@@ -82,6 +83,7 @@ export function شاشة_الخزنة({
   const [نموذج, تعيين_نموذج] = React.useState<{ حركة?: حركة } | null>(null);
   const [نموذج_تحويل, تعيين_نموذج_تحويل] = React.useState(false);
   const [نموذج_دفع_مباشر, تعيين_نموذج_دفع_مباشر] = React.useState(false);
+  const [نموذج_دفعة_موزعة, تعيين_نموذج_دفعة_موزعة] = React.useState(false);
   const { احذف: احذف_مع_تراجع, معلقة } = استخدم_تراجع_الحذف();
   const [فلتر_حساب, تعيين_فلتر_حساب] = React.useState("");
   const [فلتر_نوع, تعيين_فلتر_نوع] = React.useState("");
@@ -382,6 +384,9 @@ export function شاشة_الخزنة({
         <الزر variant="outline" onClick={() => تعيين_نموذج_دفع_مباشر(true)}>
           <Send className="size-4" /> دفع مباشر
         </الزر>
+        <الزر variant="outline" onClick={() => تعيين_نموذج_دفعة_موزعة(true)}>
+          <Layers className="size-4" /> معاملة مركبة
+        </الزر>
         {محددة.size > 0 && (
           <الزر variant="danger" size="sm" onClick={() => تعيين_حذف_جماعي(true)}>
             <Trash2 className="size-4" /> حذف المحدد ({محددة.size})
@@ -487,6 +492,14 @@ export function شاشة_الخزنة({
           الأطراف={الأطراف}
           الحسابات={الحسابات}
           عند_الإغلاق={() => تعيين_نموذج_دفع_مباشر(false)}
+        />
+      )}
+      {نموذج_دفعة_موزعة && (
+        <حوار_دفعة_موزعة_خزنة
+          الأطراف={الأطراف}
+          الحسابات={الحسابات}
+          حسابات_فرعية={حسابات_فرعية_محلية}
+          عند_الإغلاق={() => تعيين_نموذج_دفعة_موزعة(false)}
         />
       )}
       {تعديل_دفع && (
@@ -789,6 +802,180 @@ function حوار_دفع_مباشر({
         <تذييل_الحوار>
           <الزر variant="success" onClick={حفظ} disabled={جارٍ}>
             {جارٍ ? "جارٍ التسجيل…" : "تأكيد الدفع المباشر"}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+// ─── حوار معاملة مركبة (طرف + إجمالي موزّع على عدة حسابات) ───────────────────
+type بند_مركّب = { معرف_محلي: number; حساب: string; حساب_فرعي: string; مبلغ: string };
+
+function حوار_دفعة_موزعة_خزنة({
+  الأطراف,
+  الحسابات,
+  حسابات_فرعية,
+  عند_الإغلاق,
+}: {
+  الأطراف: { id: number; name: string; type: "CUSTOMER" | "SUPPLIER" }[];
+  الحسابات: حساب[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const عداد = React.useRef(0);
+  const بند_جديد = React.useCallback((): بند_مركّب => ({
+    معرف_محلي: ++عداد.current,
+    حساب: الحسابات[0] ? String(الحسابات[0].id) : "",
+    حساب_فرعي: "",
+    مبلغ: "",
+  }), [الحسابات]);
+
+  const [طرف, تعيين_طرف] = React.useState("");
+  const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
+  const [بيان, تعيين_بيان] = React.useState("");
+  const [بنود, تعيين_بنود] = React.useState<بند_مركّب[]>(() => [بند_جديد()]);
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  const مجموع = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
+  const صالح = مجموع > 0 && !!طرف;
+  const نوع_الطرف = الأطراف.find((p) => String(p.id) === طرف)?.type ?? null;
+
+  function حدّث_بند(معرف_محلي: number, تعديل: Partial<بند_مركّب>) {
+    تعيين_بنود((س) => س.map((ب) => (ب.معرف_محلي === معرف_محلي ? { ...ب, ...تعديل } : ب)));
+  }
+  function نوع_حساب(معرف: string) {
+    return الحسابات.find((h) => h.id === Number(معرف))?.النوع ?? null;
+  }
+
+  async function حفظ() {
+    if (!طرف) return إشعار.خطأ("اختر العميل أو المورد");
+    if (مجموع <= 0) return إشعار.خطأ("أدخل مبلغاً في بند واحد على الأقل");
+    for (const ب of بنود) {
+      const نوع = نوع_حساب(ب.حساب);
+      if (نوع && نوع !== "CASH") {
+        const خيارات = حسابات_فرعية[نوع] ?? [];
+        if (خيارات.length > 0 && !ب.حساب_فرعي) {
+          return إشعار.خطأ(`اختر ${تسمية_فرعي(نوع)} لكل بند من نوعه`);
+        }
+      }
+    }
+    تعيين_جارٍ(true);
+    const r = await سجل_دفعة_موزعة({
+      معرف_الطرف: Number(طرف),
+      التاريخ: تاريخ,
+      الإجمالي: String(مجموع),
+      البيان: بيان || null,
+      بنود: بنود.map((ب) => ({
+        معرف_الحساب: Number(ب.حساب),
+        معرف_حساب_فرعي: ب.حساب_فرعي ? Number(ب.حساب_فرعي) : null,
+        المبلغ: ب.مبلغ.replace(/,/g, ""),
+      })),
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-lg">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <Layers className="size-5 text-primary" /> معاملة مركبة
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
+          وزّع المبلغ على أكثر من حساب خزنة في عملية واحدة — يُخصم الإجمالي مرة واحدة من حساب الطرف، وتُسجَّل حركة مستقلة في كل خزنة.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <العنوان مطلوب>الطرف (عميل / مورد)</العنوان>
+            <قائمة_اختيار
+              الخيارات={الأطراف.map((p) => ({
+                القيمة: String(p.id),
+                التسمية: `${p.name} (${p.type === "CUSTOMER" ? "عميل" : "مورد"})`,
+              }))}
+              القيمة={طرف}
+              عند_التغيير={تعيين_طرف}
+              نص_بديل="اختر العميل أو المورد…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>التاريخ</العنوان>
+            <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+        </div>
+        {طرف && (
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            {نوع_الطرف === "CUSTOMER" ? "تحصيل — يقلّل مديونية العميل ويضيف لكل خزنة." : "صرف — يقلّل المستحق للمورد ويُخصم من كل خزنة."}
+          </p>
+        )}
+
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <العنوان className="mb-0">توزيع المبلغ على الحسابات</العنوان>
+            <الزر size="sm" variant="outline" onClick={() => تعيين_بنود((س) => [...س, بند_جديد()])}>
+              <Plus className="size-4" /> بند
+            </الزر>
+          </div>
+          {بنود.map((ب) => {
+            const نوع = نوع_حساب(ب.حساب);
+            const خيارات_فرعية = نوع && نوع !== "CASH" ? (حسابات_فرعية[نوع] ?? []) : [];
+            return (
+              <div key={ب.معرف_محلي} className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
+                <div className="flex-1 min-w-[120px] space-y-1">
+                  <span className="text-[11px] text-muted-foreground">الحساب</span>
+                  <قائمة_اختيار
+                    الخيارات={الحسابات.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+                    القيمة={ب.حساب}
+                    عند_التغيير={(v) => حدّث_بند(ب.معرف_محلي, { حساب: v, حساب_فرعي: "" })}
+                    قابل_للبحث={false}
+                  />
+                </div>
+                {خيارات_فرعية.length > 0 && (
+                  <div className="flex-1 min-w-[120px] space-y-1">
+                    <span className="text-[11px] text-muted-foreground">{تسمية_فرعي(نوع!)}</span>
+                    <قائمة_اختيار
+                      الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
+                      القيمة={ب.حساب_فرعي}
+                      عند_التغيير={(v) => حدّث_بند(ب.معرف_محلي, { حساب_فرعي: v })}
+                      نص_بديل={`اختر ${تسمية_فرعي(نوع!)}…`}
+                    />
+                  </div>
+                )}
+                <div className="w-28 space-y-1">
+                  <span className="text-[11px] text-muted-foreground">المبلغ</span>
+                  <الحقل selectOnFocus className="ltr-nums" value={ب.مبلغ} onChange={(e) => حدّث_بند(ب.معرف_محلي, { مبلغ: e.target.value })} placeholder="0.00" />
+                </div>
+                {بنود.length > 1 && (
+                  <الزر size="sm" variant="ghost" onClick={() => تعيين_بنود((س) => س.filter((x) => x.معرف_محلي !== ب.معرف_محلي))} title="حذف البند">
+                    <Trash2 className="size-4 text-danger" />
+                  </الزر>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 rounded-lg bg-appgray p-3 flex items-center justify-between">
+          <span className="text-sm font-medium">الإجمالي (تلقائي)</span>
+          <span className="text-lg font-bold text-primary"><نص_مبلغ القيمة={مجموع} /></span>
+        </div>
+
+        <div className="space-y-1.5 mt-3">
+          <العنوان>بيان (اختياري)</العنوان>
+          <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} placeholder="يُملأ تلقائياً إذا تُرك فارغاً" />
+        </div>
+
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ || !صالح}>
+            {جارٍ ? "جارٍ الحفظ…" : "تأكيد المعاملة"}
           </الزر>
           <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
         </تذييل_الحوار>
