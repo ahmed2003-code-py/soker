@@ -64,3 +64,29 @@ export const مخطط_تعديل_دفع_مباشر = z.object({
   معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
   البيان: z.string().trim().optional(),
 });
+
+// ─── دفعة موزّعة: إجمالي واحد موزّع على عدة وسائل/حسابات ───────────────────────
+const بند_دفع_موزّع = z.object({
+  معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
+  معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
+  المبلغ: مبلغ_موجب,
+});
+
+export const مخطط_دفعة_موزعة = z
+  .object({
+    معرف_الطرف: z.number().int().positive("اختر الطرف"),
+    التاريخ: z.string().min(1, "التاريخ مطلوب"),
+    الإجمالي: مبلغ_موجب,
+    البيان: z.string().trim().optional().nullable(),
+    رقم_الفاتورة: z.string().trim().optional().nullable(),
+    بنود: z.array(بند_دفع_موزّع).min(1, "أضف بند دفع واحداً على الأقل"),
+  })
+  .refine(
+    (d) => {
+      const مجموع = d.بنود.reduce((s, ب) => s + Number(ب.المبلغ), 0);
+      return Math.abs(مجموع - Number(d.الإجمالي)) < 0.005;
+    },
+    { message: "مجموع المبالغ الموزّعة يجب أن يساوي الإجمالي تماماً", path: ["بنود"] }
+  );
+
+export type مدخلات_دفعة_موزعة = z.infer<typeof مخطط_دفعة_موزعة>;

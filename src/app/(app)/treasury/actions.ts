@@ -6,7 +6,7 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { TxnKind } from "@prisma/client";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
-import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, حذف_دفع_مباشر, type اتجاه } from "@/lib/integration";
+import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, حذف_دفع_مباشر, حذف_دفعة_موزعة, type اتجاه } from "@/lib/integration";
 import { أضف_قيد } from "@/lib/ledger";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
@@ -283,6 +283,7 @@ export async function حذف_حركات_خزنة_متعددة(ids: number[]): Pr
 
   const أطراف_متأثرة = new Set<string>();
   const مدفوعات_مباشرة_معالجة = new Set<number>();
+  const دفعات_موزعة_معالجة = new Set<number>();
   try {
     await prisma.$transaction(
       async (tx) => {
@@ -295,25 +296,36 @@ export async function حذف_حركات_خزنة_متعددة(ids: number[]): Pr
           if (حالي.party) أطراف_متأثرة.add(مسار_صفحة_الطرف(حالي.party.type, حالي.party.id));
 
           // دفع مباشر → عكس الثلاثي (مرة واحدة فقط لكل directPaymentId)
-          if (حالي.directPaymentId && !مدفوعات_مباشرة_معالجة.has(حالي.directPaymentId)) {
-            مدفوعات_مباشرة_معالجة.add(حالي.directPaymentId);
-            const قيود = await tx.ledgerEntry.findMany({
-              where: { directPaymentId: حالي.directPaymentId, deletedAt: null },
-              include: { party: { select: { type: true, id: true } } },
-            });
-            for (const قيد of قيود) {
-              أطراف_متأثرة.add(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+          if (حالي.directPaymentId) {
+            if (!مدفوعات_مباشرة_معالجة.has(حالي.directPaymentId)) {
+              مدفوعات_مباشرة_معالجة.add(حالي.directPaymentId);
+              const قيود = await tx.ledgerEntry.findMany({
+                where: { directPaymentId: حالي.directPaymentId, deletedAt: null },
+                include: { party: { select: { type: true, id: true } } },
+              });
+              for (const قيد of قيود) أطراف_متأثرة.add(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+              await حذف_دفع_مباشر(tx, حالي.directPaymentId);
             }
-            await حذف_دفع_مباشر(tx, حالي.directPaymentId);
-          } else if (!حالي.directPaymentId) {
+          } else if (حالي.splitPaymentId) {
+            // دفعة موزّعة → عكس المجموعة (مرة واحدة فقط لكل splitPaymentId)
+            if (!دفعات_موزعة_معالجة.has(حالي.splitPaymentId)) {
+              دفعات_موزعة_معالجة.add(حالي.splitPaymentId);
+              const قيود = await tx.ledgerEntry.findMany({
+                where: { splitPaymentId: حالي.splitPaymentId, deletedAt: null },
+                include: { party: { select: { type: true, id: true } } },
+              });
+              for (const قيد of قيود) أطراف_متأثرة.add(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+              await حذف_دفعة_موزعة(tx, حالي.splitPaymentId);
+            }
+          } else {
             await اعكس_عملية_مرتبطة(tx, id);
           }
           await تسجيل_عملية(tx, {
             المستخدم: فاعل.id,
             العملية: "DELETE",
-            نوع_الكيان: حالي.directPaymentId ? "دفع_مباشر" : "حركة_الخزنة",
-            معرف_الكيان: حالي.directPaymentId ?? id,
-            التفاصيل: { حذف_جماعي: true, النوع: حالي.kind, المبلغ: حالي.amount.toString() },
+            نوع_الكيان: حالي.directPaymentId ? "دفع_مباشر" : حالي.splitPaymentId ? "حركة_الخزنة" : "حركة_الخزنة",
+            معرف_الكيان: حالي.directPaymentId ?? حالي.splitPaymentId ?? id,
+            التفاصيل: { حذف_جماعي: true, النوع: حالي.kind, المبلغ: حالي.amount.toString(), ...(حالي.splitPaymentId ? { دفعة_موزعة: true } : {}) },
           });
         }
       },
@@ -338,6 +350,32 @@ export async function حذف_حركة_خزنة(id: number): Promise<نتيجة> 
     include: { party: true },
   });
   if (!حالي) return فشل("الحركة غير موجودة");
+
+  // ─── دفعة موزّعة: نعكس المجموعة كاملة (القيد + كل حركات الخزنة) ──────────
+  if (حالي.splitPaymentId) {
+    const معرف_المجموعة = حالي.splitPaymentId;
+    const قيود = await prisma.ledgerEntry.findMany({
+      where: { splitPaymentId: معرف_المجموعة, deletedAt: null },
+      include: { party: { select: { type: true, id: true } } },
+    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await حذف_دفعة_موزعة(tx, معرف_المجموعة);
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "DELETE",
+          نوع_الكيان: "حركة_الخزنة",
+          معرف_الكيان: معرف_المجموعة,
+          التفاصيل: { دفعة_موزعة: true, المبلغ: حالي.amount.toString() },
+        });
+      }, { timeout: 30000 });
+    } catch (e) {
+      return فشل(e instanceof Error ? e.message : "خطأ أثناء حذف الدفعة الموزّعة");
+    }
+    revalidatePath("/treasury");
+    for (const قيد of قيود) revalidatePath(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+    return نجح(undefined, "تم حذف الدفعة الموزّعة وعكس كل حركاتها");
+  }
 
   // ─── دفع مباشر: نعكس العملية الثلاثية كاملة ─────────────────────────────
   if (حالي.directPaymentId) {

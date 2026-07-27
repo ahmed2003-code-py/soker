@@ -6,11 +6,13 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 import { سجّل_عملية_مرتبطة } from "@/app/(app)/_integration/actions";
-import { اعكس_عملية_مرتبطة, حذف_دفع_مباشر } from "@/lib/integration";
+import { اعكس_عملية_مرتبطة, حذف_دفع_مباشر, أنشئ_دفعة_موزعة, حذف_دفعة_موزعة, اتجاه_الطرف } from "@/lib/integration";
 import { اعكس_قيود_الفاتورة } from "@/lib/invoice";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مسار_قائمة_الطرف, مسار_صفحة_الطرف } from "@/lib/paths";
+import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { مخطط_دفعة_موزعة } from "@/lib/schemas/treasury";
 import {
   مخطط_طرف,
   مخطط_دفعة,
@@ -224,6 +226,154 @@ export async function سجل_دفعة(
   return r;
 }
 
+/**
+ * تسجيل دفعة موزّعة — إجمالي واحد موزّع على عدة وسائل/حسابات في عملية واحدة:
+ * قيد واحد على الطرف بالإجمالي + حركة خزنة مستقلة لكل بند. الكل مربوط بـ SplitPayment.
+ */
+export async function سجل_دفعة_موزعة(مدخلات: unknown): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_دفعة_موزعة.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
+  if (!طرف) return فشل("الطرف غير موجود");
+  const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+
+  // اشتقاق طريقة الدفع لكل بند من نوع حساب الخزنة (للعرض في بيان الحركة)
+  const حسابات = await prisma.treasuryAccount.findMany({ select: { id: true, type: true } });
+  const نوع_الحساب = new Map(حسابات.map((h) => [h.id, h.type]));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const r = await أنشئ_دفعة_موزعة(tx, {
+        الاتجاه: اتجاه_الطرف(طرف.type),
+        معرف_الطرف: طرف.id,
+        اسم_الطرف: طرف.name,
+        الإجمالي: ب.الإجمالي!,
+        التاريخ: تاريخ,
+        البيان: ب.البيان ?? null,
+        رقم_الفاتورة: ب.رقم_الفاتورة ?? null,
+        بنود: ب.بنود.map((x) => {
+          const نوع = نوع_الحساب.get(x.معرف_الحساب);
+          return {
+            معرف_الحساب: x.معرف_الحساب,
+            معرف_حساب_فرعي: x.معرف_حساب_فرعي ?? null,
+            طريقة_الدفع: نوع ? تسمية_حساب_الخزنة[نوع] : null,
+            المبلغ: x.المبلغ!,
+          };
+        }),
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "حركة_الحساب",
+        معرف_الكيان: r.معرف_القيد,
+        التفاصيل: { دفعة_موزعة: true, الإجمالي: String(ب.الإجمالي), عدد_البنود: ب.بنود.length },
+      });
+    }, { timeout: 30000 });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء تسجيل الدفعة الموزّعة");
+  }
+
+  revalidatePath("/treasury");
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
+  return نجح(undefined, "تم تسجيل الدفعة الموزّعة وتحديث الأرصدة");
+}
+
+/** جلب بيانات دفعة موزّعة لملء نموذج التعديل. */
+export async function اجلب_دفعة_موزعة(معرف_المجموعة: number): Promise<
+  نتيجة<{
+    الإجمالي: number;
+    التاريخ: string;
+    البيان: string | null;
+    بنود: { معرف_الحساب: number; معرف_حساب_فرعي: number | null; المبلغ: number }[];
+  }>
+> {
+  await اطلب_المستخدم();
+  const [قيد, حركات] = await Promise.all([
+    prisma.ledgerEntry.findFirst({
+      where: { splitPaymentId: معرف_المجموعة, deletedAt: null },
+      select: { date: true, description: true, debit: true, credit: true },
+    }),
+    prisma.treasuryTxn.findMany({
+      where: { splitPaymentId: معرف_المجموعة, deletedAt: null },
+      select: { accountId: true, subAccountId: true, amount: true },
+      orderBy: { id: "asc" },
+    }),
+  ]);
+  if (!قيد || !حركات.length) return فشل("الدفعة الموزّعة غير موجودة");
+  const الإجمالي = Number(قيد.debit) + Number(قيد.credit);
+  return نجح({
+    الإجمالي,
+    التاريخ: قيد.date.toISOString().slice(0, 10),
+    البيان: قيد.description,
+    بنود: حركات.map((ح) => ({
+      معرف_الحساب: ح.accountId,
+      معرف_حساب_فرعي: ح.subAccountId,
+      المبلغ: Number(ح.amount),
+    })),
+  });
+}
+
+/** تعديل دفعة موزّعة — عكس المجموعة كاملة ثم إعادة إنشائها بالبيانات الجديدة. */
+export async function تعديل_دفعة_موزعة(معرف_المجموعة: number, مدخلات: unknown): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_دفعة_موزعة.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+  const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
+  if (!طرف) return فشل("الطرف غير موجود");
+  const موجودة = await prisma.splitPayment.findFirst({
+    where: { id: معرف_المجموعة, deletedAt: null },
+    select: { id: true },
+  });
+  if (!موجودة) return فشل("الدفعة الموزّعة غير موجودة");
+  const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+  const حسابات = await prisma.treasuryAccount.findMany({ select: { id: true, type: true } });
+  const نوع_الحساب = new Map(حسابات.map((h) => [h.id, h.type]));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await حذف_دفعة_موزعة(tx, معرف_المجموعة);
+      const r = await أنشئ_دفعة_موزعة(tx, {
+        الاتجاه: اتجاه_الطرف(طرف.type),
+        معرف_الطرف: طرف.id,
+        اسم_الطرف: طرف.name,
+        الإجمالي: ب.الإجمالي!,
+        التاريخ: تاريخ,
+        البيان: ب.البيان ?? null,
+        رقم_الفاتورة: ب.رقم_الفاتورة ?? null,
+        بنود: ب.بنود.map((x) => {
+          const نوع = نوع_الحساب.get(x.معرف_الحساب);
+          return {
+            معرف_الحساب: x.معرف_الحساب,
+            معرف_حساب_فرعي: x.معرف_حساب_فرعي ?? null,
+            طريقة_الدفع: نوع ? تسمية_حساب_الخزنة[نوع] : null,
+            المبلغ: x.المبلغ!,
+          };
+        }),
+        أنشأ: فاعل.id,
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "حركة_الحساب",
+        معرف_الكيان: r.معرف_القيد,
+        التفاصيل: { دفعة_موزعة: true, عكس_وإعادة_تطبيق: true, الإجمالي: String(ب.الإجمالي) },
+      });
+    }, { timeout: 30000 });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الدفعة الموزّعة");
+  }
+
+  revalidatePath("/treasury");
+  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
+  return نجح(undefined, "تم تعديل الدفعة الموزّعة وتحديث الأرصدة");
+}
+
 /** حركة يدوية (رصيد افتتاحي / تسوية) — مدين أو دائن مباشرة */
 export async function أضف_حركة_يدوية(مدخلات: unknown): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
@@ -332,8 +482,12 @@ export async function حذف_حركات_مختلطة(ids: number[]): Promise<ن�
     قيود.filter((ق) => ق.directPaymentId && !ق.invoiceId && !ق.treasuryTxnId)
       .map((ق) => ق.directPaymentId!)
   )];
+  const معرفات_دفعة_موزعة = [...new Set(
+    قيود.filter((ق) => ق.splitPaymentId && !ق.invoiceId && !ق.treasuryTxnId && !ق.directPaymentId)
+      .map((ق) => ق.splitPaymentId!)
+  )];
   const يدوية_ids = قيود
-    .filter((ق) => !ق.invoiceId && !ق.treasuryTxnId && !ق.directPaymentId)
+    .filter((ق) => !ق.invoiceId && !ق.treasuryTxnId && !ق.directPaymentId && !ق.splitPaymentId)
     .map((ق) => ق.id);
 
   await prisma.$transaction(async (tx) => {
@@ -353,6 +507,11 @@ export async function حذف_حركات_مختلطة(ids: number[]): Promise<ن�
     // دفع مباشر → حذف ثلاثي (قيد عميل + قيد مورد + خزنة)
     for (const dpId of معرفات_دفع_مباشر) {
       await حذف_دفع_مباشر(tx, dpId);
+    }
+
+    // دفعة موزّعة → عكس المجموعة (قيد + كل حركات الخزنة)
+    for (const spId of معرفات_دفعة_موزعة) {
+      await حذف_دفعة_موزعة(tx, spId);
     }
 
     // يدوية → حذف مباشر + إعادة حساب
@@ -418,6 +577,24 @@ export async function حذف_حركة(id: number): Promise<نتيجة> {
     return فشل("هذه الحركة مرتبطة بفاتورة — عدّل/احذف الفاتورة بدلاً من ذلك");
   if (قيد.treasuryTxnId)
     return فشل("هذه الحركة مرتبطة بحركة خزنة — تُدار من التكامل (المرحلة 9)");
+
+  // ─── دفعة موزّعة: نعكس المجموعة كاملة (قيد + كل حركات الخزنة) ────────────
+  if (قيد.splitPaymentId) {
+    const معرف_المجموعة = قيد.splitPaymentId;
+    await prisma.$transaction(async (tx) => {
+      await حذف_دفعة_موزعة(tx, معرف_المجموعة);
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "DELETE",
+        نوع_الكيان: "حركة_الحساب",
+        معرف_الكيان: معرف_المجموعة,
+        التفاصيل: { دفعة_موزعة: true, البيان: قيد.description },
+      });
+    }, { timeout: 30000 });
+    revalidatePath("/treasury");
+    revalidatePath(مسار_صفحة_الطرف(قيد.party.type, قيد.partyId));
+    return نجح(undefined, "تم حذف الدفعة الموزّعة وعكس كل حركاتها");
+  }
 
   // ─── دفع مباشر: نعكس العملية الثلاثية كاملة ─────────────────────────────
   if (قيد.directPaymentId) {

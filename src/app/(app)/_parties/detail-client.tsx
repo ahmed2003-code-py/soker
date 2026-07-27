@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HandCoins, Trash2, Pencil, ExternalLink, Landmark } from "lucide-react";
+import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -23,7 +23,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
-import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي } from "./actions";
+import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي, سجل_دفعة_موزعة, تعديل_دفعة_موزعة, اجلب_دفعة_موزعة } from "./actions";
 import { تعديل_دفع_مباشر } from "@/app/(app)/treasury/actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
@@ -46,6 +46,7 @@ export type حركة = {
   معرف_خزنة: number | null;
   معرف_حساب_خزنة: number | null;
   معرف_دفع_مباشر: number | null;
+  معرف_دفعة_موزعة: number | null;
   مرتبط: boolean;
 };
 
@@ -76,10 +77,12 @@ export function حركات_الطرف({
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
   const [دفعة, تعيين_دفعة] = React.useState(false);
+  const [دفعة_موزعة, تعيين_دفعة_موزعة] = React.useState(false);
   const { احذف, معلقة } = استخدم_تراجع_الحذف();
   const [تعديل, تعيين_تعديل] = React.useState<حركة | null>(null);
   const [تعديل_خزنة, تعيين_تعديل_خزنة] = React.useState<حركة | null>(null);
   const [تعديل_دفع, تعيين_تعديل_دفع] = React.useState<حركة | null>(null);
+  const [تعديل_موزعة, تعيين_تعديل_موزعة] = React.useState<number | null>(null);
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
   const [محددة, تعيين_محددة] = React.useState<Set<number>>(new Set());
@@ -246,6 +249,10 @@ export function حركات_الطرف({
               ? t("ledger.collect")
               : t("ledger.disburse")}
           </الزر>
+          <الزر variant="blue" onClick={() => تعيين_دفعة_موزعة(true)}>
+            <Layers className="size-4" />
+            دفعة موزّعة
+          </الزر>
         </div>
       </div>
 
@@ -307,6 +314,19 @@ export function حركات_الطرف({
               </div>
             );
           }
+          if (ص.معرف_دفعة_موزعة) {
+            return (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground bg-appgray rounded px-1">موزّعة</span>
+                <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_موزعة(ص.معرف_دفعة_موزعة)} title="تعديل الدفعة الموزّعة">
+                  <Pencil className="size-4 text-primary" />
+                </الزر>
+                <الزر size="sm" variant="ghost" onClick={على_الحذف} title="حذف وعكس كل الحركات">
+                  <Trash2 className="size-4 text-danger" />
+                </الزر>
+              </div>
+            );
+          }
           if (ص.معرف_خزنة) {
             return (
               <div className="flex items-center gap-1">
@@ -361,6 +381,15 @@ export function حركات_الطرف({
           حسابات_الخزنة={حسابات_الخزنة}
           حسابات_فرعية={حسابات_فرعية}
           عند_الإغلاق={() => تعيين_تعديل_دفع(null)}
+        />
+      )}
+      {(دفعة_موزعة || تعديل_موزعة != null) && (
+        <حوار_دفعة_موزعة
+          الطرف={الطرف}
+          حسابات_الخزنة={حسابات_الخزنة}
+          حسابات_فرعية={حسابات_فرعية}
+          معرف_للتعديل={تعديل_موزعة}
+          عند_الإغلاق={() => { تعيين_دفعة_موزعة(false); تعيين_تعديل_موزعة(null); }}
         />
       )}
       {حذف_جماعي && (
@@ -602,6 +631,219 @@ function حوار_دفعة({
             {t("common.cancel")}
           </الزر>
         </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+// ─── حوار الدفعة الموزّعة (إجمالي واحد موزّع على عدة وسائل/حسابات) ───────────
+type بند_موزّع = { معرف_محلي: number; حساب: string; حساب_فرعي: string; مبلغ: string };
+
+function حوار_دفعة_موزعة({
+  الطرف,
+  حسابات_الخزنة,
+  حسابات_فرعية,
+  معرف_للتعديل,
+  عند_الإغلاق,
+}: {
+  الطرف: { id: number; النوع: PartyType };
+  حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  معرف_للتعديل: number | null;
+  عند_الإغلاق: () => void;
+}) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const عداد = React.useRef(0);
+  const بند_جديد = React.useCallback((): بند_موزّع => ({
+    معرف_محلي: ++عداد.current,
+    حساب: حسابات_الخزنة[0] ? String(حسابات_الخزنة[0].id) : "",
+    حساب_فرعي: "",
+    مبلغ: "",
+  }), [حسابات_الخزنة]);
+
+  const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
+  const [إجمالي, تعيين_إجمالي] = React.useState("");
+  const [بيان, تعيين_بيان] = React.useState("");
+  const [بنود, تعيين_بنود] = React.useState<بند_موزّع[]>(() => [بند_جديد()]);
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const [يحمّل, تعيين_يحمّل] = React.useState(معرف_للتعديل != null);
+
+  // وضع التعديل: حمّل بيانات المجموعة
+  React.useEffect(() => {
+    if (معرف_للتعديل == null) return;
+    (async () => {
+      const r = await اجلب_دفعة_موزعة(معرف_للتعديل);
+      if (r.نجاح && r.بيانات) {
+        تعيين_تاريخ(r.بيانات.التاريخ);
+        تعيين_إجمالي(String(r.بيانات.الإجمالي));
+        تعيين_بيان(r.بيانات.البيان ?? "");
+        تعيين_بنود(
+          r.بيانات.بنود.map((ب) => ({
+            معرف_محلي: ++عداد.current,
+            حساب: String(ب.معرف_الحساب),
+            حساب_فرعي: ب.معرف_حساب_فرعي ? String(ب.معرف_حساب_فرعي) : "",
+            مبلغ: String(ب.المبلغ),
+          }))
+        );
+      } else {
+        إشعار.خطأ(r.رسالة ?? "تعذّر تحميل الدفعة");
+        عند_الإغلاق();
+      }
+      تعيين_يحمّل(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [معرف_للتعديل]);
+
+  const مجموع = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
+  const هدف = Number(إجمالي.replace(/,/g, "")) || 0;
+  const فرق = +(هدف - مجموع).toFixed(2);
+  const متساوٍ = هدف > 0 && Math.abs(فرق) < 0.005;
+
+  function حدّث_بند(معرف_محلي: number, تعديل: Partial<بند_موزّع>) {
+    تعيين_بنود((س) => س.map((ب) => (ب.معرف_محلي === معرف_محلي ? { ...ب, ...تعديل } : ب)));
+  }
+  function نوع_حساب(معرف: string) {
+    return حسابات_الخزنة.find((h) => h.id === Number(معرف))?.النوع ?? null;
+  }
+
+  async function حفظ() {
+    if (!متساوٍ) return إشعار.خطأ("مجموع المبالغ الموزّعة يجب أن يساوي الإجمالي تماماً");
+    // تحقق من الحسابات الفرعية الإجبارية
+    for (const ب of بنود) {
+      const نوع = نوع_حساب(ب.حساب);
+      if (نوع && نوع !== "CASH") {
+        const خيارات = حسابات_فرعية[نوع] ?? [];
+        if (خيارات.length > 0 && !ب.حساب_فرعي) {
+          return إشعار.خطأ(`اختر ${تسمية_فرعي(نوع)} لكل بند من نوع ${تسمية_فرعي(نوع)}`);
+        }
+      }
+    }
+    تعيين_جارٍ(true);
+    const payload = {
+      معرف_الطرف: الطرف.id,
+      التاريخ: تاريخ,
+      الإجمالي: إجمالي.replace(/,/g, ""),
+      البيان: بيان || null,
+      بنود: بنود.map((ب) => ({
+        معرف_الحساب: Number(ب.حساب),
+        معرف_حساب_فرعي: ب.حساب_فرعي ? Number(ب.حساب_فرعي) : null,
+        المبلغ: ب.مبلغ.replace(/,/g, ""),
+      })),
+    };
+    const r = معرف_للتعديل != null
+      ? await تعديل_دفعة_موزعة(معرف_للتعديل, payload)
+      : await سجل_دفعة_موزعة(payload);
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-lg">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <Layers className="size-5 text-primary" />
+            {معرف_للتعديل != null ? "تعديل دفعة موزّعة" : "دفعة موزّعة"}
+            {" — "}
+            {الطرف.النوع === "CUSTOMER" ? "تحصيل من العميل" : "صرف للمورد"}
+          </عنوان_الحوار>
+        </رأس_الحوار>
+
+        {يحمّل ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">جارٍ التحميل…</p>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <العنوان مطلوب>التاريخ</العنوان>
+                <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+              </div>
+              <div className="space-y-1.5">
+                <العنوان مطلوب>الإجمالي</العنوان>
+                <الحقل selectOnFocus value={إجمالي} onChange={(e) => تعيين_إجمالي(e.target.value)} placeholder="0.00" className="ltr-nums" />
+              </div>
+            </div>
+
+            {/* بنود التوزيع */}
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <العنوان className="mb-0">توزيع المبلغ على الوسائل</العنوان>
+                <الزر size="sm" variant="outline" onClick={() => تعيين_بنود((س) => [...س, بند_جديد()])}>
+                  <Plus className="size-4" /> بند
+                </الزر>
+              </div>
+              {بنود.map((ب) => {
+                const نوع = نوع_حساب(ب.حساب);
+                const خيارات_فرعية = نوع && نوع !== "CASH" ? (حسابات_فرعية[نوع] ?? []) : [];
+                return (
+                  <div key={ب.معرف_محلي} className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
+                    <div className="flex-1 min-w-[120px] space-y-1">
+                      <span className="text-[11px] text-muted-foreground">الوسيلة</span>
+                      <قائمة_اختيار
+                        الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+                        القيمة={ب.حساب}
+                        عند_التغيير={(v) => حدّث_بند(ب.معرف_محلي, { حساب: v, حساب_فرعي: "" })}
+                        قابل_للبحث={false}
+                      />
+                    </div>
+                    {خيارات_فرعية.length > 0 && (
+                      <div className="flex-1 min-w-[120px] space-y-1">
+                        <span className="text-[11px] text-muted-foreground">{تسمية_فرعي(نوع!)}</span>
+                        <قائمة_اختيار
+                          الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
+                          القيمة={ب.حساب_فرعي}
+                          عند_التغيير={(v) => حدّث_بند(ب.معرف_محلي, { حساب_فرعي: v })}
+                          نص_بديل={`اختر ${تسمية_فرعي(نوع!)}…`}
+                        />
+                      </div>
+                    )}
+                    <div className="w-28 space-y-1">
+                      <span className="text-[11px] text-muted-foreground">المبلغ</span>
+                      <الحقل selectOnFocus className="ltr-nums" value={ب.مبلغ} onChange={(e) => حدّث_بند(ب.معرف_محلي, { مبلغ: e.target.value })} placeholder="0.00" />
+                    </div>
+                    {بنود.length > 1 && (
+                      <الزر size="sm" variant="ghost" onClick={() => تعيين_بنود((س) => س.filter((x) => x.معرف_محلي !== ب.معرف_محلي))} title="حذف البند">
+                        <Trash2 className="size-4 text-danger" />
+                      </الزر>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ملخص المجموع والفرق */}
+            <div className="mt-3 rounded-lg bg-appgray p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">الموزّع</span>
+                <نص_مبلغ القيمة={مجموع} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">الإجمالي المطلوب</span>
+                <نص_مبلغ القيمة={هدف} />
+              </div>
+              <div className={`flex items-center justify-between font-medium ${متساوٍ ? "text-success" : "text-danger"}`}>
+                <span>{متساوٍ ? "مطابق ✓" : "الفرق"}</span>
+                {!متساوٍ && <نص_مبلغ القيمة={Math.abs(فرق)} النوع="مصروف" />}
+              </div>
+            </div>
+
+            <div className="space-y-1.5 mt-3">
+              <العنوان>بيان (اختياري)</العنوان>
+              <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} placeholder="يُملأ تلقائياً إذا تُرك فارغاً" />
+            </div>
+
+            <تذييل_الحوار>
+              <الزر variant="success" onClick={حفظ} disabled={جارٍ || !متساوٍ}>
+                {جارٍ ? "جارٍ الحفظ…" : معرف_للتعديل != null ? "حفظ التعديل" : "تأكيد الدفعة"}
+              </الزر>
+              <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+            </تذييل_الحوار>
+          </>
+        )}
       </محتوى_الحوار>
     </الحوار>
   );
