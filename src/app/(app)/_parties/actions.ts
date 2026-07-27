@@ -6,7 +6,7 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 import { سجّل_عملية_مرتبطة } from "@/app/(app)/_integration/actions";
-import { اعكس_عملية_مرتبطة, حذف_دفع_مباشر, أنشئ_دفعة_موزعة, حذف_دفعة_موزعة, اتجاه_الطرف } from "@/lib/integration";
+import { اعكس_عملية_مرتبطة, حذف_دفع_مباشر, أنشئ_دفعة_موزعة, حذف_دفعة_موزعة, اتجاه_الطرف, type اتجاه } from "@/lib/integration";
 import { اعكس_قيود_الفاتورة } from "@/lib/invoice";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
@@ -236,9 +236,17 @@ export async function سجل_دفعة_موزعة(مدخلات: unknown): Promise
   const t = مخطط_دفعة_موزعة.safeParse(مدخلات);
   if (!t.success) return فشل(t.error.errors[0].message);
   const ب = t.data;
-  const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
-  if (!طرف) return فشل("الطرف غير موجود");
+  const طرف = ب.معرف_الطرف
+    ? await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } })
+    : null;
+  if (ب.معرف_الطرف && !طرف) return فشل("الطرف غير موجود");
+  const اسم_خارجي = ب.اسم_الطرف_الخارجي?.trim() || null;
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+  // الاتجاه: من النوع الصريح إن وُجد، وإلا يُشتق من نوع الطرف المسجّل
+  const الاتجاه: اتجاه = ب.النوع
+    ? (ب.النوع === "INCOME" ? "تحصيل" : "صرف")
+    : اتجاه_الطرف(طرف!.type);
+  const اسم_للعرض = طرف?.name ?? اسم_خارجي ?? "طرف خارجي";
 
   // اشتقاق طريقة الدفع لكل بند من نوع حساب الخزنة (للعرض في بيان الحركة)
   const حسابات = await prisma.treasuryAccount.findMany({ select: { id: true, type: true } });
@@ -247,9 +255,10 @@ export async function سجل_دفعة_موزعة(مدخلات: unknown): Promise
   try {
     await prisma.$transaction(async (tx) => {
       const r = await أنشئ_دفعة_موزعة(tx, {
-        الاتجاه: اتجاه_الطرف(طرف.type),
-        معرف_الطرف: طرف.id,
-        اسم_الطرف: طرف.name,
+        الاتجاه,
+        معرف_الطرف: طرف?.id ?? null,
+        اسم_الطرف_الخارجي: طرف ? null : اسم_خارجي,
+        اسم_الطرف: اسم_للعرض,
         الإجمالي: ب.الإجمالي!,
         التاريخ: تاريخ,
         البيان: ب.البيان ?? null,
@@ -269,8 +278,8 @@ export async function سجل_دفعة_موزعة(مدخلات: unknown): Promise
         المستخدم: فاعل.id,
         العملية: "CREATE",
         نوع_الكيان: "حركة_الحساب",
-        معرف_الكيان: r.معرف_القيد,
-        التفاصيل: { دفعة_موزعة: true, الإجمالي: String(ب.الإجمالي), عدد_البنود: ب.بنود.length },
+        معرف_الكيان: r.معرف_القيد ?? r.معرف_المجموعة,
+        التفاصيل: { دفعة_موزعة: true, الإجمالي: String(ب.الإجمالي), عدد_البنود: ب.بنود.length, ...(طرف ? {} : { طرف_خارجي: اسم_خارجي }) },
       });
     }, { timeout: 30000 });
   } catch (e) {
@@ -278,8 +287,8 @@ export async function سجل_دفعة_موزعة(مدخلات: unknown): Promise
   }
 
   revalidatePath("/treasury");
-  revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
-  return نجح(undefined, "تم تسجيل الدفعة الموزّعة وتحديث الأرصدة");
+  if (طرف) revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
+  return نجح(undefined, "تم تسجيل المعاملة الموزّعة وتحديث الأرصدة");
 }
 
 /** جلب بيانات دفعة موزّعة لملء نموذج التعديل. */
@@ -324,13 +333,15 @@ export async function تعديل_دفعة_موزعة(معرف_المجموعة: 
   const t = مخطط_دفعة_موزعة.safeParse(مدخلات);
   if (!t.success) return فشل(t.error.errors[0].message);
   const ب = t.data;
-  const طرف = await prisma.party.findUnique({ where: { id: ب.معرف_الطرف } });
-  if (!طرف) return فشل("الطرف غير موجود");
-  const موجودة = await prisma.splitPayment.findFirst({
-    where: { id: معرف_المجموعة, deletedAt: null },
-    select: { id: true },
+  // نستخرج الطرف والاتجاه من القيد الأصلي للمجموعة (لا يتغيّران عند التعديل)
+  const قيد_قديم = await prisma.ledgerEntry.findFirst({
+    where: { splitPaymentId: معرف_المجموعة, deletedAt: null },
+    select: { partyId: true, credit: true, debit: true },
   });
-  if (!موجودة) return فشل("الدفعة الموزّعة غير موجودة");
+  if (!قيد_قديم) return فشل("لا يمكن تعديل معاملة بلا طرف مسجّل من هنا");
+  const طرف = await prisma.party.findUnique({ where: { id: قيد_قديم.partyId } });
+  if (!طرف) return فشل("الطرف غير موجود");
+  const الاتجاه: اتجاه = Number(قيد_قديم.credit) > 0 ? "تحصيل" : "صرف";
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
   const حسابات = await prisma.treasuryAccount.findMany({ select: { id: true, type: true } });
   const نوع_الحساب = new Map(حسابات.map((h) => [h.id, h.type]));
@@ -339,7 +350,7 @@ export async function تعديل_دفعة_موزعة(معرف_المجموعة: 
     await prisma.$transaction(async (tx) => {
       await حذف_دفعة_موزعة(tx, معرف_المجموعة);
       const r = await أنشئ_دفعة_موزعة(tx, {
-        الاتجاه: اتجاه_الطرف(طرف.type),
+        الاتجاه,
         معرف_الطرف: طرف.id,
         اسم_الطرف: طرف.name,
         الإجمالي: ب.الإجمالي!,
@@ -361,7 +372,7 @@ export async function تعديل_دفعة_موزعة(معرف_المجموعة: 
         المستخدم: فاعل.id,
         العملية: "UPDATE",
         نوع_الكيان: "حركة_الحساب",
-        معرف_الكيان: r.معرف_القيد,
+        معرف_الكيان: r.معرف_القيد ?? معرف_المجموعة,
         التفاصيل: { دفعة_موزعة: true, عكس_وإعادة_تطبيق: true, الإجمالي: String(ب.الإجمالي) },
       });
     }, { timeout: 30000 });

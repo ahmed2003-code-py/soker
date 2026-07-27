@@ -834,15 +834,17 @@ function حوار_دفعة_موزعة_خزنة({
     مبلغ: "",
   }), [الحسابات]);
 
+  const [نوع, تعيين_نوع] = React.useState<"INCOME" | "EXPENSE">("INCOME");
+  const [نوع_الطرف, تعيين_نوع_الطرف] = React.useState<"registered" | "external" | "none">("registered");
   const [طرف, تعيين_طرف] = React.useState("");
+  const [طرف_خارجي, تعيين_طرف_خارجي] = React.useState("");
   const [تاريخ, تعيين_تاريخ] = React.useState(اليوم());
   const [بيان, تعيين_بيان] = React.useState("");
   const [بنود, تعيين_بنود] = React.useState<بند_مركّب[]>(() => [بند_جديد()]);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   const مجموع = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
-  const صالح = مجموع > 0 && !!طرف;
-  const نوع_الطرف = الأطراف.find((p) => String(p.id) === طرف)?.type ?? null;
+  const صالح = مجموع > 0 && (نوع_الطرف !== "registered" || !!طرف) && (نوع_الطرف !== "external" || !!طرف_خارجي.trim());
 
   function حدّث_بند(معرف_محلي: number, تعديل: Partial<بند_مركّب>) {
     تعيين_بنود((س) => س.map((ب) => (ب.معرف_محلي === معرف_محلي ? { ...ب, ...تعديل } : ب)));
@@ -852,20 +854,23 @@ function حوار_دفعة_موزعة_خزنة({
   }
 
   async function حفظ() {
-    if (!طرف) return إشعار.خطأ("اختر العميل أو المورد");
+    if (نوع_الطرف === "registered" && !طرف) return إشعار.خطأ("اختر العميل أو المورد");
+    if (نوع_الطرف === "external" && !طرف_خارجي.trim()) return إشعار.خطأ("اكتب اسم الطرف");
     if (مجموع <= 0) return إشعار.خطأ("أدخل مبلغاً في بند واحد على الأقل");
     for (const ب of بنود) {
-      const نوع = نوع_حساب(ب.حساب);
-      if (نوع && نوع !== "CASH") {
-        const خيارات = حسابات_فرعية[نوع] ?? [];
+      const ن = نوع_حساب(ب.حساب);
+      if (ن && ن !== "CASH") {
+        const خيارات = حسابات_فرعية[ن] ?? [];
         if (خيارات.length > 0 && !ب.حساب_فرعي) {
-          return إشعار.خطأ(`اختر ${تسمية_فرعي(نوع)} لكل بند من نوعه`);
+          return إشعار.خطأ(`اختر ${تسمية_فرعي(ن)} لكل بند من نوعه`);
         }
       }
     }
     تعيين_جارٍ(true);
     const r = await سجل_دفعة_موزعة({
-      معرف_الطرف: Number(طرف),
+      معرف_الطرف: نوع_الطرف === "registered" && طرف ? Number(طرف) : null,
+      اسم_الطرف_الخارجي: نوع_الطرف === "external" && طرف_خارجي.trim() ? طرف_خارجي.trim() : null,
+      النوع: نوع,
       التاريخ: تاريخ,
       الإجمالي: String(مجموع),
       البيان: بيان || null,
@@ -891,29 +896,69 @@ function حوار_دفعة_موزعة_خزنة({
           </عنوان_الحوار>
         </رأس_الحوار>
         <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground mb-1">
-          وزّع المبلغ على أكثر من حساب خزنة في عملية واحدة — يُخصم الإجمالي مرة واحدة من حساب الطرف، وتُسجَّل حركة مستقلة في كل خزنة.
+          وزّع مبلغاً على أكثر من حساب خزنة في عملية واحدة. لو اخترت طرفاً مسجّلاً يُخصم الإجمالي مرة واحدة من حسابه، وتُسجَّل حركة مستقلة في كل خزنة.
         </p>
+
+        {/* النوع: إيراد (له) / مصروف (عليه) */}
+        <div className="flex items-center gap-2 mb-3">
+          <العنوان className="mb-0">النوع</العنوان>
+          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+            <button
+              type="button"
+              className={`px-3 py-1 transition-colors ${نوع === "INCOME" ? "bg-success text-white" : "hover:bg-muted"}`}
+              onClick={() => تعيين_نوع("INCOME")}
+            >
+              إيراد (له)
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1 transition-colors ${نوع === "EXPENSE" ? "bg-danger text-white" : "hover:bg-muted"}`}
+              onClick={() => تعيين_نوع("EXPENSE")}
+            >
+              مصروف (عليه)
+            </button>
+          </div>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <العنوان مطلوب>الطرف (عميل / مورد)</العنوان>
-            <قائمة_اختيار
-              الخيارات={الأطراف.map((p) => ({
-                القيمة: String(p.id),
-                التسمية: `${p.name} (${p.type === "CUSTOMER" ? "عميل" : "مورد"})`,
-              }))}
-              القيمة={طرف}
-              عند_التغيير={تعيين_طرف}
-              نص_بديل="اختر العميل أو المورد…"
-            />
+            <div className="flex items-center justify-between gap-2">
+              <العنوان className="mb-0">الطرف</العنوان>
+              <div className="flex rounded-lg border border-border overflow-hidden text-[11px]">
+                <button type="button" className={`px-2 py-0.5 transition-colors ${نوع_الطرف === "registered" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_الطرف("registered"); تعيين_طرف_خارجي(""); }}>مسجّل</button>
+                <button type="button" className={`px-2 py-0.5 transition-colors ${نوع_الطرف === "external" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_الطرف("external"); تعيين_طرف(""); }}>خارجي</button>
+                <button type="button" className={`px-2 py-0.5 transition-colors ${نوع_الطرف === "none" ? "bg-primary text-white" : "hover:bg-muted"}`}
+                  onClick={() => { تعيين_نوع_الطرف("none"); تعيين_طرف(""); تعيين_طرف_خارجي(""); }}>بدون</button>
+              </div>
+            </div>
+            {نوع_الطرف === "registered" ? (
+              <قائمة_اختيار
+                الخيارات={الأطراف.map((p) => ({
+                  القيمة: String(p.id),
+                  التسمية: `${p.name} (${p.type === "CUSTOMER" ? "عميل" : "مورد"})`,
+                }))}
+                القيمة={طرف}
+                عند_التغيير={تعيين_طرف}
+                نص_بديل="اختر العميل أو المورد…"
+              />
+            ) : نوع_الطرف === "external" ? (
+              <الحقل value={طرف_خارجي} onChange={(e) => تعيين_طرف_خارجي(e.target.value)} placeholder="اسم الطرف…" />
+            ) : (
+              <p className="text-[12px] text-muted-foreground py-2">حركة خزنة فقط — بلا حساب طرف.</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>التاريخ</العنوان>
             <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
           </div>
         </div>
-        {طرف && (
+        {نوع_الطرف === "registered" && طرف && (
           <p className="mt-1 text-[12px] text-muted-foreground">
-            {نوع_الطرف === "CUSTOMER" ? "تحصيل — يقلّل مديونية العميل ويضيف لكل خزنة." : "صرف — يقلّل المستحق للمورد ويُخصم من كل خزنة."}
+            {نوع === "INCOME"
+              ? "إيراد — يقلّل مديونية العميل / يزيد الدفعة المقدّمة، ويضيف لكل خزنة."
+              : "مصروف — يُخصم من كل خزنة ويُسجَّل مديناً على حساب الطرف."}
           </p>
         )}
 
