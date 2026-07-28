@@ -4,6 +4,7 @@ import { Check, ChevronsUpDown, Plus, Search, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { منبثقة, مشغل_منبثقة, محتوى_منبثقة } from "@/components/ui/popover";
 import { الحقل } from "@/components/ui/input";
+import { ركّز_التالي } from "@/lib/focus-nav";
 
 export type خيار = { القيمة: string; التسمية: string };
 
@@ -53,6 +54,7 @@ export function قائمة_اختيار({
   const [نص_التعديل, تعيين_نص_التعديل] = React.useState("");
   const searchRef = React.useRef<HTMLInputElement>(null);
   const itemButtonsRef = React.useRef<HTMLButtonElement[]>([]);
+  const زر_المُشغِّل = React.useRef<HTMLButtonElement | null>(null);
 
   // عند الفتح: ركّز على أول عنصر مباشرة
   React.useEffect(() => {
@@ -81,8 +83,11 @@ export function قائمة_اختيار({
     عند_التغيير(x.القيمة);
     تعيين_مفتوح(false);
     تعيين_بحث("");
-    // أبلغ الأب بعد إغلاق القائمة
-    setTimeout(() => عند_الاختيار?.(), 20);
+    // أبلغ الأب بعد إغلاق القائمة — أو انتقل تلقائياً للحقل التالي داخل الحوار
+    setTimeout(() => {
+      if (عند_الاختيار) عند_الاختيار();
+      else if (زر_المُشغِّل.current) ركّز_التالي(زر_المُشغِّل.current);
+    }, 20);
   }
 
   function ابدأ_التعديل(x: خيار) {
@@ -107,9 +112,18 @@ export function قائمة_اختيار({
       <مشغل_منبثقة asChild>
         <button
           type="button"
-          ref={triggerRef}
+          data-cb-trigger=""
+          ref={(el) => { زر_المُشغِّل.current = el; triggerRef?.(el); }}
           disabled={disabled}
-          onKeyDown={onKeyDown}
+          onKeyDown={(e) => {
+            // الفورمات ذات التنقل المخصّص (مثل الفاتورة) تُمرّر onKeyDown → نتركها تتحكم
+            if (onKeyDown) { onKeyDown(e); return; }
+            // فتح القائمة بالأسهم وهي مقفولة
+            if (!مفتوح && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              تعيين_مفتوح(true);
+            }
+          }}
           className={cn(
             "flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-2 text-sm shadow-soft focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
             className

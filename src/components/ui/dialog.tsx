@@ -3,6 +3,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { عند_إنتر_للتالي } from "@/lib/focus-nav";
 
 const الحوار = DialogPrimitive.Root;
 const زر_الحوar = DialogPrimitive.Trigger;
@@ -27,7 +28,7 @@ const غطاء_الحوار = React.forwardRef<
 const محتوى_الحوار = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onKeyDown, ...props }, ref) => (
   <بوابة_الحوار>
     <غطاء_الحوار />
     <DialogPrimitive.Content
@@ -37,6 +38,7 @@ const محتوى_الحوار = React.forwardRef<
         "max-h-[90vh] overflow-y-auto rtl:translate-x-1/2",
         className
       )}
+      onKeyDown={(e) => { onKeyDown?.(e); عند_إنتر_للتالي(e); }}
       {...props}
     >
       {children}
