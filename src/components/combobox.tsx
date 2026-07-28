@@ -27,6 +27,8 @@ type الخصائص = {
   عند_التعديل?: (قديم: string, جديد: string) => void;
   /** حذف خيار موجود */
   عند_الحذف?: (قيمة: string) => void;
+  /** ركّز زر المُشغِّل تلقائياً عند التركيب (بلا فتح القائمة) */
+  autoFocus?: boolean;
   className?: string;
   disabled?: boolean;
 };
@@ -45,6 +47,7 @@ export function قائمة_اختيار({
   onKeyDown,
   عند_التعديل,
   عند_الحذف,
+  autoFocus,
   className,
   disabled,
 }: الخصائص) {
@@ -55,6 +58,12 @@ export function قائمة_اختيار({
   const searchRef = React.useRef<HTMLInputElement>(null);
   const itemButtonsRef = React.useRef<HTMLButtonElement[]>([]);
   const زر_المُشغِّل = React.useRef<HTMLButtonElement | null>(null);
+
+  // تركيز تلقائي على زر المُشغِّل عند التركيب (بلا فتح القائمة)
+  React.useEffect(() => {
+    if (autoFocus) requestAnimationFrame(() => زر_المُشغِّل.current?.focus());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // عند الفتح: ركّز على أول عنصر مباشرة
   React.useEffect(() => {

@@ -1307,11 +1307,12 @@ function حوار_حركة({
               عند_التغيير={(v) => تعيين_نوع(v as TxnKind)}
               قابل_للبحث={false}
               نص_بديل="اختر النوع…"
+              autoFocus={!الحركة}
             />
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("pay.amount")}</العنوان>
-            <الحقل autoFocus selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
+            <الحقل selectOnFocus value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" />
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("treasury.col.account")}</العنوان>
