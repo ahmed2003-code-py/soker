@@ -17,7 +17,11 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       where: { id },
       include: {
         lines: true,
-        treasuryTxns: { where: { deletedAt: null }, select: { amount: true } },
+        treasuryTxns: {
+          where: { deletedAt: null },
+          select: { amount: true, accountId: true, subAccountId: true },
+          orderBy: { id: "asc" },
+        },
       },
     }),
     prisma.party.findMany({
@@ -40,8 +44,15 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
   const هو_مورد = نوع_الفاتورة !== "SALE";
   const عميل_زائر = !فاتورة.customerId;
 
-  // حساب إجمالي دفعات الفاتورة الموجودة
+  // حساب إجمالي دفعات الفاتورة الموجودة + تجهيزها لعرضها في النموذج (للمتابعة/الحفظ)
   const إجمالي_الدفعات_الموجودة = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const دفعة_موجودة = فاتورة.treasuryTxns.length > 0
+    ? {
+        المبلغ: إجمالي_الدفعات_الموجودة,
+        معرف_الحساب: فاتورة.treasuryTxns[0].accountId,
+        معرف_حساب_فرعي: فاتورة.treasuryTxns[0].subAccountId,
+      }
+    : null;
 
   // totalAmount = صافي (مبيعات − مرتجعات). لاستعادة رصيد ما قبل الفاتورة:
   // balance_current = balance_before + totalAmount - payments
@@ -87,6 +98,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           الهاتف: فاتورة.phone,
           التاريخ: فاتورة.date.toISOString(),
           ملاحظات: فاتورة.notes,
+          دفعة: دفعة_موجودة,
           البنود: فاتورة.lines.map((l) => ({
             نوع_البند: (l.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
             اللون: l.color,
