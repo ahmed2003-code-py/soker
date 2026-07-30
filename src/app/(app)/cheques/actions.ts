@@ -17,7 +17,7 @@ const انتقالات_الحالة: Record<ChequeStatus, ChequeStatus[]> = {
   REGISTERED: ["PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"],
   PENDING: ["DEPOSITED", "ENDORSED", "COLLECTED", "BOUNCED", "CANCELLED"],
   DEPOSITED: ["COLLECTED", "BOUNCED", "CANCELLED"],
-  ENDORSED: ["COLLECTED", "BOUNCED", "CANCELLED"],
+  ENDORSED: ["BOUNCED", "CANCELLED"], // مُظهَّر لمورد → ارتداد (يرجع مستحق المورد) أو إلغاء
   COLLECTED: ["BOUNCED", "CANCELLED"], // تصحيح: ارتداد بعد التحصيل أو إلغاء (عكس)
   BOUNCED: ["PENDING", "DEPOSITED", "ENDORSED", "CANCELLED"], // إعادة تقديم
   CANCELLED: [], // نهائي
@@ -66,9 +66,9 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
     // أثر الطرف عند الاستلام/التسليم (لو الشيك مربوط بطرف وفي حالة ملتزمة)
     await زامن_آثار_الشيك(
       tx,
-      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null },
+      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: null },
       c.status,
-      null,
+      {},
       فاعل.id
     );
     await تسجيل_عملية(tx, {
@@ -138,10 +138,16 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
   return نجح(undefined, "تم حفظ التعديلات");
 }
 
+type خيارات_حالة = {
+  معرف_حساب_التحصيل?: number | null;
+  معرف_حساب_فرعي?: number | null;
+  معرف_المورد_للتظهير?: number | null;
+};
+
 export async function تغيير_حالة_شيك(
   id: number,
   الحالة: ChequeStatus,
-  معرف_حساب_فرعي?: number | null
+  خيارات: خيارات_حالة = {}
 ): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
@@ -155,18 +161,23 @@ export async function تغيير_حالة_شيك(
       `انتقال غير مسموح: من «${تسمية_حالة_الشيك[شيك.status]}» إلى «${تسمية_حالة_الشيك[الحالة]}»`
     );
   }
+  if (الحالة === "ENDORSED" && شيك.direction !== "INCOMING") {
+    return فشل("التظهير للشيكات الواردة فقط");
+  }
+  if (الحالة === "ENDORSED" && !خيارات.معرف_المورد_للتظهير && !شيك.endorsedToId) {
+    return فشل("اختر المورد المُظهَّر له الشيك");
+  }
   if (الحالة === شيك.status) return نجح(undefined, "لا تغيير");
 
   try {
     await prisma.$transaction(async (tx) => {
-      // مزامنة أثر الطرف والبنك مع الحالة الهدف (idempotent — تغطّي كل الانتقالات)
-      await زامن_آثار_الشيك(tx, شيك, الحالة, معرف_حساب_فرعي ?? null, فاعل.id);
+      await زامن_آثار_الشيك(tx, شيك, الحالة, خيارات, فاعل.id);
       await تسجيل_عملية(tx, {
         المستخدم: فاعل.id,
         العملية: "UPDATE",
         نوع_الكيان: "الشيك",
         معرف_الكيان: id,
-        التفاصيل: { تغيير_الحالة: الحالة, من: شيك.status },
+        التفاصيل: { تغيير_الحالة: الحالة, من: شيك.status, ...(خيارات.معرف_المورد_للتظهير ? { تظهير_لمورد: خيارات.معرف_المورد_للتظهير } : {}) },
       });
     });
   } catch (e) {
@@ -174,11 +185,18 @@ export async function تغيير_حالة_شيك(
   }
   revalidatePath("/cheques");
   revalidatePath("/treasury");
+  if (خيارات.معرف_المورد_للتظهير) revalidatePath(`/suppliers/${خيارات.معرف_المورد_للتظهير}`);
+  if (شيك.endorsedToId) revalidatePath(`/suppliers/${شيك.endorsedToId}`);
   if (شيك.partyId) {
     revalidatePath(`/customers/${شيك.partyId}`);
     revalidatePath(`/suppliers/${شيك.partyId}`);
   }
   return نجح(undefined, "تم تحديث الحالة");
+}
+
+/** تظهير شيك وارد لمورد (يقلّل مستحق المورد، بلا حركة خزنة). */
+export async function ظهّر_شيك(id: number, معرف_المورد: number): Promise<نتيجة> {
+  return تغيير_حالة_شيك(id, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد });
 }
 
 export async function حذف_شيك(id: number): Promise<نتيجة> {

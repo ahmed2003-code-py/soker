@@ -120,6 +120,7 @@ model Party {
   ledgerEntries LedgerEntry[]
   treasuryTxns  TreasuryTxn[]
   cheques       Cheque[]      @relation("PartyCheques")
+  endorsedCheques Cheque[]    @relation("PartyEndorsedCheques")
 
   @@index([type])
   @@index([name])
@@ -339,8 +340,11 @@ model Cheque {
   dueDate         DateTime         @map("due_date") @db.Date
   chequeNumber    String?          @map("cheque_number")
   status          ChequeStatus     @default(PENDING) @map("status")
-  collectedTxnId  Int?             @unique @map("collected_txn_id") // حركة الخزنة عند التحصيل الفعلي (البنك)
+  collectedTxnId  Int?             @unique @map("collected_txn_id") // حركة الخزنة عند التحصيل الفعلي (نقدي/بنك)
   partyLedgerEntryId Int?          @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
+  endorseLedgerEntryId Int?        @map("endorse_ledger_entry_id") // قيد أثر التظهير على المورد (شيك وارد مُظهَّر)
+  endorsedToId    Int?             @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
+  endorsedTo      Party?           @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   notes           String?          @map("notes")

@@ -14,7 +14,7 @@ export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات, بنوك, أطراف] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
@@ -34,6 +34,7 @@ export default async function صفحة_الشيكات() {
       orderBy: { name: "asc" },
       select: { id: true, name: true, type: true },
     }),
+    prisma.treasuryAccount.findMany({ orderBy: { id: "asc" }, select: { id: true, type: true } }),
   ]);
 
   const بيانات = شيكات.map((c) => ({
@@ -74,6 +75,8 @@ export default async function صفحة_الشيكات() {
         البيانات={بيانات}
         بنوك={بنوك.map((b) => ({ id: b.id, الاسم: b.name }))}
         الأطراف={أطراف.map((p) => ({ id: p.id, الاسم: p.name, النوع: p.type }))}
+        حساب_نقدي={حسابات_الخزنة.find((a) => a.type === "CASH")?.id ?? null}
+        حساب_بنك={حسابات_الخزنة.find((a) => a.type === "BANK")?.id ?? null}
       />
     </div>
   );
