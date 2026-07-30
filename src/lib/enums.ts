@@ -41,6 +41,7 @@ export const تسمية_حالة_الشيك: Record<ChequeStatus, string> = {
   DEPOSITED: "مودع",
   ENDORSED: "مظهّر",
   COLLECTED: "محصّل",
+  SETTLED: "تمت التسوية",
   BOUNCED: "مرتد",
   CANCELLED: "ملغي",
 };

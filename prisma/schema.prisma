@@ -44,7 +44,8 @@ enum ChequeStatus {
   PENDING    // تحت التحصيل / منتظر
   DEPOSITED  // مودع بالبنك
   ENDORSED   // مظهّر (سُلّم لمورد)
-  COLLECTED  // محصّل
+  COLLECTED  // محصّل / تم صرفه من البنك
+  SETTLED    // تمت التسوية على دفعات (بدون بنك)
   BOUNCED    // مرتد
   CANCELLED  // ملغي
 }
@@ -286,6 +287,8 @@ model TreasuryTxn {
   directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
   splitPaymentId  Int?           @map("split_payment_id")
   splitPayment    SplitPayment?  @relation(fields: [splitPaymentId], references: [id], onDelete: SetNull)
+  chequeId        Int?           @map("cheque_id") // دفعة تسوية لشيك صادر (بدون أثر على دفتر الأستاذ)
+  cheque          Cheque?        @relation("ChequeSettlementTxns", fields: [chequeId], references: [id], onDelete: SetNull)
 
   createdById Int       @map("created_by_id")
   createdBy   User      @relation("TreasuryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -299,6 +302,7 @@ model TreasuryTxn {
   @@index([kind])
   @@index([directPaymentId])
   @@index([splitPaymentId])
+  @@index([chequeId])
   // فهرس trigram لتسريع البحث (contains/ILIKE) في البيان ضمن البحث الموحّد
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "treasury_txns_description_trgm_idx")
   @@map("treasury_txns")
@@ -347,6 +351,7 @@ model Cheque {
   endorsedTo      Party?           @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
+  settlementTxns  TreasuryTxn[]    @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
   notes           String?          @map("notes")
   imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
   imageMime       String?      @map("image_mime")

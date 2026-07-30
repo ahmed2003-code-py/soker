@@ -4,7 +4,7 @@ import { أضف_قيد, احذف_قيد_ناعم } from "@/lib/ledger";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 
 /** الحالات التي يُعتبر فيها الشيك «مستلَماً/مُسلَّماً» فيؤثّر على حساب الطرف. */
-export const حالات_ملتزمة: ChequeStatus[] = ["PENDING", "DEPOSITED", "ENDORSED", "COLLECTED"];
+export const حالات_ملتزمة: ChequeStatus[] = ["PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "SETTLED"];
 
 /** هل دخل الشيك معاملة مالية (فلا يُعدَّل/يُحذف — يُصحَّح بالإلغاء/العكس)؟ */
 export function دخل_معاملة_مالية(شيك: {
@@ -16,7 +16,7 @@ export function دخل_معاملة_مالية(شيك: {
   return شيك.collectedTxnId != null ||
     شيك.partyLedgerEntryId != null ||
     شيك.endorseLedgerEntryId != null ||
-    (["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"] as ChequeStatus[]).includes(شيك.status);
+    (["DEPOSITED", "ENDORSED", "COLLECTED", "SETTLED", "CANCELLED"] as ChequeStatus[]).includes(شيك.status);
 }
 
 export type شيك_للمزامنة = {

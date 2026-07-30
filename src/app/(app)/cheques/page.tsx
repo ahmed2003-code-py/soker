@@ -9,12 +9,14 @@ import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الشيكات } from "./client";
 import { prisma as db } from "@/lib/prisma";
+import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 
 export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة, حسابات_فرعية] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
@@ -35,6 +37,7 @@ export default async function صفحة_الشيكات() {
       select: { id: true, name: true, type: true },
     }),
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" }, select: { id: true, type: true } }),
+    اجلب_خريطة_حسابات_فرعية(),
   ]);
 
   const بيانات = شيكات.map((c) => ({
@@ -77,6 +80,8 @@ export default async function صفحة_الشيكات() {
         الأطراف={أطراف.map((p) => ({ id: p.id, الاسم: p.name, النوع: p.type }))}
         حساب_نقدي={حسابات_الخزنة.find((a) => a.type === "CASH")?.id ?? null}
         حساب_بنك={حسابات_الخزنة.find((a) => a.type === "BANK")?.id ?? null}
+        حسابات_الخزنة={حسابات_الخزنة.map((a) => ({ id: a.id, النوع: a.type, التسمية: تسمية_حساب_الخزنة[a.type] }))}
+        حسابات_فرعية={حسابات_فرعية}
       />
     </div>
   );
