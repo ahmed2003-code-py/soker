@@ -1,5 +1,8 @@
+import Link from "next/link";
+import { Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { الزر } from "@/components/ui/button";
 import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
@@ -46,7 +49,15 @@ export default async function صفحة_الشيكات() {
 
   return (
     <div>
-      <ترويسة_الصفحة العنوان={t("cheque.title")} الوصف={t("cheque.subtitle")} />
+      <ترويسة_الصفحة
+        العنوان={t("cheque.title")}
+        الوصف={t("cheque.subtitle")}
+        إجراء={
+          <الزر variant="outline" asChild>
+            <Link href="/cheques/query"><Search className="size-4" /> استعلام الشيكات</Link>
+          </الزر>
+        }
+      />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <بطاقة_مؤشر العنوان={t("cheque.kpi.due7")} القيمة={تنبيهات.عدد_خلال_7} لون="warning" />
         <بطاقة_مؤشر العنوان={t("cheque.kpi.due_month")} القيمة={تنبيهات.عدد_هذا_الشهر} لون="navy" />
