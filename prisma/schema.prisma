@@ -89,6 +89,8 @@ model User {
   treasuryUpdated     TreasuryTxn[]     @relation("TreasuryUpdatedBy")
   chequesCreated      Cheque[]          @relation("ChequeCreatedBy")
   chequesUpdated      Cheque[]          @relation("ChequeUpdatedBy")
+  chequeAllocsCreated ChequeInvoiceAllocation[] @relation("ChequeAllocCreatedBy")
+  chequeBooksCreated  ChequeBook[]      @relation("ChequeBookCreatedBy")
   settingsUpdated     Setting[]         @relation("SettingUpdatedBy")
 
   @@map("users")
@@ -159,6 +161,7 @@ model Invoice {
   lines         InvoiceLine[]
   ledgerEntries LedgerEntry[]
   treasuryTxns  TreasuryTxn[]
+  chequeAllocations ChequeInvoiceAllocation[]
 
   @@index([date])
   @@index([customerId])
@@ -352,6 +355,10 @@ model Cheque {
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   settlementTxns  TreasuryTxn[]    @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
+  allocations     ChequeInvoiceAllocation[] // توزيع قيمة الشيك على فواتير (المرحلة 4)
+  chequeBookId    Int?             @map("cheque_book_id") // دفتر/حافظة الشيك (المرحلة 5)
+  chequeBook      ChequeBook?      @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
+  bookLeafNo      Int?             @map("book_leaf_no") // رقم الورقة داخل الدفتر
   notes           String?          @map("notes")
   imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
   imageMime       String?      @map("image_mime")
@@ -374,6 +381,49 @@ model Cheque {
   @@index([beneficiary(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_beneficiary_trgm_idx")
   @@index([chequeNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_cheque_number_trgm_idx")
   @@map("cheques")
+}
+
+// ==================== ChequeInvoiceAllocation (توزيع شيك على فواتير — المرحلة 4) ====================
+// ربط قيمة شيك (كلياً أو جزئياً) بفاتورة/فواتير محددة لتتبّع المدفوع منها بشيكات.
+// طبقة تخصيص/معلومات فقط: لا تُنشئ قيوداً محاسبية (أثر الطرف تمّ عند استلام/تسليم الشيك).
+model ChequeInvoiceAllocation {
+  id        Int     @id @default(autoincrement())
+  chequeId  Int     @map("cheque_id")
+  cheque    Cheque  @relation(fields: [chequeId], references: [id], onDelete: Cascade)
+  invoiceId Int     @map("invoice_id")
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Decimal @map("amount") @db.Decimal(18, 4) // المبلغ المخصَّص لهذه الفاتورة
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("ChequeAllocCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([chequeId, invoiceId])
+  @@index([invoiceId])
+  @@map("cheque_invoice_allocations")
+}
+
+// ==================== ChequeBook (دفتر/حافظة الشيكات — المرحلة 5) ====================
+// دفتر شيكات صادرة (بنك + مدى أرقام + أوراق) أو حافظة شيكات واردة (تجميع بالاسم).
+model ChequeBook {
+  id          Int             @id @default(autoincrement())
+  name        String          @map("name") // اسم الدفتر / الحافظة
+  direction   ChequeDirection @default(OUTGOING) @map("direction") // صادر = دفتر، وارد = حافظة
+  bankName    String?         @map("bank_name")
+  startNo     Int?            @map("start_no") // أول رقم ورقة (للدفاتر الصادرة)
+  endNo       Int?            @map("end_no")   // آخر رقم ورقة
+  notes       String?         @map("notes")
+  isActive    Boolean         @default(true) @map("is_active")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("ChequeBookCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  cheques Cheque[] @relation("BookCheques")
+
+  @@index([direction])
+  @@index([isActive])
+  @@map("cheque_books")
 }
 
 // ==================== ActivityLog (سجل العمليات) ====================

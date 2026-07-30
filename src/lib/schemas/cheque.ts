@@ -17,6 +17,8 @@ export const مخطط_شيك = z.object({
     .enum(["REGISTERED", "PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "BOUNCED", "CANCELLED"])
     .default("REGISTERED"),
   معرف_الطرف: z.number().int().positive().optional().nullable(),
+  معرف_الدفتر: z.number().int().positive().optional().nullable(),
+  رقم_الورقة: z.number().int().positive().optional().nullable(),
   ملاحظات: z.string().trim().optional().nullable(),
   // الصورة (المرحلة 8): base64 + النوع
   صورة_base64: z.string().optional().nullable(),

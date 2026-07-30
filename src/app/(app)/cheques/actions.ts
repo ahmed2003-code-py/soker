@@ -60,6 +60,8 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
         direction: ب.الاتجاه,
         status: ب.الحالة,
         partyId: ب.معرف_الطرف ?? null,
+        chequeBookId: ب.معرف_الدفتر ?? null,
+        bookLeafNo: ب.رقم_الورقة ?? null,
         notes: ب.ملاحظات || null,
         imageData: فكّ_base64(ب.صورة_base64),
         imageMime: ب.صورة_mime || null,
@@ -124,6 +126,8 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
         direction: ب.الاتجاه,
         status: ب.الحالة,
         partyId: ب.معرف_الطرف ?? null,
+        chequeBookId: ب.معرف_الدفتر ?? null,
+        bookLeafNo: ب.رقم_الورقة ?? null,
         notes: ب.ملاحظات || null,
         ...(صورة ? { imageData: صورة, imageMime: ب.صورة_mime || null } : {}),
         ...(ب.نص_OCR ? { ocrText: ب.نص_OCR } : {}),
@@ -420,6 +424,123 @@ export async function اجلب_دفعات_التسوية(id: number): Promise<
     المُسدَّد: دفعات.reduce((س, د2) => س + Number(د2.amount), 0),
     الدفعات: دفعات.map((د2) => ({ id: د2.id, المبلغ: Number(د2.amount), الطريقة: د2.method, التاريخ: د2.date.toISOString(), البيان: د2.description })),
   });
+}
+
+// ============================================================
+// المرحلة 4 — توزيع الشيك (الوارد) على فواتير العميل (تتبّع فقط، بلا قيود)
+// ============================================================
+
+/** جلب فواتير عميل الشيك مع ما غُطّي منها بشيكات + التوزيع الحالي لهذا الشيك. */
+export async function اجلب_فواتير_الطرف_للتوزيع(معرف_الشيك: number): Promise<
+  نتيجة<{
+    قيمة_الشيك: number;
+    اسم_الطرف: string | null;
+    الفواتير: { id: number; رقم: number | null; التاريخ: string; الإجمالي: number; مغطّى_بشيكات_أخرى: number; المخصَّص_لهذا_الشيك: number }[];
+  }>
+> {
+  await اطلب_المستخدم();
+  const شيك = await prisma.cheque.findUnique({
+    where: { id: معرف_الشيك },
+    select: { id: true, amount: true, direction: true, partyId: true, party: { select: { name: true } } },
+  });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.direction !== "INCOMING") return فشل("التوزيع على الفواتير للشيكات الواردة فقط");
+  if (!شيك.partyId) return فشل("اربط الشيك بعميل أولاً لتوزيعه على فواتيره");
+
+  const [فواتير, توزيع_حالي] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { customerId: شيك.partyId, invoiceType: "SALE" },
+      orderBy: { date: "desc" },
+      select: { id: true, number: true, date: true, totalAmount: true },
+    }),
+    prisma.chequeInvoiceAllocation.findMany({ where: { chequeId: معرف_الشيك }, select: { invoiceId: true, amount: true } }),
+  ]);
+  const معرفات = فواتير.map((f) => f.id);
+  // ما غُطّي من فواتير هذا العميل بشيكات أخرى (غير المرتد/الملغى وغير هذا الشيك)
+  const بنود_أخرى = await prisma.chequeInvoiceAllocation.findMany({
+    where: { invoiceId: { in: معرفات }, chequeId: { not: معرف_الشيك }, cheque: { status: { notIn: ["BOUNCED", "CANCELLED"] } } },
+    select: { invoiceId: true, amount: true },
+  });
+  const غطاء_آخر = new Map<number, ReturnType<typeof د>>();
+  for (const ب of بنود_أخرى) غطاء_آخر.set(ب.invoiceId, (غطاء_آخر.get(ب.invoiceId) ?? د(0)).plus(ب.amount));
+  const حالي = new Map(توزيع_حالي.map((ب) => [ب.invoiceId, ب.amount]));
+
+  return نجح({
+    قيمة_الشيك: Number(شيك.amount),
+    اسم_الطرف: شيك.party?.name ?? null,
+    الفواتير: فواتير.map((f) => ({
+      id: f.id,
+      رقم: f.number,
+      التاريخ: f.date.toISOString(),
+      الإجمالي: Number(f.totalAmount),
+      مغطّى_بشيكات_أخرى: Number(غطاء_آخر.get(f.id) ?? 0),
+      المخصَّص_لهذا_الشيك: Number(حالي.get(f.id) ?? 0),
+    })),
+  });
+}
+
+/** حفظ توزيع شيك على فواتير — يستبدل التوزيع السابق بالكامل. تتبّع فقط، بلا أثر محاسبي. */
+export async function حدّد_توزيع_شيك(
+  معرف_الشيك: number,
+  بنود: { معرف_الفاتورة: number; المبلغ: string | number }[]
+): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const شيك = await prisma.cheque.findUnique({ where: { id: معرف_الشيك }, select: { id: true, amount: true, direction: true, partyId: true } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.direction !== "INCOMING") return فشل("التوزيع على الفواتير للشيكات الواردة فقط");
+  if (!شيك.partyId) return فشل("اربط الشيك بعميل أولاً");
+
+  // تنظيف البنود: مبالغ موجبة فقط
+  const نظيفة = بنود
+    .map((ب) => ({ معرف_الفاتورة: ب.معرف_الفاتورة, المبلغ: د(String(ب.المبلغ).replace(/,/g, "")) }))
+    .filter((ب) => ب.المبلغ.greaterThan(0));
+
+  // منع تكرار نفس الفاتورة
+  const مرئية = new Set<number>();
+  for (const ب of نظيفة) {
+    if (مرئية.has(ب.معرف_الفاتورة)) return فشل("فاتورة مكررة في التوزيع");
+    مرئية.add(ب.معرف_الفاتورة);
+  }
+
+  const إجمالي = نظيفة.reduce((س, ب) => س.plus(ب.المبلغ), د(0));
+  if (إجمالي.greaterThan(د(شيك.amount).plus(0.005))) {
+    return فشل(`إجمالي التوزيع (${إجمالي.toFixed(2)}) أكبر من قيمة الشيك (${د(شيك.amount).toFixed(2)})`);
+  }
+  // التحقق أن كل الفواتير تخص عميل الشيك
+  if (نظيفة.length) {
+    const فواتير = await prisma.invoice.findMany({
+      where: { id: { in: نظيفة.map((ب) => ب.معرف_الفاتورة) } },
+      select: { id: true, customerId: true },
+    });
+    const خريطة = new Map(فواتير.map((f) => [f.id, f.customerId]));
+    for (const ب of نظيفة) {
+      if (!خريطة.has(ب.معرف_الفاتورة)) return فشل("فاتورة غير موجودة");
+      if (خريطة.get(ب.معرف_الفاتورة) !== شيك.partyId) return فشل("فاتورة لا تخص عميل الشيك");
+    }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.chequeInvoiceAllocation.deleteMany({ where: { chequeId: معرف_الشيك } });
+      if (نظيفة.length) {
+        await tx.chequeInvoiceAllocation.createMany({
+          data: نظيفة.map((ب) => ({ chequeId: معرف_الشيك, invoiceId: ب.معرف_الفاتورة, amount: ب.المبلغ, createdById: فاعل.id })),
+        });
+      }
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: معرف_الشيك,
+        التفاصيل: { توزيع_على_فواتير: نظيفة.map((ب) => ({ فاتورة: ب.معرف_الفاتورة, مبلغ: ب.المبلغ.toString() })), إجمالي_موزَّع: إجمالي.toString() },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء حفظ التوزيع");
+  }
+  revalidatePath("/cheques");
+  return نجح(undefined, "تم حفظ توزيع الشيك على الفواتير");
 }
 
 export async function حذف_شيك(id: number): Promise<نتيجة> {

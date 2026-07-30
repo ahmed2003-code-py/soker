@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد } from "./actions";
+import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -86,17 +86,21 @@ export type شيك = {
   الاتجاه: ChequeDirection;
   الحالة: ChequeStatus;
   معرف_الطرف: number | null;
+  معرف_الدفتر?: number | null;
+  رقم_الورقة?: number | null;
   ملاحظات: string | null;
   لها_صورة: boolean;
   متأخر: boolean;
 };
 
 export type طرف_شيك = { id: number; الاسم: string; النوع: "CUSTOMER" | "SUPPLIER" };
+export type خيار_دفتر = { id: number; الاسم: string; الاتجاه: "INCOMING" | "OUTGOING"; اسم_البنك: string | null };
 
 export function شاشة_الشيكات({
   البيانات,
   بنوك,
   الأطراف,
+  دفاتر = [],
   حساب_نقدي,
   حساب_بنك,
   حسابات_الخزنة,
@@ -105,6 +109,7 @@ export function شاشة_الشيكات({
   البيانات: شيك[];
   بنوك: { id: number; الاسم: string }[];
   الأطراف: طرف_شيك[];
+  دفاتر?: خيار_دفتر[];
   حساب_نقدي: number | null;
   حساب_بنك: number | null;
   حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
@@ -123,6 +128,7 @@ export function شاشة_الشيكات({
   const [تظهير_شيك, تعيين_تظهير_شيك] = React.useState<شيك | null>(null);
   const [تسوية_شيك, تعيين_تسوية_شيك] = React.useState<شيك | null>(null);
   const [سداد_مركب, تعيين_سداد_مركب] = React.useState(false);
+  const [توزيع_شيك, تعيين_توزيع_شيك] = React.useState<شيك | null>(null);
   const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
@@ -261,6 +267,12 @@ export function شاشة_الشيكات({
           {ص.الاتجاه === "OUTGOING" && (ص.الحالة === "PENDING" || ص.الحالة === "SETTLED") && (
             <الزر size="sm" variant="ghost" title="تسوية على دفعات" onClick={() => تعيين_تسوية_شيك(ص)}>
               <Wallet className="size-4 text-primary" />
+            </الزر>
+          )}
+          {/* توزيع على فواتير العميل — للشيكات الواردة المربوطة بعميل */}
+          {ص.الاتجاه === "INCOMING" && ص.معرف_الطرف && (
+            <الزر size="sm" variant="ghost" title="توزيع على فواتير العميل" onClick={() => تعيين_توزيع_شيك(ص)}>
+              <ListChecks className="size-4 text-primary-blue" />
             </الزر>
           )}
           <سجل_التغييرات النوع="الشيك" المعرف={ص.id} تسمية="" />
@@ -455,6 +467,7 @@ export function شاشة_الشيكات({
           شيك={نموذج.شيك}
           اتجاه_افتراضي={نموذج.اتجاه_افتراضي ?? "INCOMING"}
           الأطراف={الأطراف}
+          دفاتر={دفاتر}
           عند_الإغلاق={() => تعيين_نموذج(null)}
         />
       )}
@@ -473,6 +486,12 @@ export function شاشة_الشيكات({
           حسابات_فرعية={حسابات_فرعية}
           شيكات_متاحة={البيانات.filter((c) => c.الاتجاه === "INCOMING" && ["REGISTERED", "PENDING", "BOUNCED"].includes(c.الحالة))}
           عند_الإغلاق={() => { تعيين_سداد_مركب(false); router.refresh(); }}
+        />
+      )}
+      {توزيع_شيك && (
+        <حوار_توزيع
+          الشيك={توزيع_شيك}
+          عند_الإغلاق={() => { تعيين_توزيع_شيك(null); router.refresh(); }}
         />
       )}
       {تظهير_شيك && (
@@ -514,11 +533,13 @@ export function حوار_شيك({
   شيك,
   اتجاه_افتراضي = "INCOMING",
   الأطراف = [],
+  دفاتر = [],
   عند_الإغلاق,
 }: {
   شيك?: شيك;
   اتجاه_افتراضي?: ChequeDirection;
   الأطراف?: طرف_شيك[];
+  دفاتر?: خيار_دفتر[];
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
@@ -540,6 +561,12 @@ export function حوار_شيك({
   const [معرف_الطرف, تعيين_معرف_الطرف] = React.useState<string>(
     شيك?.معرف_الطرف ? String(شيك.معرف_الطرف) : ""
   );
+  const [معرف_الدفتر, تعيين_معرف_الدفتر] = React.useState<string>(
+    شيك?.معرف_الدفتر ? String(شيك.معرف_الدفتر) : ""
+  );
+  const [رقم_الورقة, تعيين_رقم_الورقة] = React.useState<string>(
+    شيك?.رقم_الورقة != null ? String(شيك.رقم_الورقة) : ""
+  );
   const [صورة, تعيين_صورة] = React.useState<{ base64: string; mime: string; نص?: string } | null>(null);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const حدّث = (ك: string, v: string) => تعيين((س) => ({ ...س, [ك]: v }));
@@ -548,12 +575,16 @@ export function حوار_شيك({
   const أطراف_مناسبة = الأطراف.filter((p) =>
     ق.الاتجاه === "INCOMING" ? p.النوع === "CUSTOMER" : p.النوع === "SUPPLIER"
   );
+  // الدفاتر/الحافظات حسب الاتجاه
+  const دفاتر_مناسبة = دفاتر.filter((d) => d.الاتجاه === ق.الاتجاه);
 
   async function احفظ() {
     تعيين_جارٍ(true);
     const payload = {
       ...ق,
       معرف_الطرف: معرف_الطرف ? Number(معرف_الطرف) : null,
+      معرف_الدفتر: معرف_الدفتر ? Number(معرف_الدفتر) : null,
+      رقم_الورقة: رقم_الورقة ? Number(رقم_الورقة) : null,
       صورة_base64: صورة?.base64 ?? null,
       صورة_mime: صورة?.mime ?? null,
       نص_OCR: صورة?.نص ?? null,
@@ -641,6 +672,25 @@ export function حوار_شيك({
               نص_بديل={ق.الاتجاه === "INCOMING" ? "اربط بعميل…" : "اربط بمورد…"}
             />
           </div>
+          {دفاتر_مناسبة.length > 0 && (
+            <>
+              <div className="space-y-1.5">
+                <العنوان>{ق.الاتجاه === "OUTGOING" ? "الدفتر (اختياري)" : "الحافظة (اختياري)"}</العنوان>
+                <قائمة_اختيار
+                  الخيارات={[
+                    { القيمة: "", التسمية: "— بدون —" },
+                    ...دفاتر_مناسبة.map((d) => ({ القيمة: String(d.id), التسمية: d.اسم_البنك ? `${d.الاسم} — ${d.اسم_البنك}` : d.الاسم })),
+                  ]}
+                  القيمة={معرف_الدفتر}
+                  عند_التغيير={(v) => { تعيين_معرف_الدفتر(v); if (!v) تعيين_رقم_الورقة(""); }}
+                  نص_بديل="اختر الدفتر/الحافظة…"
+                />
+              </div>
+              {معرف_الدفتر && (
+                <Field label="رقم الورقة" value={رقم_الورقة} onChange={(v) => تعيين_رقم_الورقة(v.replace(/[^\d]/g, ""))} رقمي />
+              )}
+            </>
+          )}
           <div className="space-y-1.5 sm:col-span-2">
             <العنوان>{t("party.f.notes")}</العنوان>
             <منطقة_نص value={ق.ملاحظات} onChange={(e) => حدّث("ملاحظات", e.target.value)} />
@@ -912,6 +962,123 @@ function حوار_تسوية({
 
         <تذييل_الحوار>
           <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+function حوار_توزيع({ الشيك, عند_الإغلاق }: { الشيك: شيك; عند_الإغلاق: () => void }) {
+  const إشعار = useإشعار();
+  const [قيمة_الشيك, تعيين_قيمة_الشيك] = React.useState(الشيك.المبلغ);
+  const [اسم_الطرف, تعيين_اسم_الطرف] = React.useState<string | null>(null);
+  const [فواتير, تعيين_فواتير] = React.useState<
+    { id: number; رقم: number | null; التاريخ: string; الإجمالي: number; مغطّى_بشيكات_أخرى: number; المخصَّص_لهذا_الشيك: number }[]
+  >([]);
+  const [مبالغ, تعيين_مبالغ] = React.useState<Record<number, string>>({});
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const [محمّل, تعيين_محمّل] = React.useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      const r = await اجلب_فواتير_الطرف_للتوزيع(الشيك.id);
+      if (!r.نجاح || !r.بيانات) { إشعار.خطأ(r.رسالة ?? "تعذّر تحميل الفواتير"); عند_الإغلاق(); return; }
+      تعيين_قيمة_الشيك(r.بيانات.قيمة_الشيك);
+      تعيين_اسم_الطرف(r.بيانات.اسم_الطرف);
+      تعيين_فواتير(r.بيانات.الفواتير);
+      const م: Record<number, string> = {};
+      for (const f of r.بيانات.الفواتير) if (f.المخصَّص_لهذا_الشيك > 0) م[f.id] = String(f.المخصَّص_لهذا_الشيك);
+      تعيين_مبالغ(م);
+      تعيين_محمّل(true);
+    })();
+    /* eslint-disable-next-line */
+  }, []);
+
+  const رقم = (v: string | undefined) => Number((v ?? "").replace(/,/g, "")) || 0;
+  const موزَّع = Object.values(مبالغ).reduce((س, v) => س + رقم(v), 0);
+  const متبقٍ = +(قيمة_الشيك - موزَّع).toFixed(2);
+
+  function تعبئة_تلقائية() {
+    let باقٍ = قيمة_الشيك;
+    const م: Record<number, string> = {};
+    for (const f of فواتير) {
+      if (باقٍ <= 0.005) break;
+      const مطلوب = +(f.الإجمالي - f.مغطّى_بشيكات_أخرى).toFixed(2); // المتبقّي غير المغطّى بشيكات أخرى
+      if (مطلوب <= 0) continue;
+      const خصّص = Math.min(مطلوب, باقٍ);
+      م[f.id] = String(+خصّص.toFixed(2));
+      باقٍ = +(باقٍ - خصّص).toFixed(2);
+    }
+    تعيين_مبالغ(م);
+  }
+
+  async function احفظ() {
+    if (متبقٍ < -0.005) return إشعار.خطأ("إجمالي التوزيع أكبر من قيمة الشيك");
+    تعيين_جارٍ(true);
+    const بنود = فواتير
+      .filter((f) => رقم(مبالغ[f.id]) > 0)
+      .map((f) => ({ معرف_الفاتورة: f.id, المبلغ: رقم(مبالغ[f.id]) }));
+    const r = await حدّد_توزيع_شيك(الشيك.id, بنود);
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-2xl">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <ListChecks className="size-5 text-primary-blue" /> توزيع الشيك على فواتير{اسم_الطرف ? ` — ${اسم_الطرف}` : ""}
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground">
+          تتبّع فقط: تحدّد أي فواتير يغطّيها هذا الشيك. لا يُنشئ قيوداً محاسبية — أثر العميل تمّ وقت استلام الشيك.
+        </p>
+
+        <div className="grid grid-cols-3 gap-2 text-center text-sm my-1">
+          <div className="rounded-lg bg-appgray p-2"><div className="text-[11px] text-muted-foreground">قيمة الشيك</div><div className="font-semibold"><نص_مبلغ القيمة={قيمة_الشيك} /></div></div>
+          <div className="rounded-lg bg-success-soft/40 p-2"><div className="text-[11px] text-muted-foreground">الموزَّع</div><div className="font-semibold text-success"><نص_مبلغ القيمة={موزَّع} /></div></div>
+          <div className={`rounded-lg p-2 ${متبقٍ < -0.005 ? "bg-danger-soft/50" : "bg-warning-soft/40"}`}><div className="text-[11px] text-muted-foreground">غير موزَّع</div><div className={`font-semibold ${متبقٍ < -0.005 ? "text-danger" : "text-warning"}`}><نص_مبلغ القيمة={متبقٍ} /></div></div>
+        </div>
+
+        {محمّل && فواتير.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">لا توجد فواتير بيع لهذا العميل.</p>
+        )}
+
+        {فواتير.length > 0 && (
+          <>
+            <div className="flex justify-end">
+              <الزر size="sm" variant="outline" onClick={تعبئة_تلقائية}>تعبئة تلقائية</الزر>
+            </div>
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {فواتير.map((f) => (
+                <div key={f.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-1.5 text-sm">
+                  <div className="flex-1">
+                    <span className="font-medium ltr-nums">#{f.رقم ?? f.id}</span>
+                    <نص_تاريخ القيمة={f.التاريخ} className="mr-2 text-[11px] text-muted-foreground" />
+                    <div className="text-[11px] text-muted-foreground">
+                      الإجمالي: <نص_مبلغ القيمة={f.الإجمالي} />
+                      {f.مغطّى_بشيكات_أخرى > 0 && <> · مغطّى بشيكات أخرى: <نص_مبلغ القيمة={f.مغطّى_بشيكات_أخرى} /></>}
+                    </div>
+                  </div>
+                  <الحقل
+                    selectOnFocus
+                    className="ltr-nums w-28"
+                    value={مبالغ[f.id] ?? ""}
+                    onChange={(e) => تعيين_مبالغ((س) => ({ ...س, [f.id]: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <تذييل_الحوار>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
+          <الزر onClick={احفظ} disabled={جارٍ || !محمّل}>حفظ التوزيع</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>

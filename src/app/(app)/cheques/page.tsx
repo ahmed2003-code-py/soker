@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, BookOpen, BarChart3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
 import { الزر } from "@/components/ui/button";
 import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
+import { اجلب_خيارات_الدفاتر } from "@/lib/cheque-books";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الشيكات } from "./client";
 import { prisma as db } from "@/lib/prisma";
@@ -16,13 +17,14 @@ export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة, حسابات_فرعية] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة, حسابات_فرعية, دفاتر] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
         id: true, drawerName: true, amount: true, beneficiary: true,
         transferredFrom: true, bankName: true, dueDate: true, chequeNumber: true,
         direction: true, status: true, partyId: true, notes: true, imageMime: true,
+        chequeBookId: true, bookLeafNo: true,
       },
     }),
     تنبيهات_الشيكات(),
@@ -38,6 +40,7 @@ export default async function صفحة_الشيكات() {
     }),
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" }, select: { id: true, type: true } }),
     اجلب_خريطة_حسابات_فرعية(),
+    اجلب_خيارات_الدفاتر(),
   ]);
 
   const بيانات = شيكات.map((c) => ({
@@ -52,6 +55,8 @@ export default async function صفحة_الشيكات() {
     الاتجاه: c.direction,
     الحالة: c.status,
     معرف_الطرف: c.partyId,
+    معرف_الدفتر: c.chequeBookId,
+    رقم_الورقة: c.bookLeafNo,
     ملاحظات: c.notes,
     لها_صورة: !!c.imageMime,
     متأخر: متأخر(c.dueDate, c.status),
@@ -63,9 +68,17 @@ export default async function صفحة_الشيكات() {
         العنوان={t("cheque.title")}
         الوصف={t("cheque.subtitle")}
         إجراء={
-          <الزر variant="outline" asChild>
-            <Link href="/cheques/query"><Search className="size-4" /> استعلام الشيكات</Link>
-          </الزر>
+          <div className="flex flex-wrap gap-2">
+            <الزر variant="outline" asChild>
+              <Link href="/cheques/query"><Search className="size-4" /> استعلام الشيكات</Link>
+            </الزر>
+            <الزر variant="outline" asChild>
+              <Link href="/cheques/reports"><BarChart3 className="size-4" /> تقارير الشيكات</Link>
+            </الزر>
+            <الزر variant="outline" asChild>
+              <Link href="/cheques/books"><BookOpen className="size-4" /> الدفاتر والحافظات</Link>
+            </الزر>
+          </div>
         }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -78,6 +91,7 @@ export default async function صفحة_الشيكات() {
         البيانات={بيانات}
         بنوك={بنوك.map((b) => ({ id: b.id, الاسم: b.name }))}
         الأطراف={أطراف.map((p) => ({ id: p.id, الاسم: p.name, النوع: p.type }))}
+        دفاتر={دفاتر.map((d) => ({ id: d.id, الاسم: d.الاسم, الاتجاه: d.الاتجاه, اسم_البنك: d.اسم_البنك }))}
         حساب_نقدي={حسابات_الخزنة.find((a) => a.type === "CASH")?.id ?? null}
         حساب_بنك={حسابات_الخزنة.find((a) => a.type === "BANK")?.id ?? null}
         حسابات_الخزنة={حسابات_الخزنة.map((a) => ({ id: a.id, النوع: a.type, التسمية: تسمية_حساب_الخزنة[a.type] }))}

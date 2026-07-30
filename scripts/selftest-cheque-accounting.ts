@@ -10,7 +10,8 @@ const رصيد_بنك = async (id: number) => N((await prisma.treasuryAccount.fi
 async function حالة(id: number, s: any, sub: number | null = null, actor: number) {
   await prisma.$transaction(async (tx) => {
     const c = await tx.cheque.findUniqueOrThrow({ where: { id } });
-    await زامن_آثار_الشيك(tx, c as any, s, sub, actor);
+    // خيارات المزامنة كائن دائماً (كما في الإنتاج تغيير_حالة_شيك) — sub اختياري كحساب تحصيل
+    await زامن_آثار_الشيك(tx, c as any, s, sub == null ? {} : { معرف_حساب_التحصيل: sub }, actor);
   });
 }
 
