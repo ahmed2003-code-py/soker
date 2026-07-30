@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية } from "./actions";
+import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -122,6 +122,7 @@ export function شاشة_الشيكات({
   const [تحصيل_شيك, تعيين_تحصيل_شيك] = React.useState<شيك | null>(null);
   const [تظهير_شيك, تعيين_تظهير_شيك] = React.useState<شيك | null>(null);
   const [تسوية_شيك, تعيين_تسوية_شيك] = React.useState<شيك | null>(null);
+  const [سداد_مركب, تعيين_سداد_مركب] = React.useState(false);
   const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
@@ -365,7 +366,10 @@ export function شاشة_الشيكات({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <الزر variant="outline" onClick={() => تعيين_سداد_مركب(true)}>
+          <Layers className="size-4" /> سداد مركب لمورد
+        </الزر>
         <الزر onClick={() => تعيين_نموذج({ اتجاه_افتراضي: تبويب })}>
           <Plus className="size-4" /> {t("cheque.add")}
         </الزر>
@@ -460,6 +464,15 @@ export function شاشة_الشيكات({
           حسابات_الخزنة={حسابات_الخزنة}
           حسابات_فرعية={حسابات_فرعية}
           عند_الإغلاق={() => { تعيين_تسوية_شيك(null); router.refresh(); }}
+        />
+      )}
+      {سداد_مركب && (
+        <حوار_سداد_مركب
+          موردون={موردون}
+          حسابات_الخزنة={حسابات_الخزنة}
+          حسابات_فرعية={حسابات_فرعية}
+          شيكات_متاحة={البيانات.filter((c) => c.الاتجاه === "INCOMING" && ["REGISTERED", "PENDING", "BOUNCED"].includes(c.الحالة))}
+          عند_الإغلاق={() => { تعيين_سداد_مركب(false); router.refresh(); }}
         />
       )}
       {تظهير_شيك && (
@@ -899,6 +912,142 @@ function حوار_تسوية({
 
         <تذييل_الحوار>
           <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+type بند_خزنة = { key: number; حساب: string; حساب_فرعي: string; مبلغ: string };
+
+function حوار_سداد_مركب({
+  موردون,
+  حسابات_الخزنة,
+  حسابات_فرعية,
+  شيكات_متاحة,
+  عند_الإغلاق,
+}: {
+  موردون: طرف_شيك[];
+  حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  شيكات_متاحة: شيك[];
+  عند_الإغلاق: () => void;
+}) {
+  const إشعار = useإشعار();
+  const عداد = React.useRef(0);
+  const بند_جديد = (): بند_خزنة => ({ key: ++عداد.current, حساب: String(حسابات_الخزنة[0]?.id ?? ""), حساب_فرعي: "", مبلغ: "" });
+  const [مورد, تعيين_مورد] = React.useState("");
+  const [بنود, تعيين_بنود] = React.useState<بند_خزنة[]>([]);
+  const [شيكات_مختارة, تعيين_شيكات_مختارة] = React.useState<Set<number>>(new Set());
+  const [بيان, تعيين_بيان] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  const مجموع_خزنة = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
+  const مجموع_شيكات = شيكات_متاحة.filter((c) => شيكات_مختارة.has(c.id)).reduce((س, c) => س + c.المبلغ, 0);
+  const الإجمالي = مجموع_خزنة + مجموع_شيكات;
+
+  function حدّث_بند(key: number, ت: Partial<بند_خزنة>) {
+    تعيين_بنود((س) => س.map((ب) => (ب.key === key ? { ...ب, ...ت } : ب)));
+  }
+  function نوع_حساب(id: string) { return حسابات_الخزنة.find((a) => a.id === Number(id))?.النوع ?? null; }
+
+  async function حفظ() {
+    if (!مورد) return إشعار.خطأ("اختر المورد");
+    if (الإجمالي <= 0) return إشعار.خطأ("أضف وسيلة دفع واحدة على الأقل");
+    for (const ب of بنود) {
+      const ن = نوع_حساب(ب.حساب);
+      if (ن && ن !== "CASH" && (حسابات_فرعية[ن]?.length ?? 0) > 0 && !ب.حساب_فرعي) return إشعار.خطأ("اختر الحساب الفرعي لكل بند");
+    }
+    تعيين_جارٍ(true);
+    const r = await سداد_مركب_لمورد({
+      معرف_المورد: Number(مورد),
+      البيان: بيان || null,
+      بنود_خزنة: بنود.filter((ب) => Number(ب.مبلغ.replace(/,/g, "")) > 0).map((ب) => ({
+        معرف_الحساب: Number(ب.حساب),
+        معرف_حساب_فرعي: ب.حساب_فرعي ? Number(ب.حساب_فرعي) : null,
+        المبلغ: ب.مبلغ.replace(/,/g, ""),
+      })),
+      شيكات: [...شيكات_مختارة],
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-xl">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2"><Layers className="size-5 text-primary" /> سداد مركب لمورد</عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground">
+          ادفع للمورد بوسائل متعددة في عملية واحدة: نقدي/تحويل من الخزنة + شيكات واردة تُظهَّر له. الإجمالي يُخصم من مديونية المورد مرة واحدة.
+        </p>
+        <div className="space-y-1.5">
+          <العنوان مطلوب>المورد</العنوان>
+          <قائمة_اختيار الخيارات={موردون.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))} القيمة={مورد} عند_التغيير={تعيين_مورد} نص_بديل="اختر المورد…" />
+        </div>
+
+        {/* بنود الخزنة */}
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <العنوان className="mb-0">نقدي / تحويل من الخزنة</العنوان>
+            <الزر size="sm" variant="outline" onClick={() => تعيين_بنود((س) => [...س, بند_جديد()])}><Plus className="size-4" /> بند</الزر>
+          </div>
+          {بنود.map((ب) => {
+            const ن = نوع_حساب(ب.حساب);
+            const فرعية = ن && ن !== "CASH" ? (حسابات_فرعية[ن] ?? []) : [];
+            return (
+              <div key={ب.key} className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
+                <div className="flex-1 min-w-[110px] space-y-1"><span className="text-[11px] text-muted-foreground">الوسيلة</span>
+                  <قائمة_اختيار قابل_للبحث={false} الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))} القيمة={ب.حساب} عند_التغيير={(v) => حدّث_بند(ب.key, { حساب: v, حساب_فرعي: "" })} />
+                </div>
+                {فرعية.length > 0 && (
+                  <div className="flex-1 min-w-[110px] space-y-1"><span className="text-[11px] text-muted-foreground">الحساب الفرعي</span>
+                    <قائمة_اختيار الخيارات={فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))} القيمة={ب.حساب_فرعي} عند_التغيير={(v) => حدّث_بند(ب.key, { حساب_فرعي: v })} نص_بديل="اختر…" />
+                  </div>
+                )}
+                <div className="w-24 space-y-1"><span className="text-[11px] text-muted-foreground">المبلغ</span>
+                  <الحقل selectOnFocus className="ltr-nums" value={ب.مبلغ} onChange={(e) => حدّث_بند(ب.key, { مبلغ: e.target.value })} placeholder="0.00" />
+                </div>
+                <الزر size="sm" variant="ghost" onClick={() => تعيين_بنود((س) => س.filter((x) => x.key !== ب.key))}><Trash2 className="size-4 text-danger" /></الزر>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* اختيار الشيكات الواردة */}
+        {شيكات_متاحة.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            <العنوان className="mb-0">شيكات واردة للتظهير</العنوان>
+            <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+              {شيكات_متاحة.map((c) => (
+                <label key={c.id} className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-appgray cursor-pointer text-sm">
+                  <span className="flex items-center gap-2">
+                    <input type="checkbox" className="size-4 accent-primary" checked={شيكات_مختارة.has(c.id)} onChange={(e) => تعيين_شيكات_مختارة((س) => { const n = new Set(س); e.target.checked ? n.add(c.id) : n.delete(c.id); return n; })} />
+                    <span>{c.اسم_المدين}{c.رقم_الشيك ? ` — ${c.رقم_الشيك}` : ""}</span>
+                  </span>
+                  <نص_مبلغ القيمة={c.المبلغ} />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 rounded-lg bg-appgray p-3 flex items-center justify-between">
+          <span className="text-sm">خزنة: <span className="font-medium"><نص_مبلغ القيمة={مجموع_خزنة} /></span> + شيكات: <span className="font-medium"><نص_مبلغ القيمة={مجموع_شيكات} /></span></span>
+          <span className="text-sm font-bold text-primary">الإجمالي: <نص_مبلغ القيمة={الإجمالي} /></span>
+        </div>
+
+        <div className="space-y-1.5 mt-3">
+          <العنوان>بيان (اختياري)</العنوان>
+          <الحقل value={بيان} onChange={(e) => تعيين_بيان(e.target.value)} placeholder="يُملأ تلقائياً" />
+        </div>
+
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={حفظ} disabled={جارٍ || الإجمالي <= 0 || !مورد}>{جارٍ ? "جارٍ الحفظ…" : "تأكيد السداد"}</الزر>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>

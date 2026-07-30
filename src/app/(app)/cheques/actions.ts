@@ -6,6 +6,8 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 import { زامن_آثار_الشيك, دخل_معاملة_مالية } from "@/lib/cheques-accounting";
+import { أنشئ_دفعة_موزعة } from "@/lib/integration";
+import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { د } from "@/lib/decimal";
@@ -274,6 +276,98 @@ export async function أضف_دفعة_تسوية(
   revalidatePath("/cheques");
   revalidatePath("/treasury");
   return نجح(undefined, مكتمل ? "تمت التسوية بالكامل" : "تم تسجيل الدفعة");
+}
+
+/**
+ * سداد مركب لمورد — معاملة واحدة: نقدي/تحويل من الخزنة + تظهير شيكات واردة.
+ * الإجمالي يخصم من مديونية المورد مرة واحدة (النقدي/التحويل عبر قيد مدين + الشيكات كل واحد قيد تظهير مدين).
+ * الشيكات تتحوّل «مُظهَّرة للمورد» بلا حركة نقدية (لسه ما اتحصلتش).
+ */
+export async function سداد_مركب_لمورد(مدخلات: {
+  معرف_المورد: number;
+  التاريخ?: string | null;
+  البيان?: string | null;
+  بنود_خزنة?: { معرف_الحساب: number; معرف_حساب_فرعي?: number | null; المبلغ: string | number }[];
+  شيكات?: number[];
+}): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+
+  const مورد = await prisma.party.findUnique({ where: { id: مدخلات.معرف_المورد } });
+  if (!مورد || مورد.type !== "SUPPLIER") return فشل("المورد غير موجود");
+  const تاريخ = تحليل_تاريخ(مدخلات.التاريخ ?? null) ?? new Date();
+
+  const بنود_خزنة = (مدخلات.بنود_خزنة ?? []).filter((ب) => د(String(ب.المبلغ).replace(/,/g, "")).greaterThan(0));
+  const معرفات_الشيكات = مدخلات.شيكات ?? [];
+  if (بنود_خزنة.length === 0 && معرفات_الشيكات.length === 0) {
+    return فشل("أضف وسيلة دفع واحدة على الأقل (نقدي/تحويل أو شيك)");
+  }
+
+  // تحقق الشيكات: واردة وقابلة للتظهير ولم تُظهَّر بعد
+  const شيكات = معرفات_الشيكات.length
+    ? await prisma.cheque.findMany({ where: { id: { in: معرفات_الشيكات } } })
+    : [];
+  for (const ش of شيكات) {
+    if (ش.direction !== "INCOMING") return فشل(`الشيك ${ش.chequeNumber ?? ش.id} ليس وارداً`);
+    if (!انتقالات_الحالة[ش.status].includes("ENDORSED")) {
+      return فشل(`الشيك ${ش.chequeNumber ?? ش.id} لا يمكن تظهيره (حالته: ${تسمية_حالة_الشيك[ش.status]})`);
+    }
+  }
+
+  const حسابات = await prisma.treasuryAccount.findMany({ select: { id: true, type: true } });
+  const نوع_الحساب = new Map(حسابات.map((h) => [h.id, h.type]));
+  const إجمالي_خزنة = بنود_خزنة.reduce((س, ب) => س.plus(د(String(ب.المبلغ).replace(/,/g, ""))), د(0));
+  const إجمالي_شيكات = شيكات.reduce((س, ش) => س.plus(ش.amount), د(0));
+  const البيان = مدخلات.البيان?.trim() || `سداد مركب — ${مورد.name}`;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1) الجزء النقدي/التحويل → مدين على المورد + حركات خزنة (صرف)
+      if (بنود_خزنة.length > 0) {
+        await أنشئ_دفعة_موزعة(tx, {
+          الاتجاه: "صرف",
+          معرف_الطرف: مورد.id,
+          اسم_الطرف: مورد.name,
+          الإجمالي: إجمالي_خزنة,
+          التاريخ: تاريخ,
+          البيان,
+          بنود: بنود_خزنة.map((ب) => {
+            const نوع = نوع_الحساب.get(ب.معرف_الحساب);
+            return {
+              معرف_الحساب: ب.معرف_الحساب,
+              معرف_حساب_فرعي: ب.معرف_حساب_فرعي ?? null,
+              طريقة_الدفع: نوع ? تسمية_حساب_الخزنة[نوع] : null,
+              المبلغ: د(String(ب.المبلغ).replace(/,/g, "")),
+            };
+          }),
+          أنشأ: فاعل.id,
+        });
+      }
+      // 2) الشيكات → تظهير لنفس المورد (كل شيك قيد مدين مستقل، بلا خزنة)
+      for (const ش of شيكات) {
+        await زامن_آثار_الشيك(tx, ش, "ENDORSED", { معرف_المورد_للتظهير: مورد.id }, فاعل.id);
+      }
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "الطرف",
+        معرف_الكيان: مورد.id,
+        التفاصيل: {
+          سداد_مركب: true,
+          إجمالي: إجمالي_خزنة.plus(إجمالي_شيكات).toString(),
+          نقدي_تحويل: إجمالي_خزنة.toString(),
+          شيكات: شيكات.map((ش) => ش.id),
+        },
+      });
+    }, { timeout: 30000 });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء السداد المركب");
+  }
+
+  revalidatePath("/treasury");
+  revalidatePath("/cheques");
+  revalidatePath(مسار_صفحة_الطرف("SUPPLIER", مورد.id));
+  return نجح(undefined, `تم السداد المركب — إجمالي ${إجمالي_خزنة.plus(إجمالي_شيكات).toFixed(2)}`);
 }
 
 /** حذف دفعة تسوية — ترجع الفلوس للخزنة، ولو كان الشيك «تمت التسوية» يرجع «تحت الصرف». */
