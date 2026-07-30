@@ -4,11 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
-import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
+import { احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
+import { زامن_آثار_الشيك, دخل_معاملة_مالية } from "@/lib/cheques-accounting";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مخطط_شيك } from "@/lib/schemas/cheque";
-import { TxnKind, TreasuryAccountType, ChequeStatus } from "@prisma/client";
+import { ChequeStatus } from "@prisma/client";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 
 /** الانتقالات المسموح بها لدورة حياة الشيك. */
@@ -22,11 +23,6 @@ const انتقالات_الحالة: Record<ChequeStatus, ChequeStatus[]> = {
   CANCELLED: [], // نهائي
 };
 
-/** هل دخل الشيك معاملة مالية (فلا يُعدَّل/يُحذف — يُصحَّح بالإلغاء/العكس)؟ */
-function دخل_معاملة_مالية(شيك: { status: ChequeStatus; collectedTxnId: number | null }): boolean {
-  return شيك.collectedTxnId != null ||
-    (["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"] as ChequeStatus[]).includes(شيك.status);
-}
 
 function فكّ_base64(صورة?: string | null): Buffer | null {
   if (!صورة) return null;
@@ -36,15 +32,6 @@ function فكّ_base64(صورة?: string | null): Buffer | null {
   } catch {
     return null;
   }
-}
-
-/** ابحث عن حساب البنك */
-async function حساب_البنك(): Promise<number | null> {
-  const بنك = await prisma.treasuryAccount.findFirst({
-    where: { type: TreasuryAccountType.BANK },
-    select: { id: true },
-  });
-  return بنك?.id ?? null;
 }
 
 export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيجة<{ id: number }>> {
@@ -76,16 +63,29 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
         createdById: فاعل.id,
       },
     });
+    // أثر الطرف عند الاستلام/التسليم (لو الشيك مربوط بطرف وفي حالة ملتزمة)
+    await زامن_آثار_الشيك(
+      tx,
+      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null },
+      c.status,
+      null,
+      فاعل.id
+    );
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "CREATE",
       نوع_الكيان: "الشيك",
       معرف_الكيان: c.id,
-      التفاصيل: { اسم_المدين: ب.اسم_المدين, المبلغ: ب.المبلغ, الاتجاه: ب.الاتجاه, الاستحقاق: ب.تاريخ_الاستحقاق },
+      التفاصيل: { اسم_المدين: ب.اسم_المدين, المبلغ: ب.المبلغ, الاتجاه: ب.الاتجاه, الاستحقاق: ب.تاريخ_الاستحقاق, الحالة: ب.الحالة },
     });
     return c;
   });
   revalidatePath("/cheques");
+  revalidatePath("/treasury");
+  if (ب.معرف_الطرف) {
+    revalidatePath(`/customers/${ب.معرف_الطرف}`);
+    revalidatePath(`/suppliers/${ب.معرف_الطرف}`);
+  }
   return نجح({ id: شيك.id }, "تمت إضافة الشيك");
 }
 
@@ -157,64 +157,27 @@ export async function تغيير_حالة_شيك(
   }
   if (الحالة === شيك.status) return نجح(undefined, "لا تغيير");
 
-  await prisma.$transaction(async (tx) => {
-    // شيك صادر: تحويل إلى COLLECTED → خصم من البنك (مرة واحدة فقط)
-    if (شيك.direction === "OUTGOING" && الحالة === "COLLECTED" && شيك.status !== "COLLECTED" && !شيك.collectedTxnId) {
-      const معرف_البنك = await حساب_البنك();
-      if (معرف_البنك) {
-        const حركة = await أضف_حركة_خزنة(tx, {
-          التاريخ: new Date(),
-          النوع: TxnKind.EXPENSE,
-          المبلغ: شيك.amount,
-          معرف_الحساب: معرف_البنك,
-          معرف_حساب_فرعي: معرف_حساب_فرعي ?? null,
-          البيان: `صرف شيك صادر${شيك.chequeNumber ? " رقم " + شيك.chequeNumber : ""} — ${شيك.drawerName}`,
-          أنشأ: فاعل.id,
-        });
-        await tx.cheque.update({
-          where: { id },
-          data: { status: الحالة, collectedTxnId: حركة.id, updatedById: فاعل.id },
-        });
-        await تسجيل_عملية(tx, {
-          المستخدم: فاعل.id,
-          العملية: "UPDATE",
-          نوع_الكيان: "الشيك",
-          معرف_الكيان: id,
-          التفاصيل: { تغيير_الحالة: الحالة, خصم_بنك: true, معرف_حركة: حركة.id, المبلغ: Number(شيك.amount) },
-        });
-        return;
-      }
-    }
-
-    // شيك صادر: العودة من COLLECTED → عكس خصم البنك
-    if (شيك.direction === "OUTGOING" && شيك.status === "COLLECTED" && الحالة !== "COLLECTED" && شيك.collectedTxnId) {
-      await احذف_حركة_خزنة_ناعم(tx, شيك.collectedTxnId);
-      await tx.cheque.update({
-        where: { id },
-        data: { status: الحالة, collectedTxnId: null, updatedById: فاعل.id },
-      });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // مزامنة أثر الطرف والبنك مع الحالة الهدف (idempotent — تغطّي كل الانتقالات)
+      await زامن_آثار_الشيك(tx, شيك, الحالة, معرف_حساب_فرعي ?? null, فاعل.id);
       await تسجيل_عملية(tx, {
         المستخدم: فاعل.id,
         العملية: "UPDATE",
         نوع_الكيان: "الشيك",
         معرف_الكيان: id,
-        التفاصيل: { تغيير_الحالة: الحالة, عكس_خصم_بنك: true },
+        التفاصيل: { تغيير_الحالة: الحالة, من: شيك.status },
       });
-      return;
-    }
-
-    // تغيير حالة عادي بدون أثر مالي
-    await tx.cheque.update({ where: { id }, data: { status: الحالة, updatedById: فاعل.id } });
-    await تسجيل_عملية(tx, {
-      المستخدم: فاعل.id,
-      العملية: "UPDATE",
-      نوع_الكيان: "الشيك",
-      معرف_الكيان: id,
-      التفاصيل: { تغيير_الحالة: الحالة },
     });
-  });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء تغيير الحالة");
+  }
   revalidatePath("/cheques");
   revalidatePath("/treasury");
+  if (شيك.partyId) {
+    revalidatePath(`/customers/${شيك.partyId}`);
+    revalidatePath(`/suppliers/${شيك.partyId}`);
+  }
   return نجح(undefined, "تم تحديث الحالة");
 }
 

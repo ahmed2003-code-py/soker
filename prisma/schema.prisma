@@ -339,7 +339,8 @@ model Cheque {
   dueDate         DateTime         @map("due_date") @db.Date
   chequeNumber    String?          @map("cheque_number")
   status          ChequeStatus     @default(PENDING) @map("status")
-  collectedTxnId  Int?             @unique @map("collected_txn_id") // معرّف حركة الخزنة عند التحصيل (للشيكات الصادرة)
+  collectedTxnId  Int?             @unique @map("collected_txn_id") // حركة الخزنة عند التحصيل الفعلي (البنك)
+  partyLedgerEntryId Int?          @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   notes           String?          @map("notes")

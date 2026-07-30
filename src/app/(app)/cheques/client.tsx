@@ -224,7 +224,8 @@ export function شاشة_الشيكات({
             قابل_للبحث={false}
             عند_التغيير={async (v) => {
               const حالة_جديدة = v as ChequeStatus;
-              if (ص.الاتجاه === "OUTGOING" && حالة_جديدة === "COLLECTED" && ص.الحالة !== "COLLECTED") {
+              // التحصيل الفعلي (وارد أو صادر) → يفتح حوار اختيار البنك
+              if (حالة_جديدة === "COLLECTED" && ص.الحالة !== "COLLECTED") {
                 تعيين_تحصيل_شيك(ص);
                 return;
               }
