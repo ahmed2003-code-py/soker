@@ -14,13 +14,13 @@ export const metadata = { title: "الشيكات — سُكر" };
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات, بنوك] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك, أطراف] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
         id: true, drawerName: true, amount: true, beneficiary: true,
         transferredFrom: true, bankName: true, dueDate: true, chequeNumber: true,
-        direction: true, status: true, notes: true, imageMime: true,
+        direction: true, status: true, partyId: true, notes: true, imageMime: true,
       },
     }),
     تنبيهات_الشيكات(),
@@ -28,6 +28,11 @@ export default async function صفحة_الشيكات() {
       where: { type: "BANK", isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
+    }),
+    prisma.party.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, type: true },
     }),
   ]);
 
@@ -42,6 +47,7 @@ export default async function صفحة_الشيكات() {
     رقم_الشيك: c.chequeNumber,
     الاتجاه: c.direction,
     الحالة: c.status,
+    معرف_الطرف: c.partyId,
     ملاحظات: c.notes,
     لها_صورة: !!c.imageMime,
     متأخر: متأخر(c.dueDate, c.status),
@@ -67,6 +73,7 @@ export default async function صفحة_الشيكات() {
       <شاشة_الشيكات
         البيانات={بيانات}
         بنوك={بنوك.map((b) => ({ id: b.id, الاسم: b.name }))}
+        الأطراف={أطراف.map((p) => ({ id: p.id, الاسم: p.name, النوع: p.type }))}
       />
     </div>
   );

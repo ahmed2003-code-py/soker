@@ -40,9 +40,13 @@ enum TxnKind {
 }
 
 enum ChequeStatus {
-  PENDING // منتظر
-  COLLECTED // محصّل
-  BOUNCED // مرتجع
+  REGISTERED // مسجّل (لم يدخل التحصيل بعد)
+  PENDING    // تحت التحصيل / منتظر
+  DEPOSITED  // مودع بالبنك
+  ENDORSED   // مظهّر (سُلّم لمورد)
+  COLLECTED  // محصّل
+  BOUNCED    // مرتد
+  CANCELLED  // ملغي
 }
 
 enum ChequeDirection {
@@ -115,6 +119,7 @@ model Party {
   invoices      Invoice[]
   ledgerEntries LedgerEntry[]
   treasuryTxns  TreasuryTxn[]
+  cheques       Cheque[]      @relation("PartyCheques")
 
   @@index([type])
   @@index([name])
@@ -335,6 +340,8 @@ model Cheque {
   chequeNumber    String?          @map("cheque_number")
   status          ChequeStatus     @default(PENDING) @map("status")
   collectedTxnId  Int?             @unique @map("collected_txn_id") // معرّف حركة الخزنة عند التحصيل (للشيكات الصادرة)
+  partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
+  party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   notes           String?          @map("notes")
   imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
   imageMime       String?      @map("image_mime")
@@ -350,6 +357,7 @@ model Cheque {
   @@index([dueDate])
   @@index([status])
   @@index([direction])
+  @@index([partyId])
   // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
   @@index([drawerName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_drawer_name_trgm_idx")
   @@index([bankName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_bank_name_trgm_idx")

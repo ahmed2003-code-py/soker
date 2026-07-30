@@ -26,14 +26,21 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
 import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك } from "./actions";
+import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي } from "@/app/(app)/treasury/sub-account-actions";
 
-const حالات_الشيك = ["PENDING", "COLLECTED", "BOUNCED"] as const;
-const لون_الحالة: Record<ChequeStatus, "warning" | "success" | "danger"> = {
+const حالات_الشيك = [
+  "REGISTERED", "PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "BOUNCED", "CANCELLED",
+] as const;
+const لون_الحالة: Record<ChequeStatus, "warning" | "success" | "danger" | "navy" | "default"> = {
+  REGISTERED: "default",
   PENDING: "warning",
+  DEPOSITED: "navy",
+  ENDORSED: "navy",
   COLLECTED: "success",
   BOUNCED: "danger",
+  CANCELLED: "default",
 };
 
 const أسماء_الشهور = [
@@ -76,22 +83,27 @@ export type شيك = {
   رقم_الشيك: string | null;
   الاتجاه: ChequeDirection;
   الحالة: ChequeStatus;
+  معرف_الطرف: number | null;
   ملاحظات: string | null;
   لها_صورة: boolean;
   متأخر: boolean;
 };
 
+export type طرف_شيك = { id: number; الاسم: string; النوع: "CUSTOMER" | "SUPPLIER" };
+
 export function شاشة_الشيكات({
   البيانات,
   بنوك,
+  الأطراف,
 }: {
   البيانات: شيك[];
   بنوك: { id: number; الاسم: string }[];
+  الأطراف: طرف_شيك[];
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t, لغة } = استخدام_اللغة();
-  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
+  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: تسمية_حالة_الشيك[s] }));
   const [نموذج, تعيين_نموذج] = React.useState<{ شيك?: شيك; اتجاه_افتراضي?: ChequeDirection } | null>(null);
   const [حذف, تعيين_حذف] = React.useState<شيك | null>(null);
   const { احذف: احذف_مع_تراجع, معلقة } = استخدم_تراجع_الحذف();
@@ -186,7 +198,7 @@ export function شاشة_الشيكات({
         ص.متأخر ? (
           <الشارة variant="danger">{t("cheque.status.overdue")}</الشارة>
         ) : (
-          <شارة_حالة الحالة={t(`cheque.status.${ص.الحالة}` as const)} متغيّر={لون_الحالة[ص.الحالة]} />
+          <شارة_حالة الحالة={تسمية_حالة_الشيك[ص.الحالة]} متغيّر={لون_الحالة[ص.الحالة]} />
         ),
     },
   ];
@@ -315,7 +327,7 @@ export function شاشة_الشيكات({
 
   const حالات_الفلتر = [
     { ق: "", ت: t("common.all") },
-    ...حالات_الشيك.map((s) => ({ ق: s, ت: t(`cheque.status.${s}` as const) })),
+    ...حالات_الشيك.map((s) => ({ ق: s, ت: تسمية_حالة_الشيك[s] })),
     { ق: "متأخر", ت: t("cheque.status.overdue") },
   ];
 
@@ -409,6 +421,7 @@ export function شاشة_الشيكات({
         <حوار_شيك
           شيك={نموذج.شيك}
           اتجاه_افتراضي={نموذج.اتجاه_افتراضي ?? "INCOMING"}
+          الأطراف={الأطراف}
           عند_الإغلاق={() => تعيين_نموذج(null)}
         />
       )}
@@ -435,16 +448,18 @@ export function شاشة_الشيكات({
 export function حوار_شيك({
   شيك,
   اتجاه_افتراضي = "INCOMING",
+  الأطراف = [],
   عند_الإغلاق,
 }: {
   شيك?: شيك;
   اتجاه_افتراضي?: ChequeDirection;
+  الأطراف?: طرف_شيك[];
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const { t } = استخدام_اللغة();
-  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: t(`cheque.status.${s}` as const) }));
+  const خيارات_الحالة = حالات_الشيك.map((s) => ({ القيمة: s, التسمية: تسمية_حالة_الشيك[s] }));
   const [ق, تعيين] = React.useState({
     اسم_المدين: شيك?.اسم_المدين ?? "",
     المبلغ: شيك ? String(شيك.المبلغ) : "",
@@ -457,14 +472,23 @@ export function حوار_شيك({
     الحالة: (شيك?.الحالة ?? "PENDING") as ChequeStatus,
     ملاحظات: شيك?.ملاحظات ?? "",
   });
+  const [معرف_الطرف, تعيين_معرف_الطرف] = React.useState<string>(
+    شيك?.معرف_الطرف ? String(شيك.معرف_الطرف) : ""
+  );
   const [صورة, تعيين_صورة] = React.useState<{ base64: string; mime: string; نص?: string } | null>(null);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const حدّث = (ك: string, v: string) => تعيين((س) => ({ ...س, [ك]: v }));
+
+  // الأطراف حسب الاتجاه: وارد → عملاء، صادر → موردون
+  const أطراف_مناسبة = الأطراف.filter((p) =>
+    ق.الاتجاه === "INCOMING" ? p.النوع === "CUSTOMER" : p.النوع === "SUPPLIER"
+  );
 
   async function احفظ() {
     تعيين_جارٍ(true);
     const payload = {
       ...ق,
+      معرف_الطرف: معرف_الطرف ? Number(معرف_الطرف) : null,
       صورة_base64: صورة?.base64 ?? null,
       صورة_mime: صورة?.mime ?? null,
       نص_OCR: صورة?.نص ?? null,
@@ -538,6 +562,18 @@ export function حوار_شيك({
               القيمة={ق.الحالة}
               عند_التغيير={(v) => حدّث("الحالة", v)}
               قابل_للبحث={false}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان>{ق.الاتجاه === "INCOMING" ? "العميل (اختياري)" : "المورد (اختياري)"}</العنوان>
+            <قائمة_اختيار
+              الخيارات={[
+                { القيمة: "", التسمية: "— بدون —" },
+                ...أطراف_مناسبة.map((p) => ({ القيمة: String(p.id), التسمية: p.الاسم })),
+              ]}
+              القيمة={معرف_الطرف}
+              عند_التغيير={تعيين_معرف_الطرف}
+              نص_بديل={ق.الاتجاه === "INCOMING" ? "اربط بعميل…" : "اربط بمورد…"}
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">

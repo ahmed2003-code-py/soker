@@ -36,9 +36,13 @@ export const تسمية_نوع_الحركة: Record<TxnKind, string> = {
 };
 
 export const تسمية_حالة_الشيك: Record<ChequeStatus, string> = {
-  PENDING: "منتظر",
+  REGISTERED: "مسجّل",
+  PENDING: "تحت التحصيل",
+  DEPOSITED: "مودع",
+  ENDORSED: "مظهّر",
   COLLECTED: "محصّل",
-  BOUNCED: "مرتجع",
+  BOUNCED: "مرتد",
+  CANCELLED: "ملغي",
 };
 
 export const تسمية_العملية: Record<ActivityAction, string> = {

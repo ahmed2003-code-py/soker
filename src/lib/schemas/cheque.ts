@@ -13,7 +13,10 @@ export const مخطط_شيك = z.object({
   تاريخ_الاستحقاق: z.string().min(1, "تاريخ الاستحقاق مطلوب"),
   رقم_الشيك: z.string().trim().optional().nullable(),
   الاتجاه: z.enum(["INCOMING", "OUTGOING"]).default("INCOMING"),
-  الحالة: z.enum(["PENDING", "COLLECTED", "BOUNCED"]).default("PENDING"),
+  الحالة: z
+    .enum(["REGISTERED", "PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "BOUNCED", "CANCELLED"])
+    .default("REGISTERED"),
+  معرف_الطرف: z.number().int().positive().optional().nullable(),
   ملاحظات: z.string().trim().optional().nullable(),
   // الصورة (المرحلة 8): base64 + النوع
   صورة_base64: z.string().optional().nullable(),

@@ -8,7 +8,25 @@ import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { مخطط_شيك } from "@/lib/schemas/cheque";
-import { TxnKind, TreasuryAccountType } from "@prisma/client";
+import { TxnKind, TreasuryAccountType, ChequeStatus } from "@prisma/client";
+import { تسمية_حالة_الشيك } from "@/lib/enums";
+
+/** الانتقالات المسموح بها لدورة حياة الشيك. */
+const انتقالات_الحالة: Record<ChequeStatus, ChequeStatus[]> = {
+  REGISTERED: ["PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"],
+  PENDING: ["DEPOSITED", "ENDORSED", "COLLECTED", "BOUNCED", "CANCELLED"],
+  DEPOSITED: ["COLLECTED", "BOUNCED", "CANCELLED"],
+  ENDORSED: ["COLLECTED", "BOUNCED", "CANCELLED"],
+  COLLECTED: ["BOUNCED", "CANCELLED"], // تصحيح: ارتداد بعد التحصيل أو إلغاء (عكس)
+  BOUNCED: ["PENDING", "DEPOSITED", "ENDORSED", "CANCELLED"], // إعادة تقديم
+  CANCELLED: [], // نهائي
+};
+
+/** هل دخل الشيك معاملة مالية (فلا يُعدَّل/يُحذف — يُصحَّح بالإلغاء/العكس)؟ */
+function دخل_معاملة_مالية(شيك: { status: ChequeStatus; collectedTxnId: number | null }): boolean {
+  return شيك.collectedTxnId != null ||
+    (["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"] as ChequeStatus[]).includes(شيك.status);
+}
 
 function فكّ_base64(صورة?: string | null): Buffer | null {
   if (!صورة) return null;
@@ -50,6 +68,7 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
         chequeNumber: ب.رقم_الشيك || null,
         direction: ب.الاتجاه,
         status: ب.الحالة,
+        partyId: ب.معرف_الطرف ?? null,
         notes: ب.ملاحظات || null,
         imageData: فكّ_base64(ب.صورة_base64),
         imageMime: ب.صورة_mime || null,
@@ -78,6 +97,10 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
   const ب = t.data;
   const حالي = await prisma.cheque.findUnique({ where: { id } });
   if (!حالي) return فشل("الشيك غير موجود");
+  // منع التعديل بعد دخول الشيك معاملة مالية — التصحيح بالإلغاء أو القيد العكسي فقط
+  if (دخل_معاملة_مالية(حالي)) {
+    return فشل("لا يمكن تعديل شيك دخل معاملة مالية — استخدم تغيير الحالة (إلغاء/عكس) بدلاً من ذلك");
+  }
   const تاريخ = تحليل_تاريخ(ب.تاريخ_الاستحقاق);
   if (!تاريخ) return فشل("تاريخ الاستحقاق غير صالح");
 
@@ -96,6 +119,7 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
         chequeNumber: ب.رقم_الشيك || null,
         direction: ب.الاتجاه,
         status: ب.الحالة,
+        partyId: ب.معرف_الطرف ?? null,
         notes: ب.ملاحظات || null,
         ...(صورة ? { imageData: صورة, imageMime: ب.صورة_mime || null } : {}),
         ...(ب.نص_OCR ? { ocrText: ب.نص_OCR } : {}),
@@ -116,7 +140,7 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
 
 export async function تغيير_حالة_شيك(
   id: number,
-  الحالة: "PENDING" | "COLLECTED" | "BOUNCED",
+  الحالة: ChequeStatus,
   معرف_حساب_فرعي?: number | null
 ): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
@@ -124,6 +148,14 @@ export async function تغيير_حالة_شيك(
 
   const شيك = await prisma.cheque.findUnique({ where: { id } });
   if (!شيك) return فشل("الشيك غير موجود");
+
+  // التحقق من صحة الانتقال في دورة الحياة
+  if (الحالة !== شيك.status && !انتقالات_الحالة[شيك.status].includes(الحالة)) {
+    return فشل(
+      `انتقال غير مسموح: من «${تسمية_حالة_الشيك[شيك.status]}» إلى «${تسمية_حالة_الشيك[الحالة]}»`
+    );
+  }
+  if (الحالة === شيك.status) return نجح(undefined, "لا تغيير");
 
   await prisma.$transaction(async (tx) => {
     // شيك صادر: تحويل إلى COLLECTED → خصم من البنك (مرة واحدة فقط)
@@ -191,9 +223,13 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
   تحقق_الصلاحية(فاعل.role, "حذف");
   const ش = await prisma.cheque.findUnique({ where: { id } });
   if (!ش) return فشل("الشيك غير موجود");
+  // لا حذف نهائي لأي شيك دخل معاملة مالية — يبقى السجل، والتصحيح بالإلغاء
+  if (دخل_معاملة_مالية(ش)) {
+    return فشل("لا يمكن حذف شيك دخل معاملة مالية — استخدم الإلغاء للحفاظ على السجل");
+  }
 
   await prisma.$transaction(async (tx) => {
-    // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً
+    // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً (احترازي — لا يصل هنا عادةً بعد الحارس)
     if (ش.direction === "OUTGOING" && ش.collectedTxnId) {
       await احذف_حركة_خزنة_ناعم(tx, ش.collectedTxnId);
     }
