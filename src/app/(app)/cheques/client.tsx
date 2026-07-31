@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -50,6 +50,16 @@ const أسماء_الشهور = [
   "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
 ];
 
+/** انتقالات النموذج الجديد v2 للشيكات الواردة (نسخة العميل — تُطابق الخادم). */
+const انتقالات_v2_وارد_ui: Record<string, ChequeStatus[]> = {
+  REGISTERED: ["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"],
+  DEPOSITED: ["BOUNCED", "CANCELLED"],
+  ENDORSED: ["BOUNCED", "CANCELLED"],
+  COLLECTED: ["BOUNCED", "CANCELLED"],
+  BOUNCED: ["REGISTERED", "CANCELLED"],
+  CANCELLED: [],
+};
+
 type مجموعة_شهر = { رقم: number; اسم: string; بنود: شيك[] };
 type مجموعة_سنة = { سنة: number; شهور: مجموعة_شهر[] };
 
@@ -88,10 +98,16 @@ export type شيك = {
   معرف_الطرف: number | null;
   معرف_الدفتر?: number | null;
   رقم_الورقة?: number | null;
+  نسخة?: number | null; // accountingVersion: 2 = نموذج خزنة الشيكات
   ملاحظات: string | null;
   لها_صورة: boolean;
   متأخر: boolean;
 };
+
+/** هل الشيك يتبع النموذج الجديد v2 (وارد + نسخة ≥ 2)؟ */
+function نموذج_جديد_ش(ص: شيك): boolean {
+  return (ص.نسخة ?? 1) >= 2 && ص.الاتجاه === "INCOMING";
+}
 
 export type طرف_شيك = { id: number; الاسم: string; النوع: "CUSTOMER" | "SUPPLIER" };
 export type خيار_دفتر = { id: number; الاسم: string; الاتجاه: "INCOMING" | "OUTGOING"; اسم_البنك: string | null };
@@ -129,6 +145,8 @@ export function شاشة_الشيكات({
   const [تسوية_شيك, تعيين_تسوية_شيك] = React.useState<شيك | null>(null);
   const [سداد_مركب, تعيين_سداد_مركب] = React.useState(false);
   const [توزيع_شيك, تعيين_توزيع_شيك] = React.useState<شيك | null>(null);
+  const [إيداع_شيك, تعيين_إيداع_شيك] = React.useState<شيك | null>(null);
+  const [إلغاء_شيك, تعيين_إلغاء_شيك] = React.useState<شيك | null>(null);
   const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
@@ -240,7 +258,9 @@ export function شاشة_الشيكات({
           <قائمة_اختيار
             className="h-8 w-28"
             الخيارات={
-              ص.الحالة === "SETTLED"
+              نموذج_جديد_ش(ص)
+                ? [{ القيمة: ص.الحالة, التسمية: تسمية_حالة_الشيك[ص.الحالة] }, ...(انتقالات_v2_وارد_ui[ص.الحالة] ?? []).map((s) => ({ القيمة: s, التسمية: تسمية_حالة_الشيك[s] }))]
+                : ص.الحالة === "SETTLED"
                 ? [{ القيمة: "SETTLED", التسمية: تسمية_حالة_الشيك.SETTLED }, { القيمة: "CANCELLED", التسمية: تسمية_حالة_الشيك.CANCELLED }]
                 : خيارات_الحالة
             }
@@ -248,16 +268,21 @@ export function شاشة_الشيكات({
             قابل_للبحث={false}
             عند_التغيير={async (v) => {
               const حالة_جديدة = v as ChequeStatus;
-              // التحصيل الفعلي → حوار اختيار حساب التحصيل (نقدي/بنك)
-              if (حالة_جديدة === "COLLECTED" && ص.الحالة !== "COLLECTED") {
-                تعيين_تحصيل_شيك(ص);
+              if (حالة_جديدة === ص.الحالة) return;
+              // النموذج الجديد v2: مسارات مخصّصة
+              if (نموذج_جديد_ش(ص)) {
+                if (حالة_جديدة === "DEPOSITED") { تعيين_إيداع_شيك(ص); return; }      // إيداع بنك
+                if (حالة_جديدة === "ENDORSED") { تعيين_تظهير_شيك(ص); return; }        // تظهير لمورد
+                if (حالة_جديدة === "CANCELLED") { تعيين_إلغاء_شيك(ص); return; }        // إلغاء بسبب
+                // محصّل (نقدي) / مرتد / إعادة تسجيل → مباشرة
+                const r = await تغيير_حالة_شيك(ص.id, حالة_جديدة);
+                r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+                if (r.نجاح) router.refresh();
                 return;
               }
-              // التظهير لمورد → حوار اختيار المورد
-              if (حالة_جديدة === "ENDORSED" && ص.الحالة !== "ENDORSED") {
-                تعيين_تظهير_شيك(ص);
-                return;
-              }
+              // النموذج القديم v1
+              if (حالة_جديدة === "COLLECTED" && ص.الحالة !== "COLLECTED") { تعيين_تحصيل_شيك(ص); return; }
+              if (حالة_جديدة === "ENDORSED" && ص.الحالة !== "ENDORSED") { تعيين_تظهير_شيك(ص); return; }
               const r = await تغيير_حالة_شيك(ص.id, حالة_جديدة);
               r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
               if (r.نجاح) router.refresh();
@@ -375,9 +400,24 @@ export function شاشة_الشيكات({
 
   const الواردة = البيانات.filter((ش) => ش.الاتجاه === "INCOMING");
   const الصادرة = البيانات.filter((ش) => ش.الاتجاه === "OUTGOING");
+  const مرتدة = البيانات.filter((ش) => ش.الحالة === "BOUNCED");
+  const إجمالي_المرتدة = مرتدة.reduce((س, ش) => س + ش.المبلغ, 0);
 
   return (
     <div className="space-y-4">
+      {مرتدة.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-soft/40 p-4">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" />
+          <div className="text-sm">
+            <div className="font-semibold text-danger">
+              تنبيه: {مرتدة.length} شيك مرتد بإجمالي <نص_مبلغ القيمة={إجمالي_المرتدة} /> يحتاج تسوية
+            </div>
+            <div className="text-[12px] text-muted-foreground">
+              رجعت قيمة كل شيك مرتد إلى مديونية الطرف (العميل — والمورد لو كان مُظهَّراً له). تابع تحصيلها.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <الزر variant="outline" onClick={() => تعيين_سداد_مركب(true)}>
           <Layers className="size-4" /> سداد مركب لمورد
@@ -494,6 +534,33 @@ export function شاشة_الشيكات({
           عند_الإغلاق={() => { تعيين_توزيع_شيك(null); router.refresh(); }}
         />
       )}
+      {إيداع_شيك && (
+        <حوار_إيداع
+          الشيك={إيداع_شيك}
+          حساب_بنك={حساب_بنك}
+          حسابات_الخزنة={حسابات_الخزنة}
+          حسابات_فرعية={حسابات_فرعية}
+          عند_الإلغاء={() => تعيين_إيداع_شيك(null)}
+          عند_التأكيد={async (خيارات) => {
+            const r = await تغيير_حالة_شيك(إيداع_شيك.id, "DEPOSITED", خيارات);
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            تعيين_إيداع_شيك(null);
+            if (r.نجاح) router.refresh();
+          }}
+        />
+      )}
+      {إلغاء_شيك && (
+        <حوار_إلغاء
+          الشيك={إلغاء_شيك}
+          عند_الإلغاء={() => تعيين_إلغاء_شيك(null)}
+          عند_التأكيد={async (سبب) => {
+            const r = await تغيير_حالة_شيك(إلغاء_شيك.id, "CANCELLED", { سبب_الإلغاء: سبب });
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            تعيين_إلغاء_شيك(null);
+            if (r.نجاح) router.refresh();
+          }}
+        />
+      )}
       {تظهير_شيك && (
         <حوار_تظهير
           الشيك={تظهير_شيك}
@@ -555,7 +622,7 @@ export function حوار_شيك({
     تاريخ_الاستحقاق: شيك?.تاريخ_الاستحقاق?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     رقم_الشيك: شيك?.رقم_الشيك ?? "",
     الاتجاه: (شيك?.الاتجاه ?? اتجاه_افتراضي) as ChequeDirection,
-    الحالة: (شيك?.الحالة ?? "PENDING") as ChequeStatus,
+    الحالة: (شيك?.الحالة ?? ((شيك?.الاتجاه ?? اتجاه_افتراضي) === "INCOMING" ? "REGISTERED" : "PENDING")) as ChequeStatus,
     ملاحظات: شيك?.ملاحظات ?? "",
   });
   const [معرف_الطرف, تعيين_معرف_الطرف] = React.useState<string>(
@@ -577,6 +644,8 @@ export function حوار_شيك({
   );
   // الدفاتر/الحافظات حسب الاتجاه
   const دفاتر_مناسبة = دفاتر.filter((d) => d.الاتجاه === ق.الاتجاه);
+  // شيك وارد بالنموذج الجديد v2 (جديد أو نسخة ≥ 2): الحالة تبدأ «مسجّل» وتُدار بالانتقالات لا بالنموذج
+  const شيك_v2_وارد = ق.الاتجاه === "INCOMING" && (!شيك || (شيك.نسخة ?? 2) >= 2);
 
   async function احفظ() {
     تعيين_جارٍ(true);
@@ -613,7 +682,7 @@ export function حوار_شيك({
                 key={dir}
                 type="button"
                 className={`px-4 py-1.5 transition-colors ${ق.الاتجاه === dir ? "bg-primary text-white" : "bg-white hover:bg-muted"}`}
-                onClick={() => حدّث("الاتجاه", dir)}
+                onClick={() => { حدّث("الاتجاه", dir); if (!شيك) حدّث("الحالة", dir === "INCOMING" ? "REGISTERED" : "PENDING"); }}
               >
                 {dir === "INCOMING" ? t("cheque.tab.incoming") : t("cheque.tab.outgoing")}
               </button>
@@ -653,12 +722,19 @@ export function حوار_شيك({
           <Field label={t("cheque.col.number")} value={ق.رقم_الشيك} onChange={(v) => حدّث("رقم_الشيك", v)} />
           <div className="space-y-1.5">
             <العنوان>{t("cheque.col.status")}</العنوان>
-            <قائمة_اختيار
-              الخيارات={خيارات_الحالة}
-              القيمة={ق.الحالة}
-              عند_التغيير={(v) => حدّث("الحالة", v)}
-              قابل_للبحث={false}
-            />
+            {شيك_v2_وارد ? (
+              <div className="flex h-10 items-center rounded-lg border border-border bg-appgray px-3 text-sm text-muted-foreground">
+                {تسمية_حالة_الشيك[ق.الحالة] || تسمية_حالة_الشيك.REGISTERED}
+                <span className="mr-2 text-[11px]">— تتغيّر بالإيداع/التظهير/التحصيل</span>
+              </div>
+            ) : (
+              <قائمة_اختيار
+                الخيارات={خيارات_الحالة}
+                القيمة={ق.الحالة}
+                عند_التغيير={(v) => حدّث("الحالة", v)}
+                قابل_للبحث={false}
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <العنوان>{ق.الاتجاه === "INCOMING" ? "العميل (اختياري)" : "المورد (اختياري)"}</العنوان>
@@ -1079,6 +1155,112 @@ function حوار_توزيع({ الشيك, عند_الإغلاق }: { الشيك
         <تذييل_الحوار>
           <الزر variant="outline" onClick={عند_الإغلاق}>إلغاء</الزر>
           <الزر onClick={احفظ} disabled={جارٍ || !محمّل}>حفظ التوزيع</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+/** حوار إيداع شيك وارد (v2) في بنك — يخصم من خزنة الشيكات ويضيف للبنك المختار. */
+function حوار_إيداع({
+  الشيك, حساب_بنك, حسابات_الخزنة, حسابات_فرعية, عند_الإلغاء, عند_التأكيد,
+}: {
+  الشيك: شيك;
+  حساب_بنك: number | null;
+  حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
+  حسابات_فرعية: خريطة_حسابات_فرعية;
+  عند_الإلغاء: () => void;
+  عند_التأكيد: (خيارات: { معرف_حساب_التحصيل: number; معرف_حساب_فرعي: number | null }) => void | Promise<void>;
+}) {
+  const إشعار = useإشعار();
+  const [حساب, تعيين_حساب] = React.useState(String(حساب_بنك ?? حسابات_الخزنة.find((a) => a.النوع === "BANK")?.id ?? حسابات_الخزنة[0]?.id ?? ""));
+  const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const نوع_الحساب = حسابات_الخزنة.find((a) => a.id === Number(حساب))?.النوع ?? null;
+  const له_فرعية = نوع_الحساب !== null && نوع_الحساب !== "CASH";
+  const خيارات_فرعية = له_فرعية && نوع_الحساب ? (حسابات_فرعية[نوع_الحساب] ?? []) : [];
+
+  async function أكّد() {
+    if (!حساب) return إشعار.خطأ("اختر حساب الإيداع");
+    if (خيارات_فرعية.length > 0 && !حساب_فرعي) return إشعار.خطأ("اختر البنك/الحساب الفرعي");
+    تعيين_جارٍ(true);
+    await عند_التأكيد({ معرف_حساب_التحصيل: Number(حساب), معرف_حساب_فرعي: حساب_فرعي ? Number(حساب_فرعي) : null });
+    تعيين_جارٍ(false);
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإلغاء()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار>إيداع الشيك في بنك</عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-appgray px-3 py-2 text-[12px] text-muted-foreground">
+          قيمة الشيك <b><نص_مبلغ القيمة={الشيك.المبلغ} /></b> تُخصم من خزنة الشيكات وتُضاف إلى الحساب البنكي المختار.
+        </p>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <العنوان>حساب الإيداع</العنوان>
+            <قائمة_اختيار
+              قابل_للبحث={false}
+              الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))}
+              القيمة={حساب}
+              عند_التغيير={(v) => { تعيين_حساب(v); تعيين_حساب_فرعي(""); }}
+            />
+          </div>
+          {خيارات_فرعية.length > 0 && (
+            <div className="space-y-1">
+              <العنوان>البنك / الحساب الفرعي</العنوان>
+              <قائمة_اختيار
+                الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))}
+                القيمة={حساب_فرعي}
+                عند_التغيير={تعيين_حساب_فرعي}
+                نص_بديل="اختر…"
+              />
+            </div>
+          )}
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="outline" onClick={عند_الإلغاء}>إلغاء</الزر>
+          <الزر onClick={أكّد} disabled={جارٍ}>تأكيد الإيداع</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+/** حوار إلغاء شيك (v2) — يسجّل سبب الإلغاء ويعكس كل الأثر بدون حذف السجل. */
+function حوار_إلغاء({
+  الشيك, عند_الإلغاء, عند_التأكيد,
+}: {
+  الشيك: شيك;
+  عند_الإلغاء: () => void;
+  عند_التأكيد: (سبب: string) => void | Promise<void>;
+}) {
+  const إشعار = useإشعار();
+  const [سبب, تعيين_سبب] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  async function أكّد() {
+    if (!سبب.trim()) return إشعار.خطأ("اكتب سبب الإلغاء");
+    تعيين_جارٍ(true);
+    await عند_التأكيد(سبب.trim());
+    تعيين_جارٍ(false);
+  }
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإلغاء()}>
+      <محتوى_الحوار className="max-w-md">
+        <رأس_الحوار>
+          <عنوان_الحوار>إلغاء الشيك</عنوان_الحوار>
+        </رأس_الحوار>
+        <p className="rounded-lg bg-danger-soft/40 px-3 py-2 text-[12px] text-danger">
+          سيُعكَس أي أثر محاسبي للشيك (خزنة الشيكات/البنك/النقدي/مديونية الأطراف) ويُحفظ السجل مع سبب الإلغاء.
+        </p>
+        <div className="space-y-1">
+          <العنوان مطلوب>سبب الإلغاء</العنوان>
+          <منطقة_نص autoFocus value={سبب} onChange={(e) => تعيين_سبب(e.target.value)} rows={3} placeholder="مثال: خطأ في الإدخال / اتفاق مع العميل…" />
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="outline" onClick={عند_الإلغاء}>تراجع</الزر>
+          <الزر variant="danger" onClick={أكّد} disabled={جارٍ}>تأكيد الإلغاء</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>

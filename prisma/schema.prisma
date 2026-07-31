@@ -359,6 +359,9 @@ model Cheque {
   chequeBookId    Int?             @map("cheque_book_id") // دفتر/حافظة الشيك (المرحلة 5)
   chequeBook      ChequeBook?      @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
   bookLeafNo      Int?             @map("book_leaf_no") // رقم الورقة داخل الدفتر
+  accountingVersion Int            @default(2) @map("accounting_version") // 1=النموذج القديم، 2=نموذج خزنة الشيكات (الشيكات الجديدة)
+  cancelReason    String?          @map("cancel_reason") // سبب الإلغاء (حالة ملغي)
+  cancelledAt     DateTime?        @map("cancelled_at")  // تاريخ الإلغاء
   notes           String?          @map("notes")
   imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
   imageMime       String?      @map("image_mime")

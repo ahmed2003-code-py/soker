@@ -5,6 +5,7 @@ import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
+import { احذف_قيد_ناعم } from "@/lib/ledger";
 import { زامن_آثار_الشيك, دخل_معاملة_مالية } from "@/lib/cheques-accounting";
 import { أنشئ_دفعة_موزعة } from "@/lib/integration";
 import { مسار_صفحة_الطرف } from "@/lib/paths";
@@ -26,6 +27,23 @@ const انتقالات_الحالة: Record<ChequeStatus, ChequeStatus[]> = {
   BOUNCED: ["PENDING", "DEPOSITED", "ENDORSED", "CANCELLED"], // إعادة تقديم
   CANCELLED: [], // نهائي
 };
+
+/** انتقالات النموذج الجديد v2 للشيكات الواردة: مسجّل → {مودع/مظهّر/محصّل} → (مرتد/ملغي). */
+const انتقالات_v2_وارد: Record<ChequeStatus, ChequeStatus[]> = {
+  REGISTERED: ["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"],
+  PENDING: [], // غير مستخدمة في v2
+  DEPOSITED: ["BOUNCED", "CANCELLED"],
+  ENDORSED: ["BOUNCED", "CANCELLED"],
+  COLLECTED: ["BOUNCED", "CANCELLED"], // نهاية الدورة، لكن يمكن ارتداده لاحقاً
+  SETTLED: [], // غير مستخدمة في v2
+  BOUNCED: ["REGISTERED", "CANCELLED"], // إعادة تسجيل (إعادة تقديم)
+  CANCELLED: [],
+};
+
+/** هل الشيك يتبع النموذج الجديد v2 (وارد + نسخة ≥ 2)؟ */
+function نموذج_جديد(شيك: { direction: string; accountingVersion?: number | null }): boolean {
+  return (شيك.accountingVersion ?? 1) >= 2 && شيك.direction === "INCOMING";
+}
 
 
 function فكّ_base64(صورة?: string | null): Buffer | null {
@@ -72,7 +90,7 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
     // أثر الطرف عند الاستلام/التسليم (لو الشيك مربوط بطرف وفي حالة ملتزمة)
     await زامن_آثار_الشيك(
       tx,
-      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: null },
+      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: null, accountingVersion: c.accountingVersion },
       c.status,
       {},
       فاعل.id
@@ -111,8 +129,13 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
   if (!تاريخ) return فشل("تاريخ الاستحقاق غير صالح");
 
   const صورة = فكّ_base64(ب.صورة_base64);
+  const v2 = نموذج_جديد(حالي);
 
   await prisma.$transaction(async (tx) => {
+    // v2: عكس أثر العميل القديم قبل التعديل ليُعاد ضبطه بالقيمة الجديدة (الحالة تتغيّر عبر «تغيير الحالة» فقط)
+    if (v2 && حالي.partyLedgerEntryId) {
+      await احذف_قيد_ناعم(tx, حالي.partyLedgerEntryId);
+    }
     await tx.cheque.update({
       where: { id },
       data: {
@@ -123,17 +146,24 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
         bankName: ب.اسم_البنك || null,
         dueDate: تاريخ,
         chequeNumber: ب.رقم_الشيك || null,
-        direction: ب.الاتجاه,
-        status: ب.الحالة,
+        // في v2 الاتجاه والحالة ثابتان أثناء التعديل (يُغيَّران عبر تغيير الحالة)
+        direction: v2 ? حالي.direction : ب.الاتجاه,
+        status: v2 ? حالي.status : ب.الحالة,
         partyId: ب.معرف_الطرف ?? null,
         chequeBookId: ب.معرف_الدفتر ?? null,
         bookLeafNo: ب.رقم_الورقة ?? null,
         notes: ب.ملاحظات || null,
+        ...(v2 ? { partyLedgerEntryId: null } : {}),
         ...(صورة ? { imageData: صورة, imageMime: ب.صورة_mime || null } : {}),
         ...(ب.نص_OCR ? { ocrText: ب.نص_OCR } : {}),
         updatedById: فاعل.id,
       },
     });
+    if (v2) {
+      // إعادة تطبيق أثر العميل بالقيمة/الطرف الجديد على نفس الحالة الحالية
+      const c = await tx.cheque.findUniqueOrThrow({ where: { id } });
+      await زامن_آثار_الشيك(tx, c, c.status, {}, فاعل.id);
+    }
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "UPDATE",
@@ -150,6 +180,7 @@ type خيارات_حالة = {
   معرف_حساب_التحصيل?: number | null;
   معرف_حساب_فرعي?: number | null;
   معرف_المورد_للتظهير?: number | null;
+  سبب_الإلغاء?: string | null;
 };
 
 export async function تغيير_حالة_شيك(
@@ -162,9 +193,11 @@ export async function تغيير_حالة_شيك(
 
   const شيك = await prisma.cheque.findUnique({ where: { id } });
   if (!شيك) return فشل("الشيك غير موجود");
+  const v2 = نموذج_جديد(شيك);
+  const خريطة_الانتقالات = v2 ? انتقالات_v2_وارد : انتقالات_الحالة;
 
   // التحقق من صحة الانتقال في دورة الحياة
-  if (الحالة !== شيك.status && !انتقالات_الحالة[شيك.status].includes(الحالة)) {
+  if (الحالة !== شيك.status && !خريطة_الانتقالات[شيك.status].includes(الحالة)) {
     return فشل(
       `انتقال غير مسموح: من «${تسمية_حالة_الشيك[شيك.status]}» إلى «${تسمية_حالة_الشيك[الحالة]}»`
     );
@@ -175,8 +208,12 @@ export async function تغيير_حالة_شيك(
   if (الحالة === "ENDORSED" && !خيارات.معرف_المورد_للتظهير && !شيك.endorsedToId) {
     return فشل("اختر المورد المُظهَّر له الشيك");
   }
-  // منع الازدواج: شيك عليه دفعات تسوية لا يُصرف من البنك
-  if (الحالة === "COLLECTED") {
+  // v2: الإيداع يتطلّب اختيار البنك
+  if (v2 && الحالة === "DEPOSITED" && !خيارات.معرف_حساب_التحصيل) {
+    return فشل("اختر البنك المُودَع فيه الشيك");
+  }
+  // منع الازدواج: شيك (صادر) عليه دفعات تسوية لا يُصرف من البنك — v1 فقط
+  if (!v2 && الحالة === "COLLECTED") {
     const عدد_دفعات = await prisma.treasuryTxn.count({ where: { chequeId: id, deletedAt: null } });
     if (عدد_دفعات > 0) return فشل("الشيك تحت التسوية على دفعات — لا يمكن صرفه من البنك");
   }
@@ -190,12 +227,18 @@ export async function تغيير_حالة_شيك(
         for (const د of دفعات) await احذف_حركة_خزنة_ناعم(tx, د.id);
       }
       await زامن_آثار_الشيك(tx, شيك, الحالة, خيارات, فاعل.id);
+      // تسجيل سبب/تاريخ الإلغاء (بدون حذف السجل)، وتفريغه عند إعادة التسجيل
+      if (الحالة === "CANCELLED") {
+        await tx.cheque.update({ where: { id }, data: { cancelReason: خيارات.سبب_الإلغاء?.trim() || null, cancelledAt: new Date() } });
+      } else if (شيك.status === "CANCELLED") {
+        await tx.cheque.update({ where: { id }, data: { cancelReason: null, cancelledAt: null } });
+      }
       await تسجيل_عملية(tx, {
         المستخدم: فاعل.id,
         العملية: "UPDATE",
         نوع_الكيان: "الشيك",
         معرف_الكيان: id,
-        التفاصيل: { تغيير_الحالة: الحالة, من: شيك.status, ...(خيارات.معرف_المورد_للتظهير ? { تظهير_لمورد: خيارات.معرف_المورد_للتظهير } : {}) },
+        التفاصيل: { تغيير_الحالة: الحالة, من: شيك.status, ...(خيارات.معرف_المورد_للتظهير ? { تظهير_لمورد: خيارات.معرف_المورد_للتظهير } : {}), ...(الحالة === "CANCELLED" && خيارات.سبب_الإلغاء ? { سبب_الإلغاء: خيارات.سبب_الإلغاء } : {}) },
       });
     });
   } catch (e) {
@@ -557,6 +600,10 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
     // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً (احترازي — لا يصل هنا عادةً بعد الحارس)
     if (ش.direction === "OUTGOING" && ش.collectedTxnId) {
       await احذف_حركة_خزنة_ناعم(tx, ش.collectedTxnId);
+    }
+    // v2 وارد «مسجّل»: اعكس أثر دين العميل قبل الحذف (يرجع دينه)
+    if (نموذج_جديد(ش) && ش.partyLedgerEntryId) {
+      await احذف_قيد_ناعم(tx, ش.partyLedgerEntryId);
     }
     await tx.cheque.delete({ where: { id } });
     await تسجيل_عملية(tx, {

@@ -21,7 +21,7 @@ async function main() {
   const مورد = await prisma.party.create({ data: { name: "مورد تظهير", type: "SUPPLIER", openingBalance: 15000, balance: 15000, createdById: ahmed.id } });
 
   // شيك وارد 5000 مربوط بالعميل، استلام
-  const ش = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 5000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "REGISTERED", partyId: عميل.id, createdById: ahmed.id } });
+  const ش = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 5000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "REGISTERED", partyId: عميل.id, accountingVersion: 1, createdById: ahmed.id } });
   await حالة(ش.id, "PENDING", {}, ahmed.id);
   تحقق(await رطرف(عميل.id) === 15000, "استلام: دين العميل 20000 → 15000");
 
@@ -39,7 +39,7 @@ async function main() {
   تحقق(await رطرف(عميل.id) === 20000, "ارتداد: دين العميل يرجع 20000");
 
   // شيك وارد آخر → تحصيل نقدي (كاش مش بنك)
-  const ش2 = await prisma.cheque.create({ data: { drawerName: "عميل2", amount: 3000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "PENDING", createdById: ahmed.id } });
+  const ش2 = await prisma.cheque.create({ data: { drawerName: "عميل2", amount: 3000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "PENDING", accountingVersion: 1, createdById: ahmed.id } });
   await حالة(ش2.id, "COLLECTED", { معرف_حساب_التحصيل: cash.id, معرف_حساب_فرعي: null }, ahmed.id);
   تحقق(await رحساب(cash.id) === cash0 + 3000, "تحصيل نقدي: النقدي +3000");
   تحقق(await رحساب(bank.id) === bank0, "تحصيل نقدي: البنك ثابت");

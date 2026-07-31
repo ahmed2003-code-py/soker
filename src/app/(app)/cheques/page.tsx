@@ -7,6 +7,7 @@ import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { تنبيهات_الشيكات, متأخر } from "@/lib/cheques";
 import { اجلب_خيارات_الدفاتر } from "@/lib/cheque-books";
+import { رصيد_خزنة_الشيكات } from "@/lib/cheques-accounting";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الشيكات } from "./client";
 import { prisma as db } from "@/lib/prisma";
@@ -24,7 +25,7 @@ export default async function صفحة_الشيكات() {
         id: true, drawerName: true, amount: true, beneficiary: true,
         transferredFrom: true, bankName: true, dueDate: true, chequeNumber: true,
         direction: true, status: true, partyId: true, notes: true, imageMime: true,
-        chequeBookId: true, bookLeafNo: true,
+        chequeBookId: true, bookLeafNo: true, accountingVersion: true,
       },
     }),
     تنبيهات_الشيكات(),
@@ -42,6 +43,7 @@ export default async function صفحة_الشيكات() {
     اجلب_خريطة_حسابات_فرعية(),
     اجلب_خيارات_الدفاتر(),
   ]);
+  const رصيد_الخزنة_للشيكات = Number(await رصيد_خزنة_الشيكات(prisma));
 
   const بيانات = شيكات.map((c) => ({
     id: c.id,
@@ -57,6 +59,7 @@ export default async function صفحة_الشيكات() {
     معرف_الطرف: c.partyId,
     معرف_الدفتر: c.chequeBookId,
     رقم_الورقة: c.bookLeafNo,
+    نسخة: c.accountingVersion,
     ملاحظات: c.notes,
     لها_صورة: !!c.imageMime,
     متأخر: متأخر(c.dueDate, c.status),
@@ -81,7 +84,13 @@ export default async function صفحة_الشيكات() {
           </div>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <بطاقة_مؤشر
+          العنوان="خزنة الشيكات"
+          القيمة={<نص_مبلغ القيمة={رصيد_الخزنة_للشيكات} />}
+          وصف="شيكات مسجّلة تحت اليد (منفصلة عن الخزنة)"
+          لون="navy"
+        />
         <بطاقة_مؤشر العنوان={t("cheque.kpi.due7")} القيمة={تنبيهات.عدد_خلال_7} لون="warning" />
         <بطاقة_مؤشر العنوان={t("cheque.kpi.due_month")} القيمة={تنبيهات.عدد_هذا_الشهر} لون="navy" />
         <بطاقة_مؤشر العنوان={t("cheque.kpi.overdue")} القيمة={تنبيهات.عدد_متأخر} لون="danger" />

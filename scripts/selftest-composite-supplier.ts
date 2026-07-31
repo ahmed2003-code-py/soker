@@ -16,7 +16,7 @@ async function main() {
   const مورد = await prisma.party.create({ data: { name: "مورد سداد مركب اختبار", type: "SUPPLIER", openingBalance: 20000, balance: 20000, createdById: ahmed.id } });
   const عميل = await prisma.party.create({ data: { name: "عميل شيك سداد اختبار", type: "CUSTOMER", openingBalance: 10000, balance: 10000, createdById: ahmed.id } });
   // شيك وارد 4000 من العميل، مستلم (PENDING) → دين العميل قل 4000
-  const ش = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 4000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "PENDING", partyId: عميل.id, partyLedgerEntryId: null, createdById: ahmed.id } });
+  const ش = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 4000, direction: "INCOMING", dueDate: new Date("2026-09-01"), status: "PENDING", partyId: عميل.id, partyLedgerEntryId: null, accountingVersion: 1, createdById: ahmed.id } });
   await prisma.$transaction(async (tx) => { const c = await tx.cheque.findUniqueOrThrow({ where: { id: ش.id } }); await زامن_آثار_الشيك(tx, c as any, "PENDING", {}, ahmed.id); });
   تحقق(await رطرف(عميل.id) === 6000, "استلام الشيك: دين العميل 10000 → 6000");
 

@@ -1,10 +1,14 @@
-import type { Prisma, ChequeStatus } from "@prisma/client";
+import type { Prisma, ChequeStatus, PrismaClient } from "@prisma/client";
 import { TxnKind, TreasuryAccountType } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { أضف_قيد, احذف_قيد_ناعم } from "@/lib/ledger";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 
-/** الحالات التي يُعتبر فيها الشيك «مستلَماً/مُسلَّماً» فيؤثّر على حساب الطرف. */
+/** الحالات التي يُعتبر فيها الشيك «مستلَماً/مُسلَّماً» فيؤثّر على حساب الطرف (النموذج القديم v1). */
 export const حالات_ملتزمة: ChequeStatus[] = ["PENDING", "DEPOSITED", "ENDORSED", "COLLECTED", "SETTLED"];
+
+/** النموذج الجديد (v2): الشيك الوارد «مُلتزَم» (دين العميل مخصوم) في هذه الحالات. */
+export const حالات_ملتزمة_v2: ChequeStatus[] = ["REGISTERED", "DEPOSITED", "ENDORSED", "COLLECTED"];
 
 /** هل دخل الشيك معاملة مالية (فلا يُعدَّل/يُحذف — يُصحَّح بالإلغاء/العكس)؟ */
 export function دخل_معاملة_مالية(شيك: {
@@ -12,7 +16,16 @@ export function دخل_معاملة_مالية(شيك: {
   collectedTxnId: number | null;
   partyLedgerEntryId?: number | null;
   endorseLedgerEntryId?: number | null;
+  direction?: "INCOMING" | "OUTGOING";
+  accountingVersion?: number | null;
 }): boolean {
+  const نسخة = شيك.accountingVersion ?? 1;
+  if (نسخة >= 2 && شيك.direction === "INCOMING") {
+    // v2: مسموح التعديل وهو «مسجّل» (أثر العميل فقط، يُعاد ضبطه)؛ مقفول بعد إيداع/تظهير/تحصيل أو إلغاء
+    return شيك.collectedTxnId != null ||
+      شيك.endorseLedgerEntryId != null ||
+      (["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"] as ChequeStatus[]).includes(شيك.status);
+  }
   return شيك.collectedTxnId != null ||
     شيك.partyLedgerEntryId != null ||
     شيك.endorseLedgerEntryId != null ||
@@ -31,6 +44,7 @@ export type شيك_للمزامنة = {
   partyLedgerEntryId: number | null;
   endorseLedgerEntryId: number | null;
   endorsedToId: number | null;
+  accountingVersion?: number | null;
 };
 
 export type خيارات_مزامنة = {
@@ -58,6 +72,10 @@ export async function زامن_آثار_الشيك(
   خيارات: خيارات_مزامنة,
   فاعل: number
 ): Promise<void> {
+  // النموذج الجديد (v2) للشيكات الواردة فقط — الصادرة والقديمة تُبقي منطق v1
+  if ((شيك.accountingVersion ?? 1) >= 2 && شيك.direction === "INCOMING") {
+    return زامن_آثار_الشيك_v2(tx, شيك, الحالة_الهدف, خيارات ?? {}, فاعل);
+  }
   const وارد = شيك.direction === "INCOMING";
   const وصف = `شيك ${وارد ? "وارد" : "صادر"}${شيك.chequeNumber ? " رقم " + شيك.chequeNumber : ""}`;
   let معرف_قيد_الطرف = شيك.partyLedgerEntryId;
@@ -141,4 +159,117 @@ export async function زامن_آثار_الشيك(
       updatedById: فاعل,
     },
   });
+}
+
+/**
+ * النموذج الجديد v2 — الشيكات الواردة فقط (نموذج «خزنة الشيكات»).
+ * ثلاثة آثار مستقلة (idempotent) + خزنة الشيكات مُشتقّة (= الشيكات في حالة «مسجّل»، تُحسب في العرض):
+ *  1) دين العميل (partyLedgerEntryId): دائن V — موجود في {مسجّل، مودع، مظهّر، محصّل}.
+ *     يُزال عند «مرتد» أو «ملغي» ← يرجع دين العميل مرة أخرى.
+ *  2) التظهير (endorseLedgerEntryId): «مظهّر» ← مدين V على المورد (يقل مستحقه). يُعكَس عند الارتداد/الإلغاء.
+ *  3) التحصيل الفعلي (collectedTxnId): «مودع» ← إيراد V على البنك المختار؛ «محصّل» ← إيراد V على النقدية.
+ * الارتداد يعالج الحالتين تلقائياً (يزيل ما كان موجوداً): إن كان مودعاً/محصّلاً يعكس البنك/النقدية،
+ * وإن كان مظهّراً يعكس التظهير — وفي الحالتين يرجع دين العميل.
+ */
+async function زامن_آثار_الشيك_v2(
+  tx: Prisma.TransactionClient,
+  شيك: شيك_للمزامنة,
+  الحالة_الهدف: ChequeStatus,
+  خيارات: خيارات_مزامنة,
+  فاعل: number
+): Promise<void> {
+  const وصف = `شيك وارد${شيك.chequeNumber ? " رقم " + شيك.chequeNumber : ""}`;
+  let معرف_قيد_الطرف = شيك.partyLedgerEntryId;
+  let معرف_قيد_التظهير = شيك.endorseLedgerEntryId;
+  let مظهَّر_لـ = شيك.endorsedToId;
+  let معرف_حركة_التحصيل = شيك.collectedTxnId;
+
+  // ── 1) دين العميل (دائن V) — في الحالات الملتزمة v2 ──
+  const يجب_الطرف = !!شيك.partyId && حالات_ملتزمة_v2.includes(الحالة_الهدف);
+  if (يجب_الطرف && !معرف_قيد_الطرف) {
+    const قيد = await أضف_قيد(tx, {
+      معرف_الطرف: شيك.partyId!,
+      التاريخ: new Date(),
+      البيان: `${وصف} — استلام من العميل`,
+      دائن: شيك.amount,
+      أنشأ: فاعل,
+    });
+    معرف_قيد_الطرف = قيد.id;
+  } else if (!يجب_الطرف && معرف_قيد_الطرف) {
+    await احذف_قيد_ناعم(tx, معرف_قيد_الطرف);
+    معرف_قيد_الطرف = null;
+  }
+
+  // ── 2) التظهير لمورد (مدين V) — «مظهّر» فقط ──
+  const هدف_التظهير = الحالة_الهدف === "ENDORSED"
+    ? (خيارات.معرف_المورد_للتظهير ?? شيك.endorsedToId ?? null)
+    : null;
+  const يجب_التظهير = الحالة_الهدف === "ENDORSED" && !!هدف_التظهير;
+  if (يجب_التظهير && !معرف_قيد_التظهير) {
+    const قيد = await أضف_قيد(tx, {
+      معرف_الطرف: هدف_التظهير!,
+      التاريخ: new Date(),
+      البيان: `${وصف} — تظهير سداداً للمورد`,
+      مدين: شيك.amount,
+      أنشأ: فاعل,
+    });
+    معرف_قيد_التظهير = قيد.id;
+    مظهَّر_لـ = هدف_التظهير;
+  } else if (!يجب_التظهير && معرف_قيد_التظهير) {
+    await احذف_قيد_ناعم(tx, معرف_قيد_التظهير);
+    معرف_قيد_التظهير = null;
+    مظهَّر_لـ = null;
+  }
+
+  // ── 3) التحصيل الفعلي: مودع→بنك، محصّل→نقدي ──
+  const يجب_التحصيل = الحالة_الهدف === "DEPOSITED" || الحالة_الهدف === "COLLECTED";
+  if (يجب_التحصيل && !معرف_حركة_التحصيل) {
+    let معرف_الحساب: number | null;
+    let معرف_فرعي: number | null = null;
+    if (الحالة_الهدف === "DEPOSITED") {
+      معرف_الحساب = خيارات.معرف_حساب_التحصيل ??
+        (await tx.treasuryAccount.findFirst({ where: { type: TreasuryAccountType.BANK }, select: { id: true } }))?.id ?? null;
+      معرف_فرعي = خيارات.معرف_حساب_فرعي ?? null;
+    } else {
+      معرف_الحساب = (await tx.treasuryAccount.findFirst({ where: { type: TreasuryAccountType.CASH }, select: { id: true } }))?.id ?? null;
+    }
+    if (!معرف_الحساب) throw new Error("لا يوجد حساب خزنة للتحصيل");
+    const حركة = await أضف_حركة_خزنة(tx, {
+      التاريخ: new Date(),
+      النوع: TxnKind.INCOME,
+      المبلغ: شيك.amount,
+      معرف_الحساب,
+      معرف_حساب_فرعي: معرف_فرعي,
+      البيان: `${الحالة_الهدف === "DEPOSITED" ? "إيداع" : "تحصيل"} ${وصف} — ${شيك.drawerName}`,
+      اسم_الطرف_الخارجي: شيك.drawerName,
+      أنشأ: فاعل,
+    });
+    معرف_حركة_التحصيل = حركة.id;
+  } else if (!يجب_التحصيل && معرف_حركة_التحصيل) {
+    await احذف_حركة_خزنة_ناعم(tx, معرف_حركة_التحصيل);
+    معرف_حركة_التحصيل = null;
+  }
+
+  await tx.cheque.update({
+    where: { id: شيك.id },
+    data: {
+      status: الحالة_الهدف,
+      partyLedgerEntryId: معرف_قيد_الطرف,
+      endorseLedgerEntryId: معرف_قيد_التظهير,
+      endorsedToId: مظهَّر_لـ,
+      collectedTxnId: معرف_حركة_التحصيل,
+      updatedById: فاعل,
+    },
+  });
+}
+
+/** رصيد خزنة الشيكات (v2): إجمالي قيمة الشيكات الواردة في حالة «مسجّل». مشتق — منفصل عن إجمالي الخزنة. */
+export async function رصيد_خزنة_الشيكات(
+  db: PrismaClient | Prisma.TransactionClient = prisma
+): Promise<Prisma.Decimal | number> {
+  const r = await db.cheque.aggregate({
+    where: { direction: "INCOMING", accountingVersion: { gte: 2 }, status: "REGISTERED" },
+    _sum: { amount: true },
+  });
+  return r._sum.amount ?? 0;
 }

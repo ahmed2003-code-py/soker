@@ -24,7 +24,7 @@ async function main() {
   const عميل = await prisma.party.create({ data: { name: "عميل شيك محاسبة", type: "CUSTOMER", createdById: ahmed.id } });
   // مديونية ابتدائية 10000 (فاتورة وهمية عبر رصيد ابتدائي)
   await prisma.party.update({ where: { id: عميل.id }, data: { openingBalance: 10000, balance: 10000 } });
-  const شو = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 4000, direction: "INCOMING", dueDate: new Date("2026-08-01"), status: "REGISTERED", partyId: عميل.id, createdById: ahmed.id } });
+  const شو = await prisma.cheque.create({ data: { drawerName: "عميل", amount: 4000, direction: "INCOMING", dueDate: new Date("2026-08-01"), status: "REGISTERED", partyId: عميل.id, accountingVersion: 1, createdById: ahmed.id } });
 
   // استلام (تحت التحصيل) → دين العميل يقل 4000، البنك ثابت
   await حالة(شو.id, "PENDING", null, ahmed.id);
