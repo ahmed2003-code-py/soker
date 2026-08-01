@@ -14,16 +14,18 @@ export async function POST(req: Request) {
   try {
     const form = await req.formData();
     const ملف = form.get("image");
-    if (!(ملف instanceof File)) {
+    // فحص بالسلوك بدل `instanceof File` — لأن `File` قد لا يكون global في بعض بيئات Node
+    if (!ملف || typeof ملف === "string" || typeof (ملف as Blob).arrayBuffer !== "function") {
       return NextResponse.json({ خطأ: "لم تُرفق صورة" }, { status: 400 });
     }
-    const buffer = Buffer.from(await ملف.arrayBuffer());
+    const blob = ملف as Blob;
+    const buffer = Buffer.from(await blob.arrayBuffer());
 
     const خدمة = اختر_خدمة_OCR();
     let نص = "";
     let ثقة = 0;
     try {
-      const ناتج = await خدمة.استخرج(buffer, ملف.type);
+      const ناتج = await خدمة.استخرج(buffer, blob.type);
       نص = ناتج.نص;
       ثقة = ناتج.ثقة;
     } catch (e) {
