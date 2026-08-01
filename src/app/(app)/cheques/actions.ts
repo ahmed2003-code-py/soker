@@ -65,10 +65,13 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
   const تاريخ = تحليل_تاريخ(ب.تاريخ_الاستحقاق);
   if (!تاريخ) return فشل("تاريخ الاستحقاق غير صالح");
 
+  // اسم المدين اختياري — يُشتق من «محوّل من» (اسم العميل) أو المستفيد عند تركه فارغاً
+  const اسم_المدين_نهائي = ب.اسم_المدين?.trim() || ب.محول_من?.trim() || ب.المستفيد?.trim() || "—";
+
   const شيك = await prisma.$transaction(async (tx) => {
     const c = await tx.cheque.create({
       data: {
-        drawerName: ب.اسم_المدين,
+        drawerName: اسم_المدين_نهائي,
         amount: ب.المبلغ!,
         beneficiary: ب.المستفيد || null,
         transferredFrom: ب.محول_من || null,
@@ -130,6 +133,7 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
 
   const صورة = فكّ_base64(ب.صورة_base64);
   const v2 = نموذج_جديد(حالي);
+  const اسم_المدين_نهائي = ب.اسم_المدين?.trim() || ب.محول_من?.trim() || ب.المستفيد?.trim() || "—";
 
   await prisma.$transaction(async (tx) => {
     // v2: عكس أثر العميل القديم قبل التعديل ليُعاد ضبطه بالقيمة الجديدة (الحالة تتغيّر عبر «تغيير الحالة» فقط)
@@ -139,7 +143,7 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
     await tx.cheque.update({
       where: { id },
       data: {
-        drawerName: ب.اسم_المدين,
+        drawerName: اسم_المدين_نهائي,
         amount: ب.المبلغ!,
         beneficiary: ب.المستفيد || null,
         transferredFrom: ب.محول_من || null,

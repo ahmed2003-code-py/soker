@@ -2,7 +2,8 @@ import { z } from "zod";
 import { تحليل_مبلغ } from "@/lib/money";
 
 export const مخطط_شيك = z.object({
-  اسم_المدين: z.string().trim().min(1, "اسم المدين مطلوب"),
+  // اختياري: للوارد يُشتق من اسم العميل (محوّل من) عند تركه فارغاً
+  اسم_المدين: z.string().trim().optional().nullable(),
   المبلغ: z
     .union([z.string(), z.number()])
     .transform((v) => تحليل_مبلغ(v))
