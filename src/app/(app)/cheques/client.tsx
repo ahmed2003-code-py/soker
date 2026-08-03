@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -99,6 +99,9 @@ export type شيك = {
   الاتجاه: ChequeDirection;
   الحالة: ChequeStatus;
   معرف_الطرف: number | null;
+  اسم_الطرف?: string | null;       // اسم العميل/المورد المربوط
+  معرف_المظهر_له?: number | null;  // المورد المُظهَّر له (وارد)
+  اسم_المظهر_له?: string | null;
   معرف_الدفتر?: number | null;
   رقم_الورقة?: number | null;
   نسخة?: number | null; // accountingVersion: 2 = نموذج خزنة الشيكات
@@ -150,6 +153,7 @@ export function شاشة_الشيكات({
   const [توزيع_شيك, تعيين_توزيع_شيك] = React.useState<شيك | null>(null);
   const [إيداع_شيك, تعيين_إيداع_شيك] = React.useState<شيك | null>(null);
   const [إلغاء_شيك, تعيين_إلغاء_شيك] = React.useState<شيك | null>(null);
+  const [تفاصيل_شيك, تعيين_تفاصيل_شيك] = React.useState<شيك | null>(null);
   const [خيارات_بنوك_محلية, تعيين_خيارات_بنوك_محلية] = React.useState(بنوك);
   const [حالة_فلتر, تعيين_حالة_فلتر] = React.useState<string>("");
   const [من, تعيين_من] = React.useState("");
@@ -409,15 +413,41 @@ export function شاشة_الشيكات({
   return (
     <div className="space-y-4">
       {مرتدة.length > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-danger/30 bg-danger-soft/40 p-4">
-          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" />
-          <div className="text-sm">
-            <div className="font-semibold text-danger">
+        <div className="rounded-xl border border-danger/30 bg-danger-soft/40 p-4">
+          <div className="mb-2.5 flex items-center gap-2">
+            <AlertTriangle className="size-5 shrink-0 text-danger" />
+            <span className="text-sm font-semibold text-danger">
               تنبيه: {مرتدة.length} شيك مرتد بإجمالي <نص_مبلغ القيمة={إجمالي_المرتدة} /> يحتاج تسوية
-            </div>
-            <div className="text-[12px] text-muted-foreground">
-              رجعت قيمة كل شيك مرتد إلى مديونية الطرف (العميل — والمورد لو كان مُظهَّراً له). تابع تحصيلها.
-            </div>
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {مرتدة.map((ش) => (
+              <button
+                key={ش.id}
+                type="button"
+                onClick={() => تعيين_تفاصيل_شيك(ش)}
+                className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-danger/20 bg-card/70 px-3 py-2 text-right transition hover:border-danger/40 hover:bg-card"
+                title="فتح تفاصيل الشيك"
+              >
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+                  <span className="font-medium">{ش.اسم_الطرف || ش.محول_من || ش.اسم_المدين || "طرف غير محدّد"}</span>
+                  {ش.اسم_المظهر_له && (
+                    <span className="rounded-md bg-warning-soft/60 px-2 py-0.5 text-[11px] text-warning">
+                      رجع من المورد: {ش.اسم_المظهر_له}
+                    </span>
+                  )}
+                  {ش.رقم_الشيك && <span className="ltr-nums text-[11px] text-muted-foreground">#{ش.رقم_الشيك}</span>}
+                  <نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} className="text-[11px] text-muted-foreground" />
+                </span>
+                <span className="flex items-center gap-3">
+                  <نص_مبلغ القيمة={ش.المبلغ} className="font-semibold text-danger" />
+                  <span className="inline-flex items-center gap-1 text-[12px] font-medium text-primary-blue">فتح <ArrowRight className="size-3.5 rotate-180" /></span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2.5 text-[12px] text-muted-foreground">
+            رجعت قيمة كل شيك مرتد إلى مديونية الطرف (العميل — والمورد لو كان مُظهَّراً له). تابع تحصيلها.
           </div>
         </div>
       )}
@@ -535,6 +565,19 @@ export function شاشة_الشيكات({
         <حوار_توزيع
           الشيك={توزيع_شيك}
           عند_الإغلاق={() => { تعيين_توزيع_شيك(null); router.refresh(); }}
+        />
+      )}
+      {تفاصيل_شيك && (
+        <حوار_تفاصيل
+          الشيك={تفاصيل_شيك}
+          عند_الإغلاق={() => تعيين_تفاصيل_شيك(null)}
+          عند_التعديل={() => { const ش = تفاصيل_شيك; تعيين_تفاصيل_شيك(null); تعيين_نموذج({ شيك: ش }); }}
+          عند_إعادة_التسجيل={async () => {
+            const r = await تغيير_حالة_شيك(تفاصيل_شيك.id, نموذج_جديد_ش(تفاصيل_شيك) ? "REGISTERED" : "PENDING");
+            r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+            تعيين_تفاصيل_شيك(null);
+            if (r.نجاح) router.refresh();
+          }}
         />
       )}
       {إيداع_شيك && (
@@ -1294,6 +1337,61 @@ function حوار_إلغاء({
         <تذييل_الحوار>
           <الزر variant="outline" onClick={عند_الإلغاء}>تراجع</الزر>
           <الزر variant="danger" onClick={أكّد} disabled={جارٍ}>تأكيد الإلغاء</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+/** حوار تفاصيل الشيك — عرض سريع (يُفتح من تنبيه المرتد أو أي مكان). */
+function حوار_تفاصيل({
+  الشيك, عند_الإغلاق, عند_التعديل, عند_إعادة_التسجيل,
+}: {
+  الشيك: شيك;
+  عند_الإغلاق: () => void;
+  عند_التعديل: () => void;
+  عند_إعادة_التسجيل: () => void | Promise<void>;
+}) {
+  const صف = (ع: string, ق: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-3 border-b border-border/60 py-2 text-sm last:border-0">
+      <span className="text-muted-foreground">{ع}</span>
+      <span className="text-left font-medium">{ق}</span>
+    </div>
+  );
+  const وارد = الشيك.الاتجاه === "INCOMING";
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-lg">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            تفاصيل الشيك
+            {الشيك.الحالة === "BOUNCED" && <الشارة variant="danger">مرتد</الشارة>}
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="rounded-xl border border-border bg-appgray/40 px-4">
+          {صف(وارد ? "العميل (محوّل من)" : "المستفيد", الشيك.اسم_الطرف || الشيك.محول_من || الشيك.المستفيد || الشيك.اسم_المدين || "—")}
+          {صف("المبلغ", <نص_مبلغ القيمة={الشيك.المبلغ} className="text-danger" />)}
+          {صف("الاتجاه", وارد ? "وارد (لك)" : "صادر (عليك)")}
+          {صف("الحالة", <شارة_حالة الحالة={تسمية_حالة_الشيك[الشيك.الحالة]} متغيّر={لون_الحالة[الشيك.الحالة]} />)}
+          {الشيك.اسم_المظهر_له && صف("رجع من المورد (كان مُظهَّراً له)", <span className="text-warning">{الشيك.اسم_المظهر_له}</span>)}
+          {الشيك.اسم_البنك && صف("البنك", الشيك.اسم_البنك)}
+          {الشيك.رقم_الشيك && صف("رقم الشيك", <span className="ltr-nums">{الشيك.رقم_الشيك}</span>)}
+          {صف("تاريخ الاستحقاق", <نص_تاريخ القيمة={الشيك.تاريخ_الاستحقاق} />)}
+          {الشيك.اسم_المدين && الشيك.اسم_المدين !== (الشيك.اسم_الطرف || الشيك.محول_من) && صف("اسم المدين", الشيك.اسم_المدين)}
+          {الشيك.ملاحظات && صف("ملاحظات", الشيك.ملاحظات)}
+        </div>
+
+        <تذييل_الحوار className="flex-wrap">
+          {الشيك.لها_صورة && (
+            <a href={`/api/cheques/${الشيك.id}/image`} target="_blank" rel="noreferrer">
+              <الزر variant="outline"><ImageIcon className="size-4" /> عرض الصورة</الزر>
+            </a>
+          )}
+          {الشيك.الحالة === "BOUNCED" && (
+            <الزر variant="success" onClick={عند_إعادة_التسجيل}>إعادة تسجيل الشيك</الزر>
+          )}
+          <الزر variant="outline" onClick={عند_التعديل}><Pencil className="size-4" /> تعديل</الزر>
+          <الزر onClick={عند_الإغلاق}>إغلاق</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>
