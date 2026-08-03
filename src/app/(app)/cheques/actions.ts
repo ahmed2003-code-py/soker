@@ -595,20 +595,19 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
   تحقق_الصلاحية(فاعل.role, "حذف");
   const ش = await prisma.cheque.findUnique({ where: { id } });
   if (!ش) return فشل("الشيك غير موجود");
-  // لا حذف نهائي لأي شيك دخل معاملة مالية — يبقى السجل، والتصحيح بالإلغاء
-  if (دخل_معاملة_مالية(ش)) {
-    return فشل("لا يمكن حذف شيك دخل معاملة مالية — استخدم الإلغاء للحفاظ على السجل");
+  // الملغى: أثره اتعكس بالفعل عند الإلغاء، فحذفه آمن (سجل العمليات يحتفظ بكل الحركة).
+  // غير الملغى: يُمنع الحذف لو دخل معاملة مالية (مودع/مظهّر/محصّل) — التصحيح بالإلغاء أولاً.
+  if (ش.status !== "CANCELLED" && دخل_معاملة_مالية(ش)) {
+    return فشل("لا يمكن حذف شيك دخل معاملة مالية — ألغِه أولاً (يرجع كل أثره)، وبعدها تقدر تحذفه لو حابب");
   }
 
   await prisma.$transaction(async (tx) => {
-    // إذا كان صادراً ومحصّلاً → اعكس خصم البنك أولاً (احترازي — لا يصل هنا عادةً بعد الحارس)
-    if (ش.direction === "OUTGOING" && ش.collectedTxnId) {
-      await احذف_حركة_خزنة_ناعم(tx, ش.collectedTxnId);
-    }
-    // v2 وارد «مسجّل»: اعكس أثر دين العميل قبل الحذف (يرجع دينه)
-    if (نموذج_جديد(ش) && ش.partyLedgerEntryId) {
-      await احذف_قيد_ناعم(tx, ش.partyLedgerEntryId);
-    }
+    // اعكس أي أثر محاسبي متبقٍ قبل الحذف (يرجع الأرصدة). للملغى تكون كلها فارغة أصلاً.
+    if (ش.partyLedgerEntryId) await احذف_قيد_ناعم(tx, ش.partyLedgerEntryId);
+    if (ش.endorseLedgerEntryId) await احذف_قيد_ناعم(tx, ش.endorseLedgerEntryId);
+    if (ش.collectedTxnId) await احذف_حركة_خزنة_ناعم(tx, ش.collectedTxnId);
+    const دفعات_تسوية = await tx.treasuryTxn.findMany({ where: { chequeId: id, deletedAt: null }, select: { id: true } });
+    for (const د of دفعات_تسوية) await احذف_حركة_خزنة_ناعم(tx, د.id);
     await tx.cheque.delete({ where: { id } });
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
@@ -619,6 +618,11 @@ export async function حذف_شيك(id: number): Promise<نتيجة> {
     });
   });
   revalidatePath("/cheques");
-  if (ش.collectedTxnId) revalidatePath("/treasury");
+  revalidatePath("/treasury");
+  if (ش.partyId) {
+    revalidatePath(`/customers/${ش.partyId}`);
+    revalidatePath(`/suppliers/${ش.partyId}`);
+  }
+  if (ش.endorsedToId) revalidatePath(`/suppliers/${ش.endorsedToId}`);
   return نجح(undefined, "تم حذف الشيك");
 }
