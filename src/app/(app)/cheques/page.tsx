@@ -15,6 +15,7 @@ import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 
 export const metadata = { title: "الشيكات — سُكر" };
+export const dynamic = "force-dynamic"; // بيانات مالية حيّة — لا تُخزَّن مؤقتاً
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();

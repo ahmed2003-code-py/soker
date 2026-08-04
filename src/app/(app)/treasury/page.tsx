@@ -7,6 +7,7 @@ import { اجلب_خريطة_حسابات_فرعية } from "./sub-account-actio
 import { TreasuryAccountType } from "@prisma/client";
 
 export const metadata = { title: "الخزنة — سُكر" };
+export const dynamic = "force-dynamic"; // بيانات مالية حيّة — لا تُخزَّن مؤقتاً
 
 /** نقدي أولاً، ثم فودافون، إنستا، بنك */
 const ترتيب_الأنواع: Record<TreasuryAccountType, number> = {
