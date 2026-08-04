@@ -208,7 +208,14 @@ export function شاشة_الشيكات({
   })();
 
   const أعمدة: عمود<شيك>[] = [
-    { المفتاح: "اسم_المدين", العنوان: t("cheque.col.drawer"), قابل_للفرز: true },
+    {
+      المفتاح: "الطرف",
+      العنوان: تبويب === "INCOMING" ? "العميل (محوّل من)" : "المورد / الطرف",
+      قابل_للفرز: true,
+      قيمة: (ص) => ص.اسم_الطرف || ص.محول_من || "",
+      خلية: (ص) => <span className="font-medium">{ص.اسم_الطرف || ص.محول_من || "—"}</span>,
+    },
+    { المفتاح: "اسم_المدين", العنوان: t("cheque.col.drawer"), قابل_للفرز: true, مخفي_موبايل: true },
     {
       المفتاح: "المبلغ",
       العنوان: t("pay.amount"),
@@ -1419,8 +1426,18 @@ function حوار_سداد_مركب({
   const [مورد, تعيين_مورد] = React.useState("");
   const [بنود, تعيين_بنود] = React.useState<بند_خزنة[]>([]);
   const [شيكات_مختارة, تعيين_شيكات_مختارة] = React.useState<Set<number>>(new Set());
+  const [بحث_شيكات, تعيين_بحث_شيكات] = React.useState("");
   const [بيان, تعيين_بيان] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  const شيكات_معروضة = React.useMemo(() => {
+    const ك = بحث_شيكات.trim().toLowerCase();
+    if (!ك) return شيكات_متاحة;
+    return شيكات_متاحة.filter((c) =>
+      [c.اسم_الطرف, c.محول_من, c.اسم_المدين, c.رقم_الشيك, c.اسم_البنك, String(c.المبلغ)]
+        .some((v) => (v ?? "").toString().toLowerCase().includes(ك))
+    );
+  }, [شيكات_متاحة, بحث_شيكات]);
 
   const مجموع_خزنة = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
   const مجموع_شيكات = شيكات_متاحة.filter((c) => شيكات_مختارة.has(c.id)).reduce((س, c) => س + c.المبلغ, 0);
@@ -1500,15 +1517,30 @@ function حوار_سداد_مركب({
         {/* اختيار الشيكات الواردة */}
         {شيكات_متاحة.length > 0 && (
           <div className="mt-3 space-y-1.5">
-            <العنوان className="mb-0">شيكات واردة للتظهير</العنوان>
-            <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
-              {شيكات_متاحة.map((c) => (
-                <label key={c.id} className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-appgray cursor-pointer text-sm">
-                  <span className="flex items-center gap-2">
-                    <input type="checkbox" className="size-4 accent-primary" checked={شيكات_مختارة.has(c.id)} onChange={(e) => تعيين_شيكات_مختارة((س) => { const n = new Set(س); e.target.checked ? n.add(c.id) : n.delete(c.id); return n; })} />
-                    <span>{c.اسم_المدين}{c.رقم_الشيك ? ` — ${c.رقم_الشيك}` : ""}</span>
+            <div className="flex items-center justify-between">
+              <العنوان className="mb-0">شيكات واردة للتظهير</العنوان>
+              <span className="text-[11px] text-muted-foreground">{شيكات_مختارة.size ? `${شيكات_مختارة.size} مختار` : `${شيكات_متاحة.length} متاح`}</span>
+            </div>
+            <الحقل
+              value={بحث_شيكات}
+              onChange={(e) => تعيين_بحث_شيكات(e.target.value)}
+              placeholder="ابحث بالاسم / رقم الشيك / البنك / المبلغ…"
+              className="h-9"
+            />
+            <div className="max-h-44 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+              {شيكات_معروضة.length === 0 ? (
+                <p className="py-3 text-center text-[12px] text-muted-foreground">لا توجد شيكات مطابقة للبحث.</p>
+              ) : شيكات_معروضة.map((c) => (
+                <label key={c.id} className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-appgray cursor-pointer text-sm">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={شيكات_مختارة.has(c.id)} onChange={(e) => تعيين_شيكات_مختارة((س) => { const n = new Set(س); e.target.checked ? n.add(c.id) : n.delete(c.id); return n; })} />
+                    <span className="min-w-0">
+                      <span className="font-medium">{c.اسم_الطرف || c.محول_من || c.اسم_المدين || "—"}</span>
+                      {c.رقم_الشيك && <span className="mr-1.5 text-[11px] text-muted-foreground ltr-nums">#{c.رقم_الشيك}</span>}
+                      {c.اسم_البنك && <span className="mr-1.5 text-[11px] text-muted-foreground">· {c.اسم_البنك}</span>}
+                    </span>
                   </span>
-                  <نص_مبلغ القيمة={c.المبلغ} />
+                  <نص_مبلغ القيمة={c.المبلغ} className="shrink-0" />
                 </label>
               ))}
             </div>
