@@ -53,6 +53,19 @@ const أسماء_الشهور = [
 // إظهار/إخفاء قسم استخراج الصورة (OCR) في نموذج الشيك — مؤقتاً مُخفى، اقلبه true للإرجاع.
 const إظهار_OCR = false;
 
+/** تطبيع نص عربي للبحث: توحيد الألف/الهمزة/التاء المربوطة + إزالة التشكيل. */
+function طبّع_بحث(s: unknown): string {
+  return (s ?? "").toString().toLowerCase()
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[ً-ْـ]/g, "") // تشكيل + تطويل
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** انتقالات النموذج الجديد v2 للشيكات الواردة (نسخة العميل — تُطابق الخادم). */
 const انتقالات_v2_وارد_ui: Record<string, ChequeStatus[]> = {
   REGISTERED: ["DEPOSITED", "ENDORSED", "COLLECTED", "CANCELLED"],
@@ -1431,11 +1444,11 @@ function حوار_سداد_مركب({
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
 
   const شيكات_معروضة = React.useMemo(() => {
-    const ك = بحث_شيكات.trim().toLowerCase();
+    const ك = طبّع_بحث(بحث_شيكات);
     if (!ك) return شيكات_متاحة;
     return شيكات_متاحة.filter((c) =>
-      [c.اسم_الطرف, c.محول_من, c.اسم_المدين, c.رقم_الشيك, c.اسم_البنك, String(c.المبلغ)]
-        .some((v) => (v ?? "").toString().toLowerCase().includes(ك))
+      [c.اسم_الطرف, c.محول_من, c.اسم_المدين, c.المستفيد, c.رقم_الشيك, c.اسم_البنك, String(c.المبلغ)]
+        .some((v) => طبّع_بحث(v).includes(ك))
     );
   }, [شيكات_متاحة, بحث_شيكات]);
 
@@ -1536,6 +1549,7 @@ function حوار_سداد_مركب({
                     <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={شيكات_مختارة.has(c.id)} onChange={(e) => تعيين_شيكات_مختارة((س) => { const n = new Set(س); e.target.checked ? n.add(c.id) : n.delete(c.id); return n; })} />
                     <span className="min-w-0">
                       <span className="font-medium">{c.اسم_الطرف || c.محول_من || c.اسم_المدين || "—"}</span>
+                      {c.اسم_المدين && c.اسم_المدين !== (c.اسم_الطرف || c.محول_من) && <span className="mr-1.5 text-[11px] text-muted-foreground">· مدين: {c.اسم_المدين}</span>}
                       {c.رقم_الشيك && <span className="mr-1.5 text-[11px] text-muted-foreground ltr-nums">#{c.رقم_الشيك}</span>}
                       {c.اسم_البنك && <span className="mr-1.5 text-[11px] text-muted-foreground">· {c.اسم_البنك}</span>}
                     </span>
