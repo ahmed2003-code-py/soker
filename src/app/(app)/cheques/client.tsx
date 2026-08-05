@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -1446,10 +1446,12 @@ function حوار_سداد_مركب({
   const شيكات_معروضة = React.useMemo(() => {
     const ك = طبّع_بحث(بحث_شيكات);
     if (!ك) return شيكات_متاحة;
-    return شيكات_متاحة.filter((c) =>
-      [c.اسم_الطرف, c.محول_من, c.اسم_المدين, c.المستفيد, c.رقم_الشيك, c.اسم_البنك, String(c.المبلغ)]
-        .some((v) => طبّع_بحث(v).includes(ك))
-    );
+    return شيكات_متاحة.filter((c) => {
+      const يوم = c.تاريخ_الاستحقاق?.slice(0, 10) ?? "";
+      const يوم_معكوس = يوم ? يوم.split("-").reverse().join("/") : ""; // dd/mm/yyyy للبحث
+      return [c.اسم_الطرف, c.محول_من, c.اسم_المدين, c.المستفيد, c.رقم_الشيك, c.اسم_البنك, String(c.المبلغ), يوم, يوم_معكوس]
+        .some((v) => طبّع_بحث(v).includes(ك));
+    });
   }, [شيكات_متاحة, بحث_شيكات]);
 
   const مجموع_خزنة = بنود.reduce((س, ب) => س + (Number(ب.مبلغ.replace(/,/g, "")) || 0), 0);
@@ -1554,7 +1556,13 @@ function حوار_سداد_مركب({
                       {c.اسم_البنك && <span className="mr-1.5 text-[11px] text-muted-foreground">· {c.اسم_البنك}</span>}
                     </span>
                   </span>
-                  <نص_مبلغ القيمة={c.المبلغ} className="shrink-0" />
+                  <span className="flex shrink-0 items-center gap-2.5">
+                    <span className={`inline-flex items-center gap-1 text-[11px] ${c.متأخر ? "font-medium text-danger" : "text-muted-foreground"}`}>
+                      <CalendarClock className="size-3" />
+                      <نص_تاريخ القيمة={c.تاريخ_الاستحقاق} />
+                    </span>
+                    <نص_مبلغ القيمة={c.المبلغ} />
+                  </span>
                 </label>
               ))}
             </div>
