@@ -16,6 +16,21 @@ function أثر(النوع: TxnKind, المبلغ: Prisma.Decimal.Value): Prisma
   return د(0); // TRANSFER: لا أثر على الرصيد
 }
 
+/**
+ * ضمان ترتيب زمني دقيق داخل اليوم: التواريخ المختارة من التقويم تصل عند منتصف الليل (00:00)
+ * فتفقد ترتيب الإدخال مقابل الحركات المختومة بوقت فعلي. نُلصق وقت الإدخال الحالي مع الإبقاء على
+ * نفس اليوم (يظل تاريخ العرض كما اختاره المستخدم، لكن الترتيب يصبح بالوقت الحقيقي).
+ */
+function وقت_إدخال_للحركة(د2: Date): Date {
+  if (د2.getUTCHours() === 0 && د2.getUTCMinutes() === 0 && د2.getUTCSeconds() === 0 && د2.getUTCMilliseconds() === 0) {
+    const الآن = new Date();
+    const ن = new Date(د2);
+    ن.setUTCHours(الآن.getUTCHours(), الآن.getUTCMinutes(), الآن.getUTCSeconds(), الآن.getUTCMilliseconds());
+    return ن;
+  }
+  return د2;
+}
+
 /** إعادة حساب سلسلة حركات حساب خزنة وتحديث رصيده. تُرجع الرصيد النهائي. */
 export async function أعد_حساب_حساب_الخزنة(
   tx: عميل_معاملة,
@@ -86,6 +101,9 @@ export async function أضف_حركة_خزنة(
     أنشأ: number;
   }
 ) {
+  // التاريخ الفعلي للحركة (بوقت الإدخال إن كان مختاراً من التقويم بلا وقت)
+  const تاريخ_الحركة = وقت_إدخال_للحركة(بيانات.التاريخ);
+
   // آخر حركة في سلسلة الحساب (الأحدث زمنياً) قبل الإضافة
   const الأخيرة = await tx.treasuryTxn.findFirst({
     where: { accountId: بيانات.معرف_الحساب, deletedAt: null },
@@ -93,14 +111,14 @@ export async function أضف_حركة_خزنة(
     select: { date: true, balanceAfter: true },
   });
 
-  const في_النهاية = !الأخيرة || بيانات.التاريخ >= الأخيرة.date;
+  const في_النهاية = !الأخيرة || تاريخ_الحركة >= الأخيرة.date;
   const رصيد_جديد = في_النهاية
     ? جمع(الأخيرة?.balanceAfter ?? 0, أثر(بيانات.النوع, بيانات.المبلغ))
     : د(0); // حركة بتاريخ سابق: تُحسب في إعادة الحساب الكاملة
 
   const حركة = await tx.treasuryTxn.create({
     data: {
-      date: بيانات.التاريخ,
+      date: تاريخ_الحركة,
       kind: بيانات.النوع,
       amount: د(بيانات.المبلغ),
       accountId: بيانات.معرف_الحساب,
