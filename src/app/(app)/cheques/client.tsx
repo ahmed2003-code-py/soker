@@ -1048,6 +1048,17 @@ function حوار_تسوية({
   const [شيكات_متاحة, تعيين_شيكات_متاحة] = React.useState<{ id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string }[]>([]);
   const [مختارة, تعيين_مختارة] = React.useState<Set<number>>(new Set());
   const [محمّل, تعيين_محمّل] = React.useState(false);
+  const [بحث_تسوية, تعيين_بحث_تسوية] = React.useState("");
+
+  const شيكات_معروضة = React.useMemo(() => {
+    const ك = طبّع_بحث(بحث_تسوية);
+    if (!ك) return شيكات_متاحة;
+    return شيكات_متاحة.filter((ش) => {
+      const يوم = ش.تاريخ_الاستحقاق.slice(0, 10);
+      return [ش.الاسم, ش.رقم_الشيك, ش.اسم_البنك, String(ش.المبلغ), يوم, يوم.split("-").reverse().join("/")]
+        .some((v) => طبّع_بحث(v).includes(ك));
+    });
+  }, [شيكات_متاحة, بحث_تسوية]);
 
   const نوع_الحساب = حسابات_الخزنة.find((a) => a.id === Number(حساب))?.النوع ?? null;
   const له_فرعية = نوع_الحساب !== null && نوع_الحساب !== "CASH";
@@ -1192,8 +1203,11 @@ function حوار_تسوية({
                   <p className="rounded-lg border border-dashed border-border py-3 text-center text-[12px] text-muted-foreground">لا توجد شيكات واردة متاحة بقيمة ≤ المتبقّي.</p>
                 ) : (
                   <>
+                    <الحقل value={بحث_تسوية} onChange={(e) => تعيين_بحث_تسوية(e.target.value)} placeholder="ابحث بالاسم / رقم الشيك / البنك / المبلغ / التاريخ…" className="h-9" />
                     <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-                      {شيكات_متاحة.map((ش) => {
+                      {شيكات_معروضة.length === 0 ? (
+                        <p className="py-3 text-center text-[12px] text-muted-foreground">لا توجد شيكات مطابقة للبحث.</p>
+                      ) : شيكات_معروضة.map((ش) => {
                         const محدد = مختارة.has(ش.id);
                         const يتجاوز = !محدد && مجموع_المختار + ش.المبلغ > متبقٍ + 0.005;
                         return (
