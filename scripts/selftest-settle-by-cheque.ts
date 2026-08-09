@@ -29,13 +29,14 @@ async function main() {
   تحقق(await رخزنة_شيكات() === خ0 + 3000, "تسجيل الوارد: خزنة الشيكات +3000");
   تحقق(await مسدَّد(صادر.id) === 0, "المسدَّد على الصادر = 0 بداية");
 
-  // ═══ تسوية بشيك وارد (نحاكي سدّد_تسوية_بشيك: settlesChequeId) ═══
-  await prisma.cheque.update({ where: { id: وارد.id }, data: { settlesChequeId: صادر.id } });
+  // ═══ تسوية بشيك وارد (نحاكي سدّد_تسوية_بشيك: مظهّر للمورد + settlesChequeId) ═══
+  await prisma.cheque.update({ where: { id: وارد.id }, data: { settlesChequeId: صادر.id, status: "ENDORSED", endorsedToId: مورد.id } });
   تحقق(await مسدَّد(صادر.id) === 3000, "بعد استخدام الشيك: المسدَّد = 3000");
   تحقق(await رخزنة_شيكات() === خ0, "الشيك اتشال من خزنة الشيكات (رجعت لأصلها)");
   تحقق(await رطرف(مورد.id) === مستحق_قبل, "مستحق المورد ثابت (مايتغيرش) — الإصلاح المطلوب");
   تحقق(await رطرف(عميل.id) === 7000, "دين العميل ثابت (اتخصم وقت الاستلام)");
   const و1 = await prisma.cheque.findUniqueOrThrow({ where: { id: وارد.id } });
+  تحقق(و1.status === "ENDORSED" && و1.endorsedToId === مورد.id, "الشيك بقى «مظهّر» باسم المورد");
   تحقق(دخل_معاملة_مالية(و1) === true, "الشيك المستخدَم مقفول (لا يُعدَّل/يُحذف)");
 
   // إكمال الباقي 7000 من الخزنة → تمت التسوية
@@ -55,9 +56,11 @@ async function main() {
 
   // ═══ عكس: إزالة الشيك من التسوية ═══
   const خزنة_قبل_الإزالة = await رخزنة_شيكات();
-  await prisma.cheque.update({ where: { id: وارد.id }, data: { settlesChequeId: null } });
+  await prisma.cheque.update({ where: { id: وارد.id }, data: { settlesChequeId: null, status: "REGISTERED", endorsedToId: null } });
   تحقق(await مسدَّد(صادر.id) === 7000, "بعد الإزالة: المسدَّد يرجع 7000 (خزنة فقط)");
-  تحقق(await رخزنة_شيكات() === خزنة_قبل_الإزالة + 3000, "بعد الإزالة: الشيك (3000) يرجع لخزنة الشيكات");
+  تحقق(await رخزنة_شيكات() === خزنة_قبل_الإزالة + 3000, "بعد الإزالة: الشيك (3000) يرجع «مسجّل» لخزنة الشيكات");
+  const و2 = await prisma.cheque.findUniqueOrThrow({ where: { id: وارد.id } });
+  تحقق(و2.status === "REGISTERED" && و2.endorsedToId === null, "بعد الإزالة: الشيك رجع «مسجّل» وفُكّ التظهير");
 
   // تنظيف
   await prisma.treasuryTxn.deleteMany({ where: { chequeId: صادر.id } });

@@ -197,6 +197,7 @@ export async function تغيير_حالة_شيك(
 
   const شيك = await prisma.cheque.findUnique({ where: { id } });
   if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر — أزِله من التسوية أولاً لتغيير حالته");
   const v2 = نموذج_جديد(شيك);
   const خريطة_الانتقالات = v2 ? انتقالات_v2_وارد : انتقالات_الحالة;
 
@@ -385,7 +386,7 @@ export async function سدّد_تسوية_بشيك(id: number, معرف_الشي
   const مكتمل = مُسدَّد.plus(وارد.amount).greaterThanOrEqualTo(د(صادر.amount).minus(0.005));
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: id, updatedById: فاعل.id } });
+      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: id, status: "ENDORSED", endorsedToId: صادر.partyId ?? null, updatedById: فاعل.id } });
       if (مكتمل && صادر.status !== "SETTLED") {
         await tx.cheque.update({ where: { id }, data: { status: "SETTLED", updatedById: فاعل.id } });
       }
@@ -394,7 +395,7 @@ export async function سدّد_تسوية_بشيك(id: number, معرف_الشي
         العملية: "UPDATE",
         نوع_الكيان: "الشيك",
         معرف_الكيان: id,
-        التفاصيل: { دفعة_تسوية_بشيك_وارد: معرف_الشيك_الوارد, قيمة: وارد.amount.toString(), ...(مكتمل ? { تمت_التسوية: true } : {}) },
+        التفاصيل: { دفعة_تسوية_بشيك_وارد: معرف_الشيك_الوارد, قيمة: وارد.amount.toString(), مظهّرة_للمورد: صادر.partyId ?? null, ...(مكتمل ? { تمت_التسوية: true } : {}) },
       });
     });
   } catch (e) {
@@ -435,7 +436,11 @@ export async function سدّد_تسوية_بشيكات(id: number, معرفات:
   const مكتمل = مُسدَّد.plus(إجمالي_الشيكات).greaterThanOrEqualTo(د(صادر.amount).minus(0.005));
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.cheque.updateMany({ where: { id: { in: فريدة } }, data: { settlesChequeId: id, updatedById: فاعل.id } });
+      // الشيكات الواردة → «مظهّرة» للمورد (صاحب الشيك الصادر) بلا أثر على دفتر الأستاذ
+      await tx.cheque.updateMany({
+        where: { id: { in: فريدة } },
+        data: { settlesChequeId: id, status: "ENDORSED", endorsedToId: صادر.partyId ?? null, updatedById: فاعل.id },
+      });
       if (مكتمل && صادر.status !== "SETTLED") {
         await tx.cheque.update({ where: { id }, data: { status: "SETTLED", updatedById: فاعل.id } });
       }
@@ -444,7 +449,7 @@ export async function سدّد_تسوية_بشيكات(id: number, معرفات:
         العملية: "UPDATE",
         نوع_الكيان: "الشيك",
         معرف_الكيان: id,
-        التفاصيل: { دفعة_تسوية_بشيكات: فريدة, عدد: فريدة.length, قيمة: إجمالي_الشيكات.toString(), ...(مكتمل ? { تمت_التسوية: true } : {}) },
+        التفاصيل: { دفعة_تسوية_بشيكات: فريدة, عدد: فريدة.length, قيمة: إجمالي_الشيكات.toString(), مظهّرة_للمورد: صادر.partyId ?? null, ...(مكتمل ? { تمت_التسوية: true } : {}) },
       });
     });
   } catch (e) {
@@ -458,12 +463,14 @@ export async function سدّد_تسوية_بشيكات(id: number, معرفات:
 export async function احذف_دفعة_شيك(معرف_الشيك_الوارد: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "حذف");
-  const وارد = await prisma.cheque.findUnique({ where: { id: معرف_الشيك_الوارد }, select: { settlesChequeId: true } });
+  const وارد = await prisma.cheque.findUnique({ where: { id: معرف_الشيك_الوارد }, select: { settlesChequeId: true, accountingVersion: true } });
   if (!وارد?.settlesChequeId) return فشل("هذا الشيك ليس مستخدَماً في تسوية");
   const معرف_الصادر = وارد.settlesChequeId;
+  const حالة_الرجوع: ChequeStatus = (وارد.accountingVersion ?? 1) >= 2 ? "REGISTERED" : "PENDING";
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: null, updatedById: فاعل.id } });
+      // يرجع الشيك الوارد للمتاح: يفكّ التظهير ويعود لخزنة الشيكات
+      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: null, status: حالة_الرجوع, endorsedToId: null, updatedById: فاعل.id } });
       const صادر = await tx.cheque.findUniqueOrThrow({ where: { id: معرف_الصادر } });
       const مُسدَّد_جديد = await مُسدَّد_تسوية(tx, معرف_الصادر);
       if (صادر.status === "SETTLED" && مُسدَّد_جديد.lessThan(د(صادر.amount).minus(0.005))) {
