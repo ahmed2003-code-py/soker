@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic"; // بيانات مالية حيّة — 
 
 export default async function صفحة_الشيكات() {
   const { t } = مترجم_الخادم();
-  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة, حسابات_فرعية, دفاتر] = await Promise.all([
+  const [شيكات, تنبيهات, بنوك, أطراف, حسابات_الخزنة, حسابات_فرعية, دفاتر, رصيد_خزنة_الشيكات_قيمة] = await Promise.all([
     prisma.cheque.findMany({
       orderBy: { dueDate: "asc" },
       select: {
@@ -46,8 +46,9 @@ export default async function صفحة_الشيكات() {
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" }, select: { id: true, type: true } }),
     اجلب_خريطة_حسابات_فرعية(),
     اجلب_خيارات_الدفاتر(),
+    رصيد_خزنة_الشيكات(prisma),
   ]);
-  const رصيد_الخزنة_للشيكات = Number(await رصيد_خزنة_الشيكات(prisma));
+  const رصيد_الخزنة_للشيكات = Number(رصيد_خزنة_الشيكات_قيمة);
 
   const بيانات = شيكات.map((c) => ({
     id: c.id,

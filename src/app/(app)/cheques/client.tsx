@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيك, احذف_دفعة_شيك } from "./actions";
+import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيكات, احذف_دفعة_شيك } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -1046,23 +1046,39 @@ function حوار_تسوية({
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [وسيلة, تعيين_وسيلة] = React.useState<"خزنة" | "شيك">("خزنة");
   const [شيكات_متاحة, تعيين_شيكات_متاحة] = React.useState<{ id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string }[]>([]);
-  const [شيك_مختار, تعيين_شيك_مختار] = React.useState("");
+  const [مختارة, تعيين_مختارة] = React.useState<Set<number>>(new Set());
+  const [محمّل, تعيين_محمّل] = React.useState(false);
 
   const نوع_الحساب = حسابات_الخزنة.find((a) => a.id === Number(حساب))?.النوع ?? null;
   const له_فرعية = نوع_الحساب !== null && نوع_الحساب !== "CASH";
   const خيارات_فرعية = له_فرعية && نوع_الحساب ? (حسابات_فرعية[نوع_الحساب] ?? []) : [];
 
   async function حمّل() {
+    تعيين_محمّل(true);
     const [r, ش] = await Promise.all([اجلب_دفعات_التسوية(الشيك.id), اجلب_شيكات_متاحة_للتسوية(الشيك.id)]);
     if (r.نجاح && r.بيانات) تعيين_بيانات(r.بيانات);
-    if (ش.نجاح && ش.بيانات) { تعيين_شيكات_متاحة(ش.بيانات.الشيكات); تعيين_شيك_مختار(""); }
+    if (ش.نجاح && ش.بيانات) تعيين_شيكات_متاحة(ش.بيانات.الشيكات);
+    تعيين_مختارة(new Set());
+    تعيين_محمّل(false);
   }
   React.useEffect(() => { حمّل(); /* eslint-disable-next-line */ }, []);
 
-  async function أضف_بشيك() {
-    if (!شيك_مختار) return إشعار.خطأ("اختر شيكاً وارداً");
+  const مجموع_المختار = شيكات_متاحة.filter((ش) => مختارة.has(ش.id)).reduce((س, ش) => س + ش.المبلغ, 0);
+
+  function بدّل_شيك(id: number, مبلغ: number) {
+    تعيين_مختارة((س) => {
+      const n = new Set(س);
+      if (n.has(id)) { n.delete(id); return n; }
+      // منع تجاوز المتبقّي
+      if (مجموع_المختار + مبلغ > متبقٍ + 0.005) { إشعار.خطأ("إجمالي المحدد يتجاوز المتبقّي"); return n; }
+      n.add(id); return n;
+    });
+  }
+
+  async function أضف_بشيكات() {
+    if (مختارة.size === 0) return إشعار.خطأ("اختر شيكاً واحداً على الأقل");
     تعيين_جارٍ(true);
-    const r = await سدّد_تسوية_بشيك(الشيك.id, Number(شيك_مختار));
+    const r = await سدّد_تسوية_بشيكات(الشيك.id, [...مختارة]);
     تعيين_جارٍ(false);
     if (!r.نجاح) return إشعار.خطأ(r.رسالة);
     إشعار.نجاح(r.رسالة!);
@@ -1166,23 +1182,44 @@ function حوار_تسوية({
               </div>
             ) : (
               <div className="space-y-1.5">
-                <span className="text-[11px] text-muted-foreground">شيك وارد متاح (قيمته ≤ المتبقّي، غير مستخدَم)</span>
-                {شيكات_متاحة.length === 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground">شيكات واردة متاحة (اختر أكتر من واحد) — قيمة كل شيك ≤ المتبقّي</span>
+                  {مختارة.size > 0 && <span className="text-[11px] font-medium text-primary">{مختارة.size} محدد · <نص_مبلغ القيمة={مجموع_المختار} /></span>}
+                </div>
+                {محمّل ? (
+                  <p className="py-3 text-center text-[12px] text-muted-foreground">…جارٍ تحميل الشيكات</p>
+                ) : شيكات_متاحة.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border py-3 text-center text-[12px] text-muted-foreground">لا توجد شيكات واردة متاحة بقيمة ≤ المتبقّي.</p>
                 ) : (
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="flex-1 min-w-[200px]">
-                      <قائمة_اختيار
-                        الخيارات={شيكات_متاحة.map((ش) => ({ القيمة: String(ش.id), التسمية: `${ش.الاسم} — ${ش.المبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}${ش.رقم_الشيك ? " · #" + ش.رقم_الشيك : ""}` }))}
-                        القيمة={شيك_مختار}
-                        عند_التغيير={تعيين_شيك_مختار}
-                        نص_بديل="اختر شيكاً وارداً…"
-                      />
+                  <>
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                      {شيكات_متاحة.map((ش) => {
+                        const محدد = مختارة.has(ش.id);
+                        const يتجاوز = !محدد && مجموع_المختار + ش.المبلغ > متبقٍ + 0.005;
+                        return (
+                          <label key={ش.id} className={`flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm ${يتجاوز ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-appgray"}`}>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <input type="checkbox" className="size-4 shrink-0 accent-primary" checked={محدد} disabled={يتجاوز} onChange={() => بدّل_شيك(ش.id, ش.المبلغ)} />
+                              <span className="min-w-0">
+                                <span className="font-medium">{ش.الاسم}</span>
+                                {ش.رقم_الشيك && <span className="mr-1.5 text-[11px] text-muted-foreground ltr-nums">#{ش.رقم_الشيك}</span>}
+                                {ش.اسم_البنك && <span className="mr-1.5 text-[11px] text-muted-foreground">· {ش.اسم_البنك}</span>}
+                              </span>
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0">
+                              <نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} className="text-[11px] text-muted-foreground" />
+                              <نص_مبلغ القيمة={ش.المبلغ} />
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
-                    <الزر variant="success" onClick={أضف_بشيك} disabled={جارٍ || !شيك_مختار}><Plus className="size-4" /> استخدم الشيك</الزر>
-                  </div>
+                    <الزر variant="success" className="w-full" onClick={أضف_بشيكات} disabled={جارٍ || مختارة.size === 0}>
+                      <Plus className="size-4" /> استخدم {مختارة.size > 0 ? `${مختارة.size} شيك` : "الشيكات المحددة"}
+                    </الزر>
+                  </>
                 )}
-                <p className="text-[11px] text-muted-foreground">الشيك يموّل التسوية بقيمته كاملة (لو أقل من المتبقّي، كمّل الباقي بدفعة تانية). لا يؤثّر على رصيد المورد.</p>
+                <p className="text-[11px] text-muted-foreground">كل شيك يموّل التسوية بقيمته كاملة. لا يؤثّر على رصيد المورد.</p>
               </div>
             )}
           </div>

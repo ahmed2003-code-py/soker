@@ -404,6 +404,56 @@ export async function سدّد_تسوية_بشيك(id: number, معرف_الشي
   return نجح(undefined, مكتمل ? "تمت التسوية بالكامل" : "تم استخدام الشيك في التسوية");
 }
 
+/** تمويل تسوية شيك صادر بعدة شيكات واردة دفعة واحدة (معاملة ذرّية). */
+export async function سدّد_تسوية_بشيكات(id: number, معرفات: number[]): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const فريدة = [...new Set(معرفات.filter((n) => Number.isFinite(n)))];
+  if (فريدة.length === 0) return فشل("اختر شيكاً واحداً على الأقل");
+  const صادر = await prisma.cheque.findUnique({ where: { id } });
+  if (!صادر) return فشل("الشيك الصادر غير موجود");
+  if (صادر.direction !== "OUTGOING") return فشل("التسوية للشيكات الصادرة فقط");
+  if (صادر.collectedTxnId) return فشل("الشيك الصادر تم صرفه من البنك — لا يمكن التسوية");
+  if (!(["PENDING", "SETTLED"] as ChequeStatus[]).includes(صادر.status)) {
+    return فشل(`لا يمكن التسوية في الحالة الحالية (${تسمية_حالة_الشيك[صادر.status]})`);
+  }
+  const شيكات = await prisma.cheque.findMany({ where: { id: { in: فريدة } } });
+  if (شيكات.length !== فريدة.length) return فشل("بعض الشيكات غير موجودة");
+  for (const و of شيكات) {
+    if (و.direction !== "INCOMING") return فشل(`الشيك ${و.chequeNumber ?? و.id} ليس وارداً`);
+    if (و.settlesChequeId) return فشل(`الشيك ${و.chequeNumber ?? و.id} مستخدَم بالفعل في تسوية`);
+    if (!(["REGISTERED", "PENDING"] as ChequeStatus[]).includes(و.status) || و.endorseLedgerEntryId != null || و.collectedTxnId != null) {
+      return فشل(`الشيك ${و.chequeNumber ?? و.id} غير متاح (مظهّر/مودع/محصّل)`);
+    }
+  }
+  const مُسدَّد = await مُسدَّد_تسوية(prisma, id);
+  const متبقٍ = د(صادر.amount).minus(مُسدَّد);
+  const إجمالي_الشيكات = شيكات.reduce((س, و) => س.plus(و.amount), د(0));
+  if (إجمالي_الشيكات.greaterThan(متبقٍ.plus(0.005))) {
+    return فشل(`إجمالي الشيكات (${إجمالي_الشيكات.toFixed(2)}) أكبر من المتبقّي (${متبقٍ.toFixed(2)})`);
+  }
+  const مكتمل = مُسدَّد.plus(إجمالي_الشيكات).greaterThanOrEqualTo(د(صادر.amount).minus(0.005));
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.cheque.updateMany({ where: { id: { in: فريدة } }, data: { settlesChequeId: id, updatedById: فاعل.id } });
+      if (مكتمل && صادر.status !== "SETTLED") {
+        await tx.cheque.update({ where: { id }, data: { status: "SETTLED", updatedById: فاعل.id } });
+      }
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { دفعة_تسوية_بشيكات: فريدة, عدد: فريدة.length, قيمة: إجمالي_الشيكات.toString(), ...(مكتمل ? { تمت_التسوية: true } : {}) },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء التسوية بالشيكات");
+  }
+  revalidatePath("/cheques");
+  return نجح(undefined, مكتمل ? "تمت التسوية بالكامل" : `تم استخدام ${فريدة.length} شيك في التسوية`);
+}
+
 /** إزالة شيك وارد من تسوية شيك صادر — يرجع الشيك للمتاح ولخزنة الشيكات، ويُرجع الصادر «تحت الصرف» إن لزم. */
 export async function احذف_دفعة_شيك(معرف_الشيك_الوارد: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
