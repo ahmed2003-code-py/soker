@@ -123,6 +123,8 @@ export function نموذج_فاتورة({
   const [مرجع_خارجي, تعيين_مرجع_خارجي] = React.useState(فاتورة?.مرجع_خارجي ?? "");
   const نوع_الفاتورة_الحالي: "SALE" | "PURCHASE" | "SUPPLIER_RETURN" =
     نوع_الطرف === "SUPPLIER" ? اتجاه_المورد : "SALE";
+  // بيع/مرتجع لكل بند متاح لفواتير البيع (عميل بيع + مورد بيع) — الشراء لا يقبل مرتجعاً هنا
+  const يسمح_بمرتجع = نوع_الفاتورة_الحالي !== "PURCHASE";
 
   // وضع العميل الزائر (walk-in)
   const [عميل_زائر, تعيين_عميل_زائر] = React.useState(
@@ -405,7 +407,7 @@ export function نموذج_فاتورة({
     return س + سعر * ع(ب.الوزن);
   }, 0);
   const الإجمالي_المالي = إجمالي_المبيعات_النموذج - إجمالي_المرتجعات_النموذج; // قد يكون سالباً
-  const لها_مرتجعات = نوع_الطرف === "CUSTOMER" && إجمالي_المرتجعات_النموذج > 0;
+  const لها_مرتجعات = يسمح_بمرتجع && إجمالي_المرتجعات_النموذج > 0;
 
   const تجميع = React.useMemo(() => {
     const م = new Map<string, { كمية: number; وزن: number }>();
@@ -691,7 +693,7 @@ export function نموذج_فاتورة({
           <table className="w-full text-sm">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border">
-                {نوع_الطرف === "CUSTOMER" && <th className="p-2 w-20"></th>}
+                {يسمح_بمرتجع && <th className="p-2 w-20"></th>}
                 <th className="p-2 text-start">{t("inv.f.color")}</th>
                 <th className="p-2 text-start">الشركة</th>
                 <th className="p-2 text-start">{t("inv.f.category")}</th>
@@ -709,8 +711,8 @@ export function نموذج_فاتورة({
                     ب.نوع_البند === "RETURN" ? "bg-amber-50/40 dark:bg-amber-900/10" : ""
                   }`}
                 >
-                  {/* زر نوع البند (بيع/مرتجع) — للعملاء فقط */}
-                  {نوع_الطرف === "CUSTOMER" && (
+                  {/* زر نوع البند (بيع/مرتجع) — لفواتير البيع (عميل بيع + مورد بيع) */}
+                  {يسمح_بمرتجع && (
                     <td className="p-1.5">
                       <button
                         type="button"
