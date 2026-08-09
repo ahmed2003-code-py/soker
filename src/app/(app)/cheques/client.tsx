@@ -263,7 +263,12 @@ export function شاشة_الشيكات({
         ص.متأخر ? (
           <الشارة variant="danger">{t("cheque.status.overdue")}</الشارة>
         ) : (
-          <شارة_حالة الحالة={تسمية_حالة_الشيك[ص.الحالة]} متغيّر={لون_الحالة[ص.الحالة]} />
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <شارة_حالة الحالة={تسمية_حالة_الشيك[ص.الحالة]} متغيّر={لون_الحالة[ص.الحالة]} />
+            {ص.الحالة === "ENDORSED" && ص.اسم_المظهر_له && (
+              <span className="text-[11px] text-muted-foreground">{ص.اسم_المظهر_له}</span>
+            )}
+          </span>
         ),
     },
   ];
