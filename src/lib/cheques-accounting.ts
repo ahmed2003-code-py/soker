@@ -1,6 +1,7 @@
 import type { Prisma, ChequeStatus, PrismaClient } from "@prisma/client";
 import { TxnKind, TreasuryAccountType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { د } from "@/lib/decimal";
 import { أضف_قيد, احذف_قيد_ناعم } from "@/lib/ledger";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 
@@ -16,9 +17,12 @@ export function دخل_معاملة_مالية(شيك: {
   collectedTxnId: number | null;
   partyLedgerEntryId?: number | null;
   endorseLedgerEntryId?: number | null;
+  settlesChequeId?: number | null;
   direction?: "INCOMING" | "OUTGOING";
   accountingVersion?: number | null;
 }): boolean {
+  // شيك وارد مُستخدَم في تسوية شيك صادر → مقفول (يُحرَّر بإزالته من التسوية)
+  if (شيك.settlesChequeId != null) return true;
   const نسخة = شيك.accountingVersion ?? 1;
   if (نسخة >= 2 && شيك.direction === "INCOMING") {
     // v2: مسموح التعديل وهو «مسجّل» (أثر العميل فقط، يُعاد ضبطه)؛ مقفول بعد إيداع/تظهير/تحصيل أو إلغاء
@@ -268,8 +272,26 @@ export async function رصيد_خزنة_الشيكات(
   db: PrismaClient | Prisma.TransactionClient = prisma
 ): Promise<Prisma.Decimal | number> {
   const r = await db.cheque.aggregate({
-    where: { direction: "INCOMING", accountingVersion: { gte: 2 }, status: "REGISTERED" },
+    where: { direction: "INCOMING", accountingVersion: { gte: 2 }, status: "REGISTERED", settlesChequeId: null },
     _sum: { amount: true },
   });
   return r._sum.amount ?? 0;
+}
+
+/**
+ * إجمالي المُسدَّد على شيك صادر (تسوية على دفعات) = دفعات الخزنة + قيمة الشيكات الواردة المستخدمة.
+ * الشيكات الواردة تموّل التسوية بلا أثر على دفتر الأستاذ (المورد اتخصم وقت الإصدار).
+ */
+export async function مُسدَّد_تسوية(
+  db: PrismaClient | Prisma.TransactionClient,
+  معرف_الشيك_الصادر: number
+): Promise<Prisma.Decimal> {
+  const [دفعات, شيكات] = await Promise.all([
+    db.treasuryTxn.findMany({ where: { chequeId: معرف_الشيك_الصادر, deletedAt: null }, select: { amount: true } }),
+    db.cheque.findMany({ where: { settlesChequeId: معرف_الشيك_الصادر }, select: { amount: true } }),
+  ]);
+  let م = د(0);
+  for (const د2 of دفعات) م = م.plus(د2.amount);
+  for (const ش of شيكات) م = م.plus(ش.amount);
+  return م;
 }

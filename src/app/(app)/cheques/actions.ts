@@ -6,7 +6,7 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { أضف_حركة_خزنة, احذف_حركة_خزنة_ناعم } from "@/lib/treasury";
 import { احذف_قيد_ناعم } from "@/lib/ledger";
-import { زامن_آثار_الشيك, دخل_معاملة_مالية } from "@/lib/cheques-accounting";
+import { زامن_آثار_الشيك, دخل_معاملة_مالية, مُسدَّد_تسوية } from "@/lib/cheques-accounting";
 import { أنشئ_دفعة_موزعة } from "@/lib/integration";
 import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
@@ -284,8 +284,7 @@ export async function أضف_دفعة_تسوية(
   const مبلغ = د(String(مدخلات.المبلغ).replace(/,/g, ""));
   if (مبلغ.lessThanOrEqualTo(0)) return فشل("المبلغ يجب أن يكون أكبر من صفر");
 
-  const دفعات = await prisma.treasuryTxn.findMany({ where: { chequeId: id, deletedAt: null }, select: { amount: true } });
-  const مُسدَّد = دفعات.reduce((س, د2) => س.plus(د2.amount), د(0));
+  const مُسدَّد = await مُسدَّد_تسوية(prisma, id);
   const متبقٍ = د(شيك.amount).minus(مُسدَّد);
   if (مبلغ.greaterThan(متبقٍ.plus(0.005))) {
     return فشل(`المبلغ أكبر من المتبقي (${متبقٍ.toFixed(2)})`);
@@ -327,6 +326,112 @@ export async function أضف_دفعة_تسوية(
   revalidatePath("/cheques");
   revalidatePath("/treasury");
   return نجح(undefined, مكتمل ? "تمت التسوية بالكامل" : "تم تسجيل الدفعة");
+}
+
+/** جلب الشيكات الواردة المتاحة لتمويل تسوية شيك صادر (غير مستخدمة، ≤ المتبقّي). */
+export async function اجلب_شيكات_متاحة_للتسوية(id: number): Promise<
+  نتيجة<{ المتبقّي: number; الشيكات: { id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string }[] }>
+> {
+  await اطلب_المستخدم();
+  const شيك = await prisma.cheque.findUnique({ where: { id }, select: { amount: true, direction: true } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.direction !== "OUTGOING") return فشل("التسوية للشيكات الصادرة فقط");
+  const مُسدَّد = await مُسدَّد_تسوية(prisma, id);
+  const متبقٍ = د(شيك.amount).minus(مُسدَّد);
+  if (متبقٍ.lessThanOrEqualTo(0)) return نجح({ المتبقّي: 0, الشيكات: [] });
+  const شيكات = await prisma.cheque.findMany({
+    where: {
+      direction: "INCOMING",
+      status: { in: ["REGISTERED", "PENDING"] },
+      settlesChequeId: null,
+      endorseLedgerEntryId: null,
+      collectedTxnId: null,
+      amount: { lte: متبقٍ },
+    },
+    orderBy: { dueDate: "asc" },
+    select: { id: true, amount: true, drawerName: true, chequeNumber: true, bankName: true, dueDate: true, party: { select: { name: true } } },
+  });
+  return نجح({
+    المتبقّي: Number(متبقٍ),
+    الشيكات: شيكات.map((ش) => ({ id: ش.id, المبلغ: Number(ش.amount), الاسم: ش.party?.name ?? ش.drawerName, رقم_الشيك: ش.chequeNumber, اسم_البنك: ش.bankName, تاريخ_الاستحقاق: ش.dueDate.toISOString() })),
+  });
+}
+
+/** تمويل دفعة تسوية شيك صادر بشيك وارد — يُعلَّم الشيك الوارد مستخدَماً بلا أثر على دفتر الأستاذ. */
+export async function سدّد_تسوية_بشيك(id: number, معرف_الشيك_الوارد: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const [صادر, وارد] = await Promise.all([
+    prisma.cheque.findUnique({ where: { id } }),
+    prisma.cheque.findUnique({ where: { id: معرف_الشيك_الوارد } }),
+  ]);
+  if (!صادر) return فشل("الشيك الصادر غير موجود");
+  if (!وارد) return فشل("الشيك الوارد غير موجود");
+  if (صادر.direction !== "OUTGOING") return فشل("التسوية للشيكات الصادرة فقط");
+  if (صادر.collectedTxnId) return فشل("الشيك الصادر تم صرفه من البنك — لا يمكن التسوية");
+  if (!(["PENDING", "SETTLED"] as ChequeStatus[]).includes(صادر.status)) {
+    return فشل(`لا يمكن التسوية في الحالة الحالية (${تسمية_حالة_الشيك[صادر.status]})`);
+  }
+  if (وارد.direction !== "INCOMING") return فشل("اختر شيكاً وارداً");
+  if (وارد.settlesChequeId) return فشل("الشيك الوارد مستخدَم بالفعل في تسوية");
+  if (!(["REGISTERED", "PENDING"] as ChequeStatus[]).includes(وارد.status) || وارد.endorseLedgerEntryId != null || وارد.collectedTxnId != null) {
+    return فشل("الشيك الوارد غير متاح (مظهّر/مودع/محصّل)");
+  }
+  const مُسدَّد = await مُسدَّد_تسوية(prisma, id);
+  const متبقٍ = د(صادر.amount).minus(مُسدَّد);
+  if (د(وارد.amount).greaterThan(متبقٍ.plus(0.005))) {
+    return فشل(`قيمة الشيك (${د(وارد.amount).toFixed(2)}) أكبر من المتبقّي (${متبقٍ.toFixed(2)})`);
+  }
+  const مكتمل = مُسدَّد.plus(وارد.amount).greaterThanOrEqualTo(د(صادر.amount).minus(0.005));
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: id, updatedById: فاعل.id } });
+      if (مكتمل && صادر.status !== "SETTLED") {
+        await tx.cheque.update({ where: { id }, data: { status: "SETTLED", updatedById: فاعل.id } });
+      }
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { دفعة_تسوية_بشيك_وارد: معرف_الشيك_الوارد, قيمة: وارد.amount.toString(), ...(مكتمل ? { تمت_التسوية: true } : {}) },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء التسوية بالشيك");
+  }
+  revalidatePath("/cheques");
+  return نجح(undefined, مكتمل ? "تمت التسوية بالكامل" : "تم استخدام الشيك في التسوية");
+}
+
+/** إزالة شيك وارد من تسوية شيك صادر — يرجع الشيك للمتاح ولخزنة الشيكات، ويُرجع الصادر «تحت الصرف» إن لزم. */
+export async function احذف_دفعة_شيك(معرف_الشيك_الوارد: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "حذف");
+  const وارد = await prisma.cheque.findUnique({ where: { id: معرف_الشيك_الوارد }, select: { settlesChequeId: true } });
+  if (!وارد?.settlesChequeId) return فشل("هذا الشيك ليس مستخدَماً في تسوية");
+  const معرف_الصادر = وارد.settlesChequeId;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.cheque.update({ where: { id: معرف_الشيك_الوارد }, data: { settlesChequeId: null, updatedById: فاعل.id } });
+      const صادر = await tx.cheque.findUniqueOrThrow({ where: { id: معرف_الصادر } });
+      const مُسدَّد_جديد = await مُسدَّد_تسوية(tx, معرف_الصادر);
+      if (صادر.status === "SETTLED" && مُسدَّد_جديد.lessThan(د(صادر.amount).minus(0.005))) {
+        await tx.cheque.update({ where: { id: معرف_الصادر }, data: { status: "PENDING", updatedById: فاعل.id } });
+      }
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "DELETE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: معرف_الصادر,
+        التفاصيل: { إزالة_شيك_من_التسوية: معرف_الشيك_الوارد },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء الإزالة");
+  }
+  revalidatePath("/cheques");
+  return نجح(undefined, "تم إرجاع الشيك للمتاح");
 }
 
 /**
@@ -433,7 +538,8 @@ export async function احذف_دفعة_تسوية(معرف_الحركة: number
     await prisma.$transaction(async (tx) => {
       await احذف_حركة_خزنة_ناعم(tx, معرف_الحركة);
       const شيك = await tx.cheque.findUniqueOrThrow({ where: { id: معرف_الشيك } });
-      if (شيك.status === "SETTLED") {
+      const مُسدَّد_جديد = await مُسدَّد_تسوية(tx, معرف_الشيك);
+      if (شيك.status === "SETTLED" && مُسدَّد_جديد.lessThan(د(شيك.amount).minus(0.005))) {
         await tx.cheque.update({ where: { id: معرف_الشيك }, data: { status: "PENDING", updatedById: فاعل.id } });
       }
       await تسجيل_عملية(tx, {
@@ -452,24 +558,39 @@ export async function احذف_دفعة_تسوية(معرف_الحركة: number
   return نجح(undefined, "تم حذف الدفعة وإرجاعها للخزنة");
 }
 
-/** جلب دفعات تسوية شيك (للعرض في الحوار). */
+/** جلب دفعات تسوية شيك (للعرض في الحوار) — تشمل دفعات الخزنة والشيكات الواردة. */
 export async function اجلب_دفعات_التسوية(id: number): Promise<
-  نتيجة<{ الإجمالي: number; المُسدَّد: number; الدفعات: { id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] }>
+  نتيجة<{ الإجمالي: number; المُسدَّد: number; الدفعات: { نوع: "خزنة" | "شيك"; id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] }>
 > {
   await اطلب_المستخدم();
-  const [شيك, دفعات] = await Promise.all([
+  const [شيك, دفعات, شيكات] = await Promise.all([
     prisma.cheque.findUnique({ where: { id }, select: { amount: true } }),
     prisma.treasuryTxn.findMany({
       where: { chequeId: id, deletedAt: null },
       orderBy: { id: "asc" },
       select: { id: true, amount: true, method: true, date: true, description: true },
     }),
+    prisma.cheque.findMany({
+      where: { settlesChequeId: id },
+      orderBy: { id: "asc" },
+      select: { id: true, amount: true, chequeNumber: true, bankName: true, drawerName: true, dueDate: true, party: { select: { name: true } } },
+    }),
   ]);
   if (!شيك) return فشل("الشيك غير موجود");
+  const دفعات_خزنة = دفعات.map((د2) => ({ نوع: "خزنة" as const, id: د2.id, المبلغ: Number(د2.amount), الطريقة: د2.method, التاريخ: د2.date.toISOString(), البيان: د2.description }));
+  const دفعات_شيك = شيكات.map((ش) => ({
+    نوع: "شيك" as const,
+    id: ش.id,
+    المبلغ: Number(ش.amount),
+    الطريقة: "شيك وارد",
+    التاريخ: ش.dueDate.toISOString(),
+    البيان: `شيك وارد${ش.chequeNumber ? " رقم " + ش.chequeNumber : ""} — ${ش.party?.name ?? ش.drawerName}`,
+  }));
+  const الدفعات = [...دفعات_خزنة, ...دفعات_شيك];
   return نجح({
     الإجمالي: Number(شيك.amount),
-    المُسدَّد: دفعات.reduce((س, د2) => س + Number(د2.amount), 0),
-    الدفعات: دفعات.map((د2) => ({ id: د2.id, المبلغ: Number(د2.amount), الطريقة: د2.method, التاريخ: د2.date.toISOString(), البيان: د2.description })),
+    المُسدَّد: الدفعات.reduce((س, د2) => س + د2.المبلغ, 0),
+    الدفعات,
   });
 }
 

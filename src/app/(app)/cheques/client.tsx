@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك } from "./actions";
+import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيك, احذف_دفعة_شيك } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -1039,21 +1039,41 @@ function حوار_تسوية({
   عند_الإغلاق: () => void;
 }) {
   const إشعار = useإشعار();
-  const [بيانات, تعيين_بيانات] = React.useState<{ الإجمالي: number; المُسدَّد: number; الدفعات: { id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] } | null>(null);
+  const [بيانات, تعيين_بيانات] = React.useState<{ الإجمالي: number; المُسدَّد: number; الدفعات: { نوع: "خزنة" | "شيك"; id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] } | null>(null);
   const [مبلغ, تعيين_مبلغ] = React.useState("");
   const [حساب, تعيين_حساب] = React.useState(String(حسابات_الخزنة[0]?.id ?? ""));
   const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const [وسيلة, تعيين_وسيلة] = React.useState<"خزنة" | "شيك">("خزنة");
+  const [شيكات_متاحة, تعيين_شيكات_متاحة] = React.useState<{ id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string }[]>([]);
+  const [شيك_مختار, تعيين_شيك_مختار] = React.useState("");
 
   const نوع_الحساب = حسابات_الخزنة.find((a) => a.id === Number(حساب))?.النوع ?? null;
   const له_فرعية = نوع_الحساب !== null && نوع_الحساب !== "CASH";
   const خيارات_فرعية = له_فرعية && نوع_الحساب ? (حسابات_فرعية[نوع_الحساب] ?? []) : [];
 
   async function حمّل() {
-    const r = await اجلب_دفعات_التسوية(الشيك.id);
+    const [r, ش] = await Promise.all([اجلب_دفعات_التسوية(الشيك.id), اجلب_شيكات_متاحة_للتسوية(الشيك.id)]);
     if (r.نجاح && r.بيانات) تعيين_بيانات(r.بيانات);
+    if (ش.نجاح && ش.بيانات) { تعيين_شيكات_متاحة(ش.بيانات.الشيكات); تعيين_شيك_مختار(""); }
   }
   React.useEffect(() => { حمّل(); /* eslint-disable-next-line */ }, []);
+
+  async function أضف_بشيك() {
+    if (!شيك_مختار) return إشعار.خطأ("اختر شيكاً وارداً");
+    تعيين_جارٍ(true);
+    const r = await سدّد_تسوية_بشيك(الشيك.id, Number(شيك_مختار));
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    await حمّل();
+  }
+  async function احذف_شيك_دفعة(معرف: number) {
+    const r = await احذف_دفعة_شيك(معرف);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    await حمّل();
+  }
 
   const متبقٍ = بيانات ? +(بيانات.الإجمالي - بيانات.المُسدَّد).toFixed(2) : الشيك.المبلغ;
 
@@ -1103,10 +1123,17 @@ function حوار_تسوية({
         {بيانات && بيانات.الدفعات.length > 0 && (
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {بيانات.الدفعات.map((د) => (
-              <div key={د.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm">
-                <span className="flex items-center gap-2"><نص_مبلغ القيمة={د.المبلغ} /> <span className="text-[11px] text-muted-foreground">{د.الطريقة ?? ""}</span></span>
-                <span className="flex items-center gap-2"><نص_تاريخ القيمة={د.التاريخ} className="text-[11px] text-muted-foreground" />
-                  <الزر size="sm" variant="ghost" onClick={() => احذف(د.id)} title="حذف الدفعة"><Trash2 className="size-4 text-danger" /></الزر>
+              <div key={`${د.نوع}-${د.id}`} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <نص_مبلغ القيمة={د.المبلغ} />
+                  {د.نوع === "شيك"
+                    ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary shrink-0">شيك وارد</span>
+                    : <span className="text-[11px] text-muted-foreground">{د.الطريقة ?? ""}</span>}
+                  {د.نوع === "شيك" && <span className="truncate text-[11px] text-muted-foreground">{د.البيان}</span>}
+                </span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <نص_تاريخ القيمة={د.التاريخ} className="text-[11px] text-muted-foreground" />
+                  <الزر size="sm" variant="ghost" onClick={() => (د.نوع === "شيك" ? احذف_شيك_دفعة(د.id) : احذف(د.id))} title={د.نوع === "شيك" ? "إرجاع الشيك" : "حذف الدفعة"}><Trash2 className="size-4 text-danger" /></الزر>
                 </span>
               </div>
             ))}
@@ -1116,19 +1143,48 @@ function حوار_تسوية({
         {/* إضافة دفعة */}
         {متبقٍ > 0.005 && (
           <div className="mt-2 rounded-lg border border-border p-3 space-y-2">
-            <العنوان>إضافة دفعة</العنوان>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="w-28 space-y-1"><span className="text-[11px] text-muted-foreground">المبلغ</span><الحقل selectOnFocus className="ltr-nums" value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" /></div>
-              <div className="flex-1 min-w-[120px] space-y-1"><span className="text-[11px] text-muted-foreground">الوسيلة</span>
-                <قائمة_اختيار قابل_للبحث={false} الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))} القيمة={حساب} عند_التغيير={(v) => { تعيين_حساب(v); تعيين_حساب_فرعي(""); }} />
+            <div className="flex items-center justify-between">
+              <العنوان className="mb-0">إضافة دفعة</العنوان>
+              <div className="flex rounded-lg border border-border overflow-hidden text-[12px]">
+                <button type="button" className={`px-3 py-1 transition ${وسيلة === "خزنة" ? "bg-primary text-white" : "bg-card hover:bg-appgray"}`} onClick={() => تعيين_وسيلة("خزنة")}>من الخزنة</button>
+                <button type="button" className={`px-3 py-1 transition ${وسيلة === "شيك" ? "bg-primary text-white" : "bg-card hover:bg-appgray"}`} onClick={() => تعيين_وسيلة("شيك")}>بشيك وارد</button>
               </div>
-              {خيارات_فرعية.length > 0 && (
-                <div className="flex-1 min-w-[120px] space-y-1"><span className="text-[11px] text-muted-foreground">الحساب الفرعي</span>
-                  <قائمة_اختيار الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))} القيمة={حساب_فرعي} عند_التغيير={تعيين_حساب_فرعي} نص_بديل="اختر…" />
-                </div>
-              )}
-              <الزر variant="success" onClick={أضف} disabled={جارٍ}><Plus className="size-4" /> دفعة</الزر>
             </div>
+
+            {وسيلة === "خزنة" ? (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-28 space-y-1"><span className="text-[11px] text-muted-foreground">المبلغ</span><الحقل selectOnFocus className="ltr-nums" value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" /></div>
+                <div className="flex-1 min-w-[120px] space-y-1"><span className="text-[11px] text-muted-foreground">الوسيلة</span>
+                  <قائمة_اختيار قابل_للبحث={false} الخيارات={حسابات_الخزنة.map((a) => ({ القيمة: String(a.id), التسمية: a.التسمية }))} القيمة={حساب} عند_التغيير={(v) => { تعيين_حساب(v); تعيين_حساب_فرعي(""); }} />
+                </div>
+                {خيارات_فرعية.length > 0 && (
+                  <div className="flex-1 min-w-[120px] space-y-1"><span className="text-[11px] text-muted-foreground">الحساب الفرعي</span>
+                    <قائمة_اختيار الخيارات={خيارات_فرعية.map((s) => ({ القيمة: String(s.id), التسمية: s.الاسم }))} القيمة={حساب_فرعي} عند_التغيير={تعيين_حساب_فرعي} نص_بديل="اختر…" />
+                  </div>
+                )}
+                <الزر variant="success" onClick={أضف} disabled={جارٍ}><Plus className="size-4" /> دفعة</الزر>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-muted-foreground">شيك وارد متاح (قيمته ≤ المتبقّي، غير مستخدَم)</span>
+                {شيكات_متاحة.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-border py-3 text-center text-[12px] text-muted-foreground">لا توجد شيكات واردة متاحة بقيمة ≤ المتبقّي.</p>
+                ) : (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex-1 min-w-[200px]">
+                      <قائمة_اختيار
+                        الخيارات={شيكات_متاحة.map((ش) => ({ القيمة: String(ش.id), التسمية: `${ش.الاسم} — ${ش.المبلغ.toLocaleString("en-US", { minimumFractionDigits: 2 })}${ش.رقم_الشيك ? " · #" + ش.رقم_الشيك : ""}` }))}
+                        القيمة={شيك_مختار}
+                        عند_التغيير={تعيين_شيك_مختار}
+                        نص_بديل="اختر شيكاً وارداً…"
+                      />
+                    </div>
+                    <الزر variant="success" onClick={أضف_بشيك} disabled={جارٍ || !شيك_مختار}><Plus className="size-4" /> استخدم الشيك</الزر>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">الشيك يموّل التسوية بقيمته كاملة (لو أقل من المتبقّي، كمّل الباقي بدفعة تانية). لا يؤثّر على رصيد المورد.</p>
+              </div>
+            )}
           </div>
         )}
 

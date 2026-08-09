@@ -355,6 +355,9 @@ model Cheque {
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   settlementTxns  TreasuryTxn[]    @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
+  settlesChequeId Int?             @map("settles_cheque_id") // شيك وارد استُخدم لتمويل تسوية شيك صادر
+  settlesCheque   Cheque?          @relation("ChequeSettlement", fields: [settlesChequeId], references: [id], onDelete: SetNull)
+  settledByCheques Cheque[]        @relation("ChequeSettlement") // الشيكات الواردة المستخدمة في تسوية هذا الشيك الصادر
   allocations     ChequeInvoiceAllocation[] // توزيع قيمة الشيك على فواتير (المرحلة 4)
   chequeBookId    Int?             @map("cheque_book_id") // دفتر/حافظة الشيك (المرحلة 5)
   chequeBook      ChequeBook?      @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
