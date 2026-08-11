@@ -25,6 +25,13 @@ export const مخطط_شيك = z.object({
   صورة_base64: z.string().optional().nullable(),
   صورة_mime: z.string().optional().nullable(),
   نص_OCR: z.string().optional().nullable(),
+  // ── شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي) — يُسجَّل في موديول الشيكات فقط بلا حركة عند الإدخال ──
+  افتتاحي: z.boolean().optional().default(false),
+  // للشيك الافتتاحي «مودع/محصّل»: حساب الخزنة الذي يقيم فيه الشيك وقت البداية (لعكسه عند خروجه)
+  معرف_حساب_افتتاحي: z.number().int().positive().optional().nullable(),
+  معرف_حساب_فرعي_افتتاحي: z.number().int().positive().optional().nullable(),
+  // للشيك الافتتاحي «مظهّر لمورد»: المورد المُظهَّر له
+  معرف_مورد_افتتاحي: z.number().int().positive().optional().nullable(),
 });
 
 export type مدخلات_شيك = z.infer<typeof مخطط_شيك>;

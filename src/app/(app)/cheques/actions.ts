@@ -68,6 +68,12 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
   // اسم المدين اختياري — يُشتق من «محوّل من» (اسم العميل) أو المستفيد عند تركه فارغاً
   const اسم_المدين_نهائي = ب.اسم_المدين?.trim() || ب.محول_من?.trim() || ب.المستفيد?.trim() || "—";
 
+  // ── شيك افتتاحي: للوارد فقط، يُسجَّل في موديول الشيكات بلا أي حركة عند الإدخال ──
+  const افتتاحي = ب.افتتاحي === true && ب.الاتجاه === "INCOMING";
+  const مظهَّر_له_افتتاحي = افتتاحي && ب.الحالة === "ENDORSED" ? (ب.معرف_مورد_افتتاحي ?? null) : null;
+  const حساب_افتتاحي = افتتاحي && (ب.الحالة === "DEPOSITED" || ب.الحالة === "COLLECTED") ? (ب.معرف_حساب_افتتاحي ?? null) : null;
+  const حساب_فرعي_افتتاحي = افتتاحي && (ب.الحالة === "DEPOSITED" || ب.الحالة === "COLLECTED") ? (ب.معرف_حساب_فرعي_افتتاحي ?? null) : null;
+
   const شيك = await prisma.$transaction(async (tx) => {
     const c = await tx.cheque.create({
       data: {
@@ -87,15 +93,22 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
         imageData: فكّ_base64(ب.صورة_base64),
         imageMime: ب.صورة_mime || null,
         ocrText: ب.نص_OCR || null,
+        // شيك افتتاحي: خط الأساس = حالة الدخول (آثاره محتسَبة سلفاً في الرصيد الافتتاحي)
+        isOpening: افتتاحي,
+        openingBaseline: افتتاحي ? ب.الحالة : null,
+        openingAccountId: حساب_افتتاحي,
+        openingSubAccountId: حساب_فرعي_افتتاحي,
+        endorsedToId: مظهَّر_له_افتتاحي,
         createdById: فاعل.id,
       },
     });
-    // أثر الطرف عند الاستلام/التسليم (لو الشيك مربوط بطرف وفي حالة ملتزمة)
+    // أثر الطرف عند الاستلام/التسليم (لو الشيك مربوط بطرف وفي حالة ملتزمة).
+    // للشيك الافتتاحي خط الأساس = الحالة الهدف ⇒ الدلتا = صفر ⇒ لا تُنشأ أي حركة عند الإدخال.
     await زامن_آثار_الشيك(
       tx,
-      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: null, accountingVersion: c.accountingVersion },
+      { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: c.endorsedToId, accountingVersion: c.accountingVersion, isOpening: c.isOpening, openingBaseline: c.openingBaseline, openingAccountId: c.openingAccountId, openingSubAccountId: c.openingSubAccountId },
       c.status,
-      {},
+      افتتاحي && ب.الحالة === "ENDORSED" ? { معرف_المورد_للتظهير: مظهَّر_له_افتتاحي } : {},
       فاعل.id
     );
     await تسجيل_عملية(tx, {

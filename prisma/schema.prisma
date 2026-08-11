@@ -363,6 +363,10 @@ model Cheque {
   chequeBook      ChequeBook?      @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
   bookLeafNo      Int?             @map("book_leaf_no") // رقم الورقة داخل الدفتر
   accountingVersion Int            @default(2) @map("accounting_version") // 1=النموذج القديم، 2=نموذج خزنة الشيكات (الشيكات الجديدة)
+  isOpening       Boolean          @default(false) @map("is_opening") // شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي) — لا حركة عند الإدخال
+  openingBaseline ChequeStatus?    @map("opening_baseline") // حالة الشيك الافتتاحي وقت الإدخال (نقطة البداية المحسوبة مسبقاً)
+  openingAccountId Int?            @map("opening_account_id") // حساب الخزنة للحالة المُحقَّقة مسبقاً (مودع/محصّل) — لعكسها عند الارتداد
+  openingSubAccountId Int?         @map("opening_sub_account_id")
   cancelReason    String?          @map("cancel_reason") // سبب الإلغاء (حالة ملغي)
   cancelledAt     DateTime?        @map("cancelled_at")  // تاريخ الإلغاء
   notes           String?          @map("notes")
