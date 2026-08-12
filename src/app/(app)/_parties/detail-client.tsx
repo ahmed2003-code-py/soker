@@ -27,7 +27,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي, سجل_دفعة_موزعة, تعديل_دفعة_موزعة, اجلب_دفعة_موزعة } from "./actions";
 import { تعديل_دفع_مباشر } from "@/app/(app)/treasury/actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
-import { أرجع_شيك_مظهّر } from "@/app/(app)/cheques/actions";
+import { أرجع_شيك_مظهّر, اجلب_شيكات_متاحة_للتظهير, ظهّر_شيكات_لمورد } from "@/app/(app)/cheques/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 import { TreasuryAccountType } from "@prisma/client";
@@ -426,6 +426,7 @@ export function حركات_الطرف({
         <حوار_تفاصيل_الشيكات_المجمّعة
           الشيكات={تفاصيل_مجموعة}
           سياق_مورد={الطرف.النوع === "SUPPLIER"}
+          معرف_المورد={الطرف.id}
           عند_الإغلاق={() => تعيين_تفاصيل_مجموعة(null)}
         />
       )}
@@ -1192,21 +1193,24 @@ function حوار_تعديل_دفع_مباشر({
   );
 }
 
-/** نافذة تفاصيل الشيكات المُجمّعة في صف واحد بحساب الطرف — مع «إزالة شيك من المعاملة» (يرجّعه لليد) في صفحة المورد. */
+/** نافذة تفاصيل الشيكات المُجمّعة في صف واحد بحساب الطرف — إضافة/إزالة شيكات من معاملة تظهير المورد. */
 function حوار_تفاصيل_الشيكات_المجمّعة({
   الشيكات,
   سياق_مورد = false,
+  معرف_المورد,
   عند_الإغلاق,
 }: {
   الشيكات: معلومة_شيك_قيد[];
   سياق_مورد?: boolean;
+  معرف_المورد?: number;
   عند_الإغلاق: () => void;
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
-  // قائمة محلية حتى تتحدّث النافذة فوراً عند إزالة شيك دون إغلاقها
+  // قائمة محلية حتى تتحدّث النافذة فوراً عند إضافة/إزالة شيك دون إغلاقها
   const [قائمة, تعيين_قائمة] = React.useState<معلومة_شيك_قيد[]>(الشيكات);
   const [إزالة, تعيين_إزالة] = React.useState<معلومة_شيك_قيد | null>(null);
+  const [إضافة, تعيين_إضافة] = React.useState(false);
   const إجمالي = قائمة.reduce((س, ش) => س + ش.المبلغ, 0);
 
   return (
@@ -1273,10 +1277,42 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
             </table>
           </div>
           <تذييل_الحوار>
+            {سياق_مورد && معرف_المورد != null && (
+              <الزر variant="success" onClick={() => تعيين_إضافة(true)}>
+                <Plus className="size-4" /> إضافة شيك للمعاملة
+              </الزر>
+            )}
             <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
           </تذييل_الحوار>
         </محتوى_الحوار>
       </الحوار>
+
+      {إضافة && معرف_المورد != null && (
+        <حوار_إضافة_شيكات_للمعاملة
+          معرف_المورد={معرف_المورد}
+          معرفات_موجودة={قائمة.map((x) => x.id)}
+          عند_الإلغاء={() => تعيين_إضافة(false)}
+          عند_الإضافة={(مضافة) => {
+            // ألحق الشيكات المضافة بالقائمة المحلية (حالتها الآن «مظهّر»)
+            تعيين_قائمة((ح) => [
+              ...ح,
+              ...مضافة.map((m) => ({
+                id: m.id,
+                المبلغ: m.المبلغ,
+                رقم_الشيك: m.رقم_الشيك,
+                تاريخ_الاستحقاق: m.تاريخ_الاستحقاق,
+                اسم_المدين: m.الاسم,
+                محول_من: m.الاسم,
+                اسم_البنك: m.اسم_البنك,
+                افتتاحي: m.افتتاحي,
+                الحالة: "ENDORSED",
+              })),
+            ]);
+            تعيين_إضافة(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       {إزالة && (
         <حوار_تأكيد
@@ -1299,5 +1335,109 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
         />
       )}
     </>
+  );
+}
+
+type شيك_متاح_للتظهير = { id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string; افتتاحي: boolean };
+
+/** اختيار شيكات متاحة في اليد وإضافتها لمعاملة تظهير المورد (تُظهَّر له وتخرج من خزنة الشيكات). */
+function حوار_إضافة_شيكات_للمعاملة({
+  معرف_المورد,
+  معرفات_موجودة,
+  عند_الإلغاء,
+  عند_الإضافة,
+}: {
+  معرف_المورد: number;
+  معرفات_موجودة: number[];
+  عند_الإلغاء: () => void;
+  عند_الإضافة: (مضافة: شيك_متاح_للتظهير[]) => void;
+}) {
+  const إشعار = useإشعار();
+  const [متاحة, تعيين_متاحة] = React.useState<شيك_متاح_للتظهير[]>([]);
+  const [محمّل, تعيين_محمّل] = React.useState(false);
+  const [مختارة, تعيين_مختارة] = React.useState<Set<number>>(new Set());
+  const [بحث, تعيين_بحث] = React.useState("");
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  React.useEffect(() => {
+    let ملغى = false;
+    (async () => {
+      const r = await اجلب_شيكات_متاحة_للتظهير();
+      if (ملغى) return;
+      if (r.نجاح && r.بيانات) {
+        const موجودة = new Set(معرفات_موجودة);
+        تعيين_متاحة(r.بيانات.الشيكات.filter((ش) => !موجودة.has(ش.id)));
+      } else if (!r.نجاح) إشعار.خطأ(r.رسالة);
+      تعيين_محمّل(true);
+    })();
+    return () => { ملغى = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const طبّع = (s: string) => s.toLowerCase().replace(/[إأآا]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, "");
+  const مفلترة = بحث.trim()
+    ? متاحة.filter((ش) => طبّع(`${ش.الاسم} ${ش.رقم_الشيك ?? ""} ${ش.اسم_البنك ?? ""}`).includes(طبّع(بحث)))
+    : متاحة;
+  const مجموع_المختار = متاحة.filter((ش) => مختارة.has(ش.id)).reduce((س, ش) => س + ش.المبلغ, 0);
+  const بدّل = (id: number) => تعيين_مختارة((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  async function أضف() {
+    if (مختارة.size === 0) { إشعار.خطأ("اختر شيكاً واحداً على الأقل"); return; }
+    تعيين_جارٍ(true);
+    const r = await ظهّر_شيكات_لمورد(معرف_المورد, [...مختارة]);
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة || "تمت الإضافة");
+    عند_الإضافة(متاحة.filter((ش) => مختارة.has(ش.id)));
+  }
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإلغاء()}>
+      <محتوى_الحوار className="max-w-2xl">
+        <رأس_الحوار>
+          <عنوان_الحوار>إضافة شيكات للمعاملة (تظهير للمورد)</عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="space-y-2">
+          <الحقل placeholder="بحث بالاسم / رقم الشيك / البنك…" value={بحث} onChange={(e) => تعيين_بحث(e.target.value)} />
+          <div className="max-h-[50vh] overflow-auto rounded-lg border border-border">
+            {!محمّل ? (
+              <div className="p-4 text-center text-muted-foreground">جارٍ التحميل…</div>
+            ) : مفلترة.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground">لا توجد شيكات متاحة في اليد</div>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {مفلترة.map((ش) => (
+                    <tr key={ش.id} className="border-b border-border last:border-0 hover:bg-appgray cursor-pointer" onClick={() => بدّل(ش.id)}>
+                      <td className="px-2 py-2 w-8"><input type="checkbox" checked={مختارة.has(ش.id)} onChange={() => بدّل(ش.id)} className="size-4" /></td>
+                      <td className="px-2 py-2 ltr-nums">{ش.رقم_الشيك || "—"}</td>
+                      <td className="px-2 py-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          {ش.الاسم}
+                          {ش.افتتاحي && <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-800 border border-amber-300">افتتاحي</span>}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2">{ش.اسم_البنك || "—"}</td>
+                      <td className="px-2 py-2"><نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} /></td>
+                      <td className="px-2 py-2 text-end"><نص_مبلغ القيمة={ش.المبلغ} مع_العملة={false} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">المختار: {مختارة.size} شيك</span>
+            <span className="font-semibold">الإجمالي المضاف: <نص_مبلغ القيمة={مجموع_المختار} /></span>
+          </div>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="success" onClick={أضف} disabled={جارٍ || مختارة.size === 0}>
+            {جارٍ ? "جارٍ الإضافة..." : `إضافة (${مختارة.size})`}
+          </الزر>
+          <الزر variant="outline" onClick={عند_الإلغاء}>إلغاء</الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
   );
 }

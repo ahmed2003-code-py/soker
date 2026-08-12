@@ -319,6 +319,76 @@ export async function ظهّر_شيك(id: number, معرف_المورد: number)
   return تغيير_حالة_شيك(id, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد });
 }
 
+/** جلب الشيكات الواردة المتاحة في اليد (مسجّلة، غير مستخدمة) — لإضافتها لمعاملة تظهير مورد. */
+export async function اجلب_شيكات_متاحة_للتظهير(): Promise<
+  نتيجة<{ الشيكات: { id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string; افتتاحي: boolean }[] }>
+> {
+  await اطلب_المستخدم();
+  const شيكات = await prisma.cheque.findMany({
+    where: {
+      direction: "INCOMING",
+      accountingVersion: { gte: 2 },
+      status: "REGISTERED",
+      settlesChequeId: null,
+      endorseLedgerEntryId: null,
+      collectedTxnId: null,
+    },
+    orderBy: { dueDate: "asc" },
+    select: { id: true, amount: true, drawerName: true, transferredFrom: true, chequeNumber: true, bankName: true, dueDate: true, isOpening: true, party: { select: { name: true } } },
+  });
+  return نجح({
+    الشيكات: شيكات.map((ش) => ({
+      id: ش.id,
+      المبلغ: Number(ش.amount),
+      الاسم: ش.party?.name ?? ش.transferredFrom ?? ش.drawerName,
+      رقم_الشيك: ش.chequeNumber,
+      اسم_البنك: ش.bankName,
+      تاريخ_الاستحقاق: ش.dueDate.toISOString(),
+      افتتاحي: ش.isOpening,
+    })),
+  });
+}
+
+/**
+ * إضافة شيكات متاحة إلى معاملة تظهير مورد — كل شيك يُظهَّر للمورد:
+ *  مستحق المورد يقل بقيمة الشيك، ودين العميل يبقى كما هو، والشيك يخرج من خزنة الشيكات ويصبح تبع المورد.
+ */
+export async function ظهّر_شيكات_لمورد(معرف_المورد: number, معرفات: number[]): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const فريدة = [...new Set(معرفات.filter((n) => Number.isFinite(n)))];
+  if (فريدة.length === 0) return فشل("اختر شيكاً واحداً على الأقل");
+  const مورد = await prisma.party.findUnique({ where: { id: معرف_المورد }, select: { type: true } });
+  if (!مورد || مورد.type !== "SUPPLIER") return فشل("المورد غير صالح");
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const id of فريدة) {
+        const ش = await tx.cheque.findUnique({ where: { id } });
+        if (!ش) throw new Error("شيك غير موجود");
+        if (!نموذج_جديد(ش)) throw new Error("الإضافة للشيكات الواردة (النموذج الجديد) فقط");
+        if (ش.settlesChequeId != null) throw new Error(`الشيك ${ش.chequeNumber ?? id} مُستخدَم في تسوية شيك صادر`);
+        if (ش.status !== "REGISTERED" || ش.endorseLedgerEntryId != null || ش.collectedTxnId != null) {
+          throw new Error(`الشيك ${ش.chequeNumber ?? id} غير متاح (${تسمية_حالة_الشيك[ش.status]})`);
+        }
+        await زامن_آثار_الشيك(tx, ش, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد }, فاعل.id);
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "UPDATE",
+          نوع_الكيان: "الشيك",
+          معرف_الكيان: id,
+          التفاصيل: { تظهير_لمورد: معرف_المورد, المبلغ: ش.amount, إضافة_للمعاملة: true },
+        });
+      }
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء إضافة الشيكات");
+  }
+  revalidatePath("/cheques");
+  revalidatePath("/treasury");
+  revalidatePath(`/suppliers/${معرف_المورد}`);
+  return نجح(undefined, `تمت إضافة ${فريدة.length} شيك للمعاملة`);
+}
+
 /**
  * إضافة دفعة تسوية لشيك صادر — فلوس تخرج من الخزنة (كاش/تحويل) بدل صرف الشيك من البنك.
  * لا أثر على دفتر الأستاذ (المستحق للمورد اتخصم وقت الإصدار). عند اكتمال القيمة → «تمت التسوية».
