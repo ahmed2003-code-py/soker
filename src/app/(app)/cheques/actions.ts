@@ -273,6 +273,47 @@ export async function تغيير_حالة_شيك(
   return نجح(undefined, "تم تحديث الحالة");
 }
 
+/**
+ * إرجاع شيك مُظهَّر لمورد إلى اليد («إزالته من المعاملة») — يعكس أثر التظهير فقط:
+ *  مستحق المورد يرجع يزيد، ويعود الشيك «مسجّل» في خزنة الشيكات متاحاً لمعاملة أخرى.
+ *  دين العميل يبقى كما هو (العميل دفع لنا بالشيك فعلاً، وهو الآن في يدنا).
+ */
+export async function أرجع_شيك_مظهّر(id: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const شيك = await prisma.cheque.findUnique({ where: { id } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر — أزِله من التسوية أولاً");
+  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (شيك.status !== "ENDORSED") return فشل("الشيك ليس مُظهَّراً لمورد");
+  const مورد_سابق = شيك.endorsedToId;
+  try {
+    await prisma.$transaction(async (tx) => {
+      // إلى «مسجّل»: الدلتا تعكس قيد التظهير (يرجع مستحق المورد) وتُبقي دين العميل، ويعود الشيك لخزنة الشيكات
+      await زامن_آثار_الشيك(tx, شيك, "REGISTERED", {}, فاعل.id);
+      // يرجع لليد فعلاً: نفكّ ربط المورد (زامن يُبقيه للعرض، لكن هنا الشيك عاد متاحاً)
+      await tx.cheque.update({ where: { id }, data: { endorsedToId: null, updatedById: فاعل.id } });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { إزالة_من_تظهير_المورد: مورد_سابق, المبلغ: شيك.amount },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء إرجاع الشيك");
+  }
+  revalidatePath("/cheques");
+  revalidatePath("/treasury");
+  if (مورد_سابق) revalidatePath(`/suppliers/${مورد_سابق}`);
+  if (شيك.partyId) {
+    revalidatePath(`/customers/${شيك.partyId}`);
+    revalidatePath(`/suppliers/${شيك.partyId}`);
+  }
+  return نجح(undefined, "رجع الشيك لليد وأصبح متاحاً لمعاملة أخرى");
+}
+
 /** تظهير شيك وارد لمورد (يقلّل مستحق المورد، بلا حركة خزنة). */
 export async function ظهّر_شيك(id: number, معرف_المورد: number): Promise<نتيجة> {
   return تغيير_حالة_شيك(id, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد });

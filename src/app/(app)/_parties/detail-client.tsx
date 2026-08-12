@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus, ReceiptText } from "lucide-react";
+import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus, ReceiptText, Undo2 } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import { منتقي_تاريخ } from "@/components/date-picker";
 import { سجل_دفعة, حذف_حركة, تعديل_حركة, حذف_حركات_مختلطة, حذف_حركة_مرتبطة_بخزنة, تعديل_الرصيد_الابتدائي, سجل_دفعة_موزعة, تعديل_دفعة_موزعة, اجلب_دفعة_موزعة } from "./actions";
 import { تعديل_دفع_مباشر } from "@/app/(app)/treasury/actions";
 import { حذف_فاتورة } from "@/app/(app)/invoices/actions";
+import { أرجع_شيك_مظهّر } from "@/app/(app)/cheques/actions";
 import { تعديل_حركة_خزنة } from "@/app/(app)/treasury/actions";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 import { TreasuryAccountType } from "@prisma/client";
@@ -424,6 +425,7 @@ export function حركات_الطرف({
       {تفاصيل_مجموعة && (
         <حوار_تفاصيل_الشيكات_المجمّعة
           الشيكات={تفاصيل_مجموعة}
+          سياق_مورد={الطرف.النوع === "SUPPLIER"}
           عند_الإغلاق={() => تعيين_تفاصيل_مجموعة(null)}
         />
       )}
@@ -1190,72 +1192,112 @@ function حوار_تعديل_دفع_مباشر({
   );
 }
 
-/** نافذة تفاصيل الشيكات المُجمّعة في صف واحد بحساب الطرف. */
+/** نافذة تفاصيل الشيكات المُجمّعة في صف واحد بحساب الطرف — مع «إزالة شيك من المعاملة» (يرجّعه لليد) في صفحة المورد. */
 function حوار_تفاصيل_الشيكات_المجمّعة({
   الشيكات,
+  سياق_مورد = false,
   عند_الإغلاق,
 }: {
   الشيكات: معلومة_شيك_قيد[];
+  سياق_مورد?: boolean;
   عند_الإغلاق: () => void;
 }) {
-  const إجمالي = الشيكات.reduce((س, ش) => س + ش.المبلغ, 0);
+  const router = useRouter();
+  const إشعار = useإشعار();
+  // قائمة محلية حتى تتحدّث النافذة فوراً عند إزالة شيك دون إغلاقها
+  const [قائمة, تعيين_قائمة] = React.useState<معلومة_شيك_قيد[]>(الشيكات);
+  const [إزالة, تعيين_إزالة] = React.useState<معلومة_شيك_قيد | null>(null);
+  const إجمالي = قائمة.reduce((س, ش) => س + ش.المبلغ, 0);
+
   return (
-    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
-      <محتوى_الحوار className="max-w-2xl">
-        <رأس_الحوار>
-          <عنوان_الحوار>
-            تفاصيل الشيكات ({الشيكات.length}) — الإجمالي <نص_مبلغ القيمة={إجمالي} />
-          </عنوان_الحوار>
-        </رأس_الحوار>
-        <div className="max-h-[60vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-appgray text-muted-foreground">
-              <tr className="text-start">
-                <th className="px-3 py-2 text-start font-medium">#</th>
-                <th className="px-3 py-2 text-start font-medium">رقم الشيك</th>
-                <th className="px-3 py-2 text-start font-medium">المدين / محوّل من</th>
-                <th className="px-3 py-2 text-start font-medium">البنك</th>
-                <th className="px-3 py-2 text-start font-medium">الاستحقاق</th>
-                <th className="px-3 py-2 text-start font-medium">الحالة</th>
-                <th className="px-3 py-2 text-end font-medium">المبلغ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {الشيكات.map((ش, i) => (
-                <tr key={ش.id} className="border-t border-border">
-                  <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                  <td className="px-3 py-2 ltr-nums">
-                    <Link href={`/cheques?highlight=${ش.id}`} className="text-primary-blue hover:underline">
-                      {ش.رقم_الشيك || "—"}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="inline-flex items-center gap-1.5">
-                      {ش.محول_من || ش.اسم_المدين}
-                      {ش.افتتاحي && (
-                        <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-800 border border-amber-300">افتتاحي</span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">{ش.اسم_البنك || "—"}</td>
-                  <td className="px-3 py-2"><نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} /></td>
-                  <td className="px-3 py-2">{تسمية_حالة_الشيك[ش.الحالة as keyof typeof تسمية_حالة_الشيك] ?? ش.الحالة}</td>
-                  <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ش.المبلغ} مع_العملة={false} /></td>
+    <>
+      <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+        <محتوى_الحوار className="max-w-3xl">
+          <رأس_الحوار>
+            <عنوان_الحوار>
+              تفاصيل الشيكات ({قائمة.length}) — الإجمالي <نص_مبلغ القيمة={إجمالي} />
+            </عنوان_الحوار>
+          </رأس_الحوار>
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-appgray text-muted-foreground">
+                <tr className="text-start">
+                  <th className="px-3 py-2 text-start font-medium">#</th>
+                  <th className="px-3 py-2 text-start font-medium">رقم الشيك</th>
+                  <th className="px-3 py-2 text-start font-medium">المدين / محوّل من</th>
+                  <th className="px-3 py-2 text-start font-medium">البنك</th>
+                  <th className="px-3 py-2 text-start font-medium">الاستحقاق</th>
+                  <th className="px-3 py-2 text-start font-medium">الحالة</th>
+                  <th className="px-3 py-2 text-end font-medium">المبلغ</th>
+                  {سياق_مورد && <th className="px-3 py-2 text-end font-medium">إجراء</th>}
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-border font-semibold">
-                <td className="px-3 py-2" colSpan={6}>الإجمالي</td>
-                <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={إجمالي} مع_العملة={false} /></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <تذييل_الحوار>
-          <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
-        </تذييل_الحوار>
-      </محتوى_الحوار>
-    </الحوار>
+              </thead>
+              <tbody>
+                {قائمة.map((ش, i) => (
+                  <tr key={ش.id} className="border-t border-border">
+                    <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                    <td className="px-3 py-2 ltr-nums">{ش.رقم_الشيك || "—"}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        {ش.محول_من || ش.اسم_المدين}
+                        {ش.افتتاحي && (
+                          <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-800 border border-amber-300">افتتاحي</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">{ش.اسم_البنك || "—"}</td>
+                    <td className="px-3 py-2"><نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} /></td>
+                    <td className="px-3 py-2">{تسمية_حالة_الشيك[ش.الحالة as keyof typeof تسمية_حالة_الشيك] ?? ش.الحالة}</td>
+                    <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ش.المبلغ} مع_العملة={false} /></td>
+                    {سياق_مورد && (
+                      <td className="px-3 py-2 text-end">
+                        {ش.الحالة === "ENDORSED" ? (
+                          <الزر size="sm" variant="ghost" title="إزالة من المعاملة (إرجاع الشيك لليد)" onClick={() => تعيين_إزالة(ش)}>
+                            <Undo2 className="size-4 text-danger" />
+                          </الزر>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border font-semibold">
+                  <td className="px-3 py-2" colSpan={6}>الإجمالي</td>
+                  <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={إجمالي} مع_العملة={false} /></td>
+                  {سياق_مورد && <td />}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <تذييل_الحوار>
+            <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+          </تذييل_الحوار>
+        </محتوى_الحوار>
+      </الحوار>
+
+      {إزالة && (
+        <حوار_تأكيد
+          مفتوح
+          خطر={false}
+          عند_التغيير={(o) => !o && تعيين_إزالة(null)}
+          العنوان="إزالة الشيك من المعاملة"
+          الوصف={`سيرجع الشيك ${إزالة.رقم_الشيك ? "رقم " + إزالة.رقم_الشيك : ""} لليد (كأنه لم يُظهَّر للمورد): يزيد مستحق المورد بقيمته ويصبح متاحاً لاستخدامه في معاملة أخرى. دين العميل لا يتغيّر.`}
+          نص_التأكيد="إرجاع لليد"
+          عند_التأكيد={async () => {
+            const r = await أرجع_شيك_مظهّر(إزالة.id);
+            if (!r.نجاح) { إشعار.خطأ(r.رسالة); return; }
+            إشعار.نجاح(r.رسالة || "رجع الشيك لليد");
+            const باقٍ = قائمة.filter((x) => x.id !== إزالة.id);
+            تعيين_قائمة(باقٍ);
+            تعيين_إزالة(null);
+            router.refresh();
+            if (باقٍ.length === 0) عند_الإغلاق();
+          }}
+        />
+      )}
+    </>
   );
 }
