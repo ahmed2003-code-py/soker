@@ -245,6 +245,13 @@ export async function تغيير_حالة_شيك(
         for (const د of دفعات) await احذف_حركة_خزنة_ناعم(tx, د.id);
       }
       await زامن_آثار_الشيك(tx, شيك, الحالة, خيارات, فاعل.id);
+      // تظهير مفرد (من صفحة الشيكات) = معاملة مستقلة بذاتها → معرّف معاملة خاص به (= معرّف الشيك)
+      if (الحالة === "ENDORSED") {
+        await tx.cheque.update({ where: { id }, data: { endorseBatchId: id } });
+      } else if (شيك.status === "ENDORSED") {
+        // خرج من التظهير (ارتداد/إلغاء) → يُفرَّغ معرّف المعاملة
+        await tx.cheque.update({ where: { id }, data: { endorseBatchId: null } });
+      }
       // تسجيل سبب/تاريخ الإلغاء (بدون حذف السجل)، وتفريغه عند إعادة التسجيل
       if (الحالة === "CANCELLED") {
         await tx.cheque.update({ where: { id }, data: { cancelReason: خيارات.سبب_الإلغاء?.trim() || null, cancelledAt: new Date() } });
@@ -291,8 +298,8 @@ export async function أرجع_شيك_مظهّر(id: number): Promise<نتيجة
     await prisma.$transaction(async (tx) => {
       // إلى «مسجّل»: الدلتا تعكس قيد التظهير (يرجع مستحق المورد) وتُبقي دين العميل، ويعود الشيك لخزنة الشيكات
       await زامن_آثار_الشيك(tx, شيك, "REGISTERED", {}, فاعل.id);
-      // يرجع لليد فعلاً: نفكّ ربط المورد (زامن يُبقيه للعرض، لكن هنا الشيك عاد متاحاً)
-      await tx.cheque.update({ where: { id }, data: { endorsedToId: null, updatedById: فاعل.id } });
+      // يرجع لليد فعلاً: نفكّ ربط المورد ومعرّف المعاملة (زامن يُبقيهما، لكن هنا الشيك عاد متاحاً)
+      await tx.cheque.update({ where: { id }, data: { endorsedToId: null, endorseBatchId: null, updatedById: فاعل.id } });
       await تسجيل_عملية(tx, {
         المستخدم: فاعل.id,
         العملية: "UPDATE",
@@ -350,18 +357,36 @@ export async function اجلب_شيكات_متاحة_للتظهير(): Promise<
 }
 
 /**
- * إضافة شيكات متاحة إلى معاملة تظهير مورد — كل شيك يُظهَّر للمورد:
+ * إضافة شيكات متاحة إلى معاملة تظهير مورد — كل شيك يُظهَّر للمورد ضمن نفس المعاملة (batch):
  *  مستحق المورد يقل بقيمة الشيك، ودين العميل يبقى كما هو، والشيك يخرج من خزنة الشيكات ويصبح تبع المورد.
+ *  تُوحَّد معرّفات المعاملة: الشيكات المضافة + شيكات المعاملة القائمة تأخذ نفس المعرّف حتى تبقى مُجمَّعة.
  */
-export async function ظهّر_شيكات_لمورد(معرف_المورد: number, معرفات: number[]): Promise<نتيجة> {
+export async function ظهّر_شيكات_لمورد(
+  معرف_المورد: number,
+  معرفات: number[],
+  معرف_معاملة?: number | null,
+  معرفات_المعاملة_الحالية?: number[]
+): Promise<نتيجة<{ معرف_معاملة: number }>> {
   const فاعل = await اطلب_المستخدم();
   تحقق_الصلاحية(فاعل.role, "كتابة");
   const فريدة = [...new Set(معرفات.filter((n) => Number.isFinite(n)))];
   if (فريدة.length === 0) return فشل("اختر شيكاً واحداً على الأقل");
   const مورد = await prisma.party.findUnique({ where: { id: معرف_المورد }, select: { type: true } });
   if (!مورد || مورد.type !== "SUPPLIER") return فشل("المورد غير صالح");
+  const قائمة_الحالية = [...new Set((معرفات_المعاملة_الحالية ?? []).filter((n) => Number.isFinite(n)))];
+  // معرّف المعاملة: القائم (المُمرَّر) → أو معرّف قائم على شيكات المعاملة الحالية → أو أصغر معرّف في المجموعة (ثابت)
+  let معرف = معرف_معاملة ?? null;
   try {
-    await prisma.$transaction(async (tx) => {
+    const batchId = await prisma.$transaction(async (tx) => {
+      if (معرف == null && قائمة_الحالية.length) {
+        const موجود = await tx.cheque.findFirst({ where: { id: { in: قائمة_الحالية }, endorseBatchId: { not: null } }, select: { endorseBatchId: true } });
+        معرف = موجود?.endorseBatchId ?? null;
+      }
+      if (معرف == null) معرف = Math.min(...[...قائمة_الحالية, ...فريدة]);
+      // توحيد معاملة الشيكات القائمة التي بلا معرّف (تثبيت المجموعة القديمة)
+      if (قائمة_الحالية.length) {
+        await tx.cheque.updateMany({ where: { id: { in: قائمة_الحالية }, endorseBatchId: null }, data: { endorseBatchId: معرف } });
+      }
       for (const id of فريدة) {
         const ش = await tx.cheque.findUnique({ where: { id } });
         if (!ش) throw new Error("شيك غير موجود");
@@ -371,22 +396,24 @@ export async function ظهّر_شيكات_لمورد(معرف_المورد: numb
           throw new Error(`الشيك ${ش.chequeNumber ?? id} غير متاح (${تسمية_حالة_الشيك[ش.status]})`);
         }
         await زامن_آثار_الشيك(tx, ش, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد }, فاعل.id);
+        await tx.cheque.update({ where: { id }, data: { endorseBatchId: معرف } });
         await تسجيل_عملية(tx, {
           المستخدم: فاعل.id,
           العملية: "UPDATE",
           نوع_الكيان: "الشيك",
           معرف_الكيان: id,
-          التفاصيل: { تظهير_لمورد: معرف_المورد, المبلغ: ش.amount, إضافة_للمعاملة: true },
+          التفاصيل: { تظهير_لمورد: معرف_المورد, المبلغ: ش.amount, إضافة_للمعاملة: معرف },
         });
       }
+      return معرف as number;
     });
+    revalidatePath("/cheques");
+    revalidatePath("/treasury");
+    revalidatePath(`/suppliers/${معرف_المورد}`);
+    return نجح({ معرف_معاملة: batchId }, `تمت إضافة ${فريدة.length} شيك للمعاملة`);
   } catch (e) {
     return فشل(e instanceof Error ? e.message : "خطأ أثناء إضافة الشيكات");
   }
-  revalidatePath("/cheques");
-  revalidatePath("/treasury");
-  revalidatePath(`/suppliers/${معرف_المورد}`);
-  return نجح(undefined, `تمت إضافة ${فريدة.length} شيك للمعاملة`);
 }
 
 /**
