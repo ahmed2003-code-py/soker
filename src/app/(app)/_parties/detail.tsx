@@ -72,6 +72,35 @@ export async function تفاصيل_الطرف({
   const إجمالي_المدفوعات = عميل ? Σدائن : Σمدين;
   const الرصيد = Number(طرف.balance);
 
+  // خريطة الشيكات المرتبطة بقيود هذا الطرف (تظهير على المورد / استلام على العميل) — لتجميع صفوفها وعرض تفاصيلها
+  const معرفات_القيود = طرف.ledgerEntries.map((ح) => ح.id);
+  const شيكات_مرتبطة = معرفات_القيود.length
+    ? await prisma.cheque.findMany({
+        where: { OR: [{ endorseLedgerEntryId: { in: معرفات_القيود } }, { partyLedgerEntryId: { in: معرفات_القيود } }] },
+        select: {
+          id: true, amount: true, chequeNumber: true, dueDate: true, drawerName: true,
+          transferredFrom: true, bankName: true, isOpening: true, status: true, direction: true,
+          endorseLedgerEntryId: true, partyLedgerEntryId: true,
+        },
+      })
+    : [];
+  const خريطة_شيك_للقيد = new Map<number, any>();
+  for (const c of شيكات_مرتبطة) {
+    const معلومة = {
+      id: c.id,
+      المبلغ: Number(c.amount),
+      رقم_الشيك: c.chequeNumber,
+      تاريخ_الاستحقاق: c.dueDate.toISOString(),
+      اسم_المدين: c.drawerName,
+      محول_من: c.transferredFrom,
+      اسم_البنك: c.bankName,
+      افتتاحي: c.isOpening,
+      الحالة: c.status,
+    };
+    if (c.endorseLedgerEntryId != null) خريطة_شيك_للقيد.set(c.endorseLedgerEntryId, معلومة);
+    if (c.partyLedgerEntryId != null && !خريطة_شيك_للقيد.has(c.partyLedgerEntryId)) خريطة_شيك_للقيد.set(c.partyLedgerEntryId, معلومة);
+  }
+
   const حركات = طرف.ledgerEntries.map((ح) => ({
     id: ح.id,
     التاريخ: ح.date.toISOString(),
@@ -88,6 +117,7 @@ export async function تفاصيل_الطرف({
     معرف_حساب_خزنة: ح.treasuryTxn?.accountId ?? null,
     معرف_دفع_مباشر: ح.directPaymentId,
     معرف_دفعة_موزعة: ح.splitPaymentId,
+    شيك_مرتبط: خريطة_شيك_للقيد.get(ح.id) ?? null,
     مرتبط: ح.invoiceId != null || ح.treasuryTxnId != null || ح.directPaymentId != null || ح.splitPaymentId != null,
   }));
 

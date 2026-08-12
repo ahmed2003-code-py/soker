@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus } from "lucide-react";
+import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus, ReceiptText } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { قائمة_اختيار } from "@/components/combobox";
 import { جدول_بيانات, type عمود } from "@/components/data-table";
 import { نص_مبلغ } from "@/components/money-text";
 import { نص_تاريخ } from "@/components/date-text";
+import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { حوار_تأكيد } from "@/components/confirm-dialog";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
@@ -47,7 +48,23 @@ export type حركة = {
   معرف_حساب_خزنة: number | null;
   معرف_دفع_مباشر: number | null;
   معرف_دفعة_موزعة: number | null;
+  شيك_مرتبط?: معلومة_شيك_قيد | null;
   مرتبط: boolean;
+  // صف مجمّع (شيكات مُظهَّرة متتالية) — للعرض فقط
+  مجموعة_شيكات?: معلومة_شيك_قيد[];
+};
+
+/** معلومات شيك مرتبط بقيد (لعرضها في نافذة تفاصيل الشيكات المجمّعة). */
+export type معلومة_شيك_قيد = {
+  id: number;
+  المبلغ: number;
+  رقم_الشيك: string | null;
+  تاريخ_الاستحقاق: string;
+  اسم_المدين: string;
+  محول_من: string | null;
+  اسم_البنك: string | null;
+  افتتاحي: boolean;
+  الحالة: string;
 };
 
 const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
@@ -90,13 +107,43 @@ export function حركات_الطرف({
   const [رصيد_ابتدائي_حوار, تعيين_رصيد_ابتدائي_حوار] = React.useState(false);
   const [قيمة_رصيد_ابتدائي, تعيين_قيمة_رصيد_ابتدائي] = React.useState("");
 
-  const حركات_معروضة = الحركات.filter((ح) => {
+  const حركات_مفلترة = الحركات.filter((ح) => {
     if (معلقة.has(ح.id)) return false;
     const d = ح.التاريخ.slice(0, 10);
     if (من && d < من) return false;
     if (إلى && d > إلى) return false;
     return true;
   });
+
+  // تجميع صفوف تظهير/استلام الشيكات المتتالية في صف واحد (إجمالي + عدد) — العرض فقط
+  const [تفاصيل_مجموعة, تعيين_تفاصيل_مجموعة] = React.useState<معلومة_شيك_قيد[] | null>(null);
+  const حركات_معروضة: حركة[] = [];
+  for (let i = 0; i < حركات_مفلترة.length; ) {
+    const ح = حركات_مفلترة[i];
+    if (ح.شيك_مرتبط) {
+      // اجمع كل الصفوف المتتالية المرتبطة بشيكات
+      const مجموعة: حركة[] = [];
+      let j = i;
+      while (j < حركات_مفلترة.length && حركات_مفلترة[j].شيك_مرتبط) { مجموعة.push(حركات_مفلترة[j]); j++; }
+      if (مجموعة.length >= 2) {
+        const مجموع_مدين = مجموعة.reduce((س, x) => س + x.مدين, 0);
+        const مجموع_دائن = مجموعة.reduce((س, x) => س + x.دائن, 0);
+        حركات_معروضة.push({
+          ...مجموعة[0],
+          id: -(1_000_000_000 + مجموعة[0].id), // مفتاح صف اصطناعي فريد
+          البيان: `${مجموعة.length} شيكات ${مجموع_مدين > 0 ? "مُظهَّرة سداداً للمورد" : "واردة من العميل"}`,
+          مدين: مجموع_مدين,
+          دائن: مجموع_دائن,
+          الرصيد_بعد_الحركة: مجموعة[0].الرصيد_بعد_الحركة, // الرصيد بعد أحدث حركة في المجموعة
+          مجموعة_شيكات: مجموعة.map((x) => x.شيك_مرتبط!).filter(Boolean),
+        });
+        i = j;
+        continue;
+      }
+    }
+    حركات_معروضة.push(ح);
+    i++;
+  }
 
   function تبديل_تحديد(id: number) {
     تعيين_محددة((prev) => {
@@ -106,16 +153,17 @@ export function حركات_الطرف({
     });
   }
 
+  const صفوف_قابلة_للتحديد = حركات_معروضة.filter((ح) => !ح.مجموعة_شيكات);
   function تحديد_الكل() {
-    if (محددة.size === حركات_معروضة.length && حركات_معروضة.length > 0) {
+    if (محددة.size === صفوف_قابلة_للتحديد.length && صفوف_قابلة_للتحديد.length > 0) {
       تعيين_محددة(new Set());
     } else {
-      تعيين_محددة(new Set(حركات_معروضة.map((ح) => ح.id)));
+      تعيين_محددة(new Set(صفوف_قابلة_للتحديد.map((ح) => ح.id)));
     }
   }
 
   const كل_محدد =
-    حركات_معروضة.length > 0 && محددة.size === حركات_معروضة.length;
+    صفوف_قابلة_للتحديد.length > 0 && محددة.size === صفوف_قابلة_للتحديد.length;
 
   const أعمدة: عمود<حركة>[] = [
     {
@@ -129,14 +177,15 @@ export function حركات_الطرف({
           title="تحديد الكل"
         />
       ) as unknown as string,
-      خلية: (ص) => (
-        <input
-          type="checkbox"
-          checked={محددة.has(ص.id)}
-          onChange={() => تبديل_تحديد(ص.id)}
-          className="size-4 cursor-pointer"
-        />
-      ),
+      خلية: (ص) =>
+        ص.مجموعة_شيكات ? null : (
+          <input
+            type="checkbox"
+            checked={محددة.has(ص.id)}
+            onChange={() => تبديل_تحديد(ص.id)}
+            className="size-4 cursor-pointer"
+          />
+        ),
       مخفي_موبايل: false,
     },
     {
@@ -163,7 +212,25 @@ export function حركات_الطرف({
         ),
       مخفي_موبايل: true,
     },
-    { المفتاح: "البيان", العنوان: t("ledger.col.statement") },
+    {
+      المفتاح: "البيان",
+      العنوان: t("ledger.col.statement"),
+      خلية: (ص) =>
+        ص.مجموعة_شيكات ? (
+          <button
+            type="button"
+            onClick={() => تعيين_تفاصيل_مجموعة(ص.مجموعة_شيكات!)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary-blue/30 bg-primary-blue/5 px-2 py-1 text-primary-blue hover:bg-primary-blue/10"
+            title="عرض تفاصيل الشيكات"
+          >
+            <ReceiptText className="size-3.5" />
+            <span>{ص.البيان}</span>
+            <span className="rounded bg-primary-blue/15 px-1.5 text-[11px] font-semibold">{ص.مجموعة_شيكات!.length}</span>
+          </button>
+        ) : (
+          <span>{ص.البيان}</span>
+        ),
+    },
     {
       المفتاح: "المبلغ",
       العنوان: "المبلغ",
@@ -263,6 +330,8 @@ export function حركات_الطرف({
         بحث={false}
         رسالة_فراغ={t("ledger.empty")}
         إجراءات_الصف={(ص) => {
+          // الصف المجمّع (شيكات مُظهَّرة) للعرض فقط — التعديل من موديول الشيكات
+          if (ص.مجموعة_شيكات) return null;
           // في وضع التحديد الجماعي (أكثر من صف) → زر حذف فقط لكل صف
           // دالة الحذف حسب نوع الصف
           const على_الحذف = () => {
@@ -352,6 +421,12 @@ export function حركات_الطرف({
         }}
       />
 
+      {تفاصيل_مجموعة && (
+        <حوار_تفاصيل_الشيكات_المجمّعة
+          الشيكات={تفاصيل_مجموعة}
+          عند_الإغلاق={() => تعيين_تفاصيل_مجموعة(null)}
+        />
+      )}
       {دفعة && (
         <حوار_دفعة
           الطرف={الطرف}
@@ -1109,6 +1184,76 @@ function حوار_تعديل_دفع_مباشر({
           <الزر variant="outline" onClick={عند_الإغلاق}>
             {t("common.cancel")}
           </الزر>
+        </تذييل_الحوار>
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+/** نافذة تفاصيل الشيكات المُجمّعة في صف واحد بحساب الطرف. */
+function حوار_تفاصيل_الشيكات_المجمّعة({
+  الشيكات,
+  عند_الإغلاق,
+}: {
+  الشيكات: معلومة_شيك_قيد[];
+  عند_الإغلاق: () => void;
+}) {
+  const إجمالي = الشيكات.reduce((س, ش) => س + ش.المبلغ, 0);
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
+      <محتوى_الحوار className="max-w-2xl">
+        <رأس_الحوار>
+          <عنوان_الحوار>
+            تفاصيل الشيكات ({الشيكات.length}) — الإجمالي <نص_مبلغ القيمة={إجمالي} />
+          </عنوان_الحوار>
+        </رأس_الحوار>
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-appgray text-muted-foreground">
+              <tr className="text-start">
+                <th className="px-3 py-2 text-start font-medium">#</th>
+                <th className="px-3 py-2 text-start font-medium">رقم الشيك</th>
+                <th className="px-3 py-2 text-start font-medium">المدين / محوّل من</th>
+                <th className="px-3 py-2 text-start font-medium">البنك</th>
+                <th className="px-3 py-2 text-start font-medium">الاستحقاق</th>
+                <th className="px-3 py-2 text-start font-medium">الحالة</th>
+                <th className="px-3 py-2 text-end font-medium">المبلغ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {الشيكات.map((ش, i) => (
+                <tr key={ش.id} className="border-t border-border">
+                  <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                  <td className="px-3 py-2 ltr-nums">
+                    <Link href={`/cheques?highlight=${ش.id}`} className="text-primary-blue hover:underline">
+                      {ش.رقم_الشيك || "—"}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      {ش.محول_من || ش.اسم_المدين}
+                      {ش.افتتاحي && (
+                        <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-800 border border-amber-300">افتتاحي</span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{ش.اسم_البنك || "—"}</td>
+                  <td className="px-3 py-2"><نص_تاريخ القيمة={ش.تاريخ_الاستحقاق} /></td>
+                  <td className="px-3 py-2">{تسمية_حالة_الشيك[ش.الحالة as keyof typeof تسمية_حالة_الشيك] ?? ش.الحالة}</td>
+                  <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ش.المبلغ} مع_العملة={false} /></td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border font-semibold">
+                <td className="px-3 py-2" colSpan={6}>الإجمالي</td>
+                <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={إجمالي} مع_العملة={false} /></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <تذييل_الحوار>
+          <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>
