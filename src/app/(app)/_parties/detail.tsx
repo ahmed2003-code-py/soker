@@ -80,7 +80,7 @@ export async function تفاصيل_الطرف({
         select: {
           id: true, amount: true, chequeNumber: true, dueDate: true, drawerName: true,
           transferredFrom: true, bankName: true, isOpening: true, status: true, direction: true,
-          endorseBatchId: true, endorseLedgerEntryId: true, partyLedgerEntryId: true,
+          endorseBatchId: true, receiptBatchId: true, endorseLedgerEntryId: true, partyLedgerEntryId: true,
         },
       })
     : [];
@@ -97,10 +97,10 @@ export async function تفاصيل_الطرف({
       افتتاحي: c.isOpening,
       الحالة: c.status,
     };
-    // جهة التظهير (المورد): معرّف المعاملة يُميّز الشيكات المُظهَّرة سوياً
+    // جهة التظهير (المورد): معرّف معاملة التظهير يُميّز الشيكات المُظهَّرة سوياً
     if (c.endorseLedgerEntryId != null) خريطة_شيك_للقيد.set(c.endorseLedgerEntryId, { ...أساس, معرف_معاملة: c.endorseBatchId ?? null });
-    // جهة الاستلام (العميل): لا معرّف معاملة تظهير (تُجمَّع بالتتابع)
-    if (c.partyLedgerEntryId != null && !خريطة_شيك_للقيد.has(c.partyLedgerEntryId)) خريطة_شيك_للقيد.set(c.partyLedgerEntryId, { ...أساس, معرف_معاملة: null });
+    // جهة الاستلام (العميل): معرّف معاملة الاستلام يُميّز الشيكات المستلَمة سوياً
+    if (c.partyLedgerEntryId != null && !خريطة_شيك_للقيد.has(c.partyLedgerEntryId)) خريطة_شيك_للقيد.set(c.partyLedgerEntryId, { ...أساس, معرف_معاملة: c.receiptBatchId ?? null });
   }
 
   const حركات = طرف.ledgerEntries.map((ح) => ({

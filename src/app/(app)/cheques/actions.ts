@@ -111,6 +111,10 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
       افتتاحي && ب.الحالة === "ENDORSED" ? { معرف_المورد_للتظهير: مظهَّر_له_افتتاحي } : {},
       فاعل.id
     );
+    // معرّف «معاملة استلام» مستقل لكل شيك وارد مربوط بعميل (لا يُدمج مع غيره تلقائياً)
+    if (c.direction === "INCOMING" && c.partyId && (c.accountingVersion ?? 1) >= 2) {
+      await tx.cheque.update({ where: { id: c.id }, data: { receiptBatchId: c.id } });
+    }
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "CREATE",
@@ -413,6 +417,132 @@ export async function ظهّر_شيكات_لمورد(
     return نجح({ معرف_معاملة: batchId }, `تمت إضافة ${فريدة.length} شيك للمعاملة`);
   } catch (e) {
     return فشل(e instanceof Error ? e.message : "خطأ أثناء إضافة الشيكات");
+  }
+}
+
+/**
+ * إزالة شيك مُستلَم من حساب العميل («إزالته من المعاملة») — يعكس أثر الاستلام فقط:
+ *  دين العميل يرجع يزيد بقيمة الشيك، ويصبح الشيك غير مرتبط بعميل ومتاحاً لإسناده لعميل آخر.
+ *  الشيك لا يُمسح، ويبقى «مسجّلاً» في خزنة الشيكات.
+ */
+export async function أرجع_شيك_من_عميل(id: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const شيك = await prisma.cheque.findUnique({ where: { id } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر — أزِله من التسوية أولاً");
+  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (شيك.status !== "REGISTERED") return فشل("لا يمكن الإزالة إلا لشيك «مسجّل» (لم يُودَع/يُظهَّر/يُحصَّل)");
+  if (شيك.partyId == null) return فشل("الشيك غير مرتبط بعميل");
+  const عميل_سابق = شيك.partyId;
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (شيك.partyLedgerEntryId) await احذف_قيد_ناعم(tx, شيك.partyLedgerEntryId); // يرجع دين العميل
+      await tx.cheque.update({ where: { id }, data: { partyId: null, partyLedgerEntryId: null, receiptBatchId: null, updatedById: فاعل.id } });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { إزالة_من_استلام_العميل: عميل_سابق, المبلغ: شيك.amount },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء إرجاع الشيك");
+  }
+  revalidatePath("/cheques");
+  revalidatePath(`/customers/${عميل_سابق}`);
+  revalidatePath(`/suppliers/${عميل_سابق}`);
+  return نجح(undefined, "أُزيل الشيك من حساب العميل وأصبح متاحاً");
+}
+
+/** جلب الشيكات الواردة المتاحة غير المرتبطة بعميل — لإسنادها لعميل (معاملة استلام). */
+export async function اجلب_شيكات_متاحة_للإسناد(): Promise<
+  نتيجة<{ الشيكات: { id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string; افتتاحي: boolean }[] }>
+> {
+  await اطلب_المستخدم();
+  const شيكات = await prisma.cheque.findMany({
+    where: {
+      direction: "INCOMING",
+      accountingVersion: { gte: 2 },
+      status: "REGISTERED",
+      partyId: null,
+      settlesChequeId: null,
+      endorseLedgerEntryId: null,
+      collectedTxnId: null,
+    },
+    orderBy: { dueDate: "asc" },
+    select: { id: true, amount: true, drawerName: true, transferredFrom: true, chequeNumber: true, bankName: true, dueDate: true, isOpening: true },
+  });
+  return نجح({
+    الشيكات: شيكات.map((ش) => ({
+      id: ش.id,
+      المبلغ: Number(ش.amount),
+      الاسم: ش.transferredFrom ?? ش.drawerName,
+      رقم_الشيك: ش.chequeNumber,
+      اسم_البنك: ش.bankName,
+      تاريخ_الاستحقاق: ش.dueDate.toISOString(),
+      افتتاحي: ش.isOpening,
+    })),
+  });
+}
+
+/**
+ * إسناد شيكات متاحة إلى عميل ضمن معاملة استلام واحدة (batch):
+ *  دين العميل يقل بقيمة كل شيك (استلام منه)، وتُوحَّد معرّفات المعاملة على المضاف + القائم.
+ */
+export async function اربط_شيكات_بعميل(
+  معرف_العميل: number,
+  معرفات: number[],
+  معرف_معاملة?: number | null,
+  معرفات_المعاملة_الحالية?: number[]
+): Promise<نتيجة<{ معرف_معاملة: number }>> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const فريدة = [...new Set(معرفات.filter((n) => Number.isFinite(n)))];
+  if (فريدة.length === 0) return فشل("اختر شيكاً واحداً على الأقل");
+  const عميل = await prisma.party.findUnique({ where: { id: معرف_العميل }, select: { type: true } });
+  if (!عميل || عميل.type !== "CUSTOMER") return فشل("العميل غير صالح");
+  const قائمة_الحالية = [...new Set((معرفات_المعاملة_الحالية ?? []).filter((n) => Number.isFinite(n)))];
+  let معرف = معرف_معاملة ?? null;
+  try {
+    const batchId = await prisma.$transaction(async (tx) => {
+      if (معرف == null && قائمة_الحالية.length) {
+        const موجود = await tx.cheque.findFirst({ where: { id: { in: قائمة_الحالية }, receiptBatchId: { not: null } }, select: { receiptBatchId: true } });
+        معرف = موجود?.receiptBatchId ?? null;
+      }
+      if (معرف == null) معرف = Math.min(...[...قائمة_الحالية, ...فريدة]);
+      if (قائمة_الحالية.length) {
+        await tx.cheque.updateMany({ where: { id: { in: قائمة_الحالية }, receiptBatchId: null }, data: { receiptBatchId: معرف } });
+      }
+      for (const id of فريدة) {
+        const ش = await tx.cheque.findUnique({ where: { id } });
+        if (!ش) throw new Error("شيك غير موجود");
+        if (!نموذج_جديد(ش)) throw new Error("الإسناد للشيكات الواردة (النموذج الجديد) فقط");
+        if (ش.settlesChequeId != null) throw new Error(`الشيك ${ش.chequeNumber ?? id} مُستخدَم في تسوية شيك صادر`);
+        if (ش.status !== "REGISTERED" || ش.partyId != null || ش.endorseLedgerEntryId != null || ش.collectedTxnId != null) {
+          throw new Error(`الشيك ${ش.chequeNumber ?? id} غير متاح للإسناد`);
+        }
+        // اربط بالعميل ثم أنشئ أثر الاستلام (دائن يقل دينه)
+        await tx.cheque.update({ where: { id }, data: { partyId: معرف_العميل, receiptBatchId: معرف } });
+        const مربوط = await tx.cheque.findUniqueOrThrow({ where: { id } });
+        await زامن_آثار_الشيك(tx, مربوط, "REGISTERED", {}, فاعل.id);
+        await تسجيل_عملية(tx, {
+          المستخدم: فاعل.id,
+          العملية: "UPDATE",
+          نوع_الكيان: "الشيك",
+          معرف_الكيان: id,
+          التفاصيل: { إسناد_لعميل: معرف_العميل, المبلغ: ش.amount, إضافة_للمعاملة: معرف },
+        });
+      }
+      return معرف as number;
+    });
+    revalidatePath("/cheques");
+    revalidatePath(`/customers/${معرف_العميل}`);
+    revalidatePath(`/suppliers/${معرف_العميل}`);
+    return نجح({ معرف_معاملة: batchId }, `تمت إضافة ${فريدة.length} شيك للمعاملة`);
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء إسناد الشيكات");
   }
 }
 

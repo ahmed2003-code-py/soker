@@ -351,6 +351,7 @@ model Cheque {
   partyLedgerEntryId Int?          @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
   endorseLedgerEntryId Int?        @map("endorse_ledger_entry_id") // قيد أثر التظهير على المورد (شيك وارد مُظهَّر)
   endorseBatchId  Int?             @map("endorse_batch_id") // معرّف «معاملة» التظهير — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
+  receiptBatchId  Int?             @map("receipt_batch_id") // معرّف «معاملة» الاستلام من العميل — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
   endorsedToId    Int?             @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
   endorsedTo      Party?           @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
   partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
