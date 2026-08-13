@@ -21,6 +21,21 @@ async function أدخل_افتتاحي(data: any, ahmed: number) {
   });
   return ش.id;
 }
+// يحاكي حوّل_شيك_لافتتاحي (العكس): يعكس الآثار ويجعله افتتاحياً بخط أساس = حالته
+async function أرجع_افتتاحي(id: number, ahmed: number) {
+  await prisma.$transaction(async (tx) => {
+    const شيك = await tx.cheque.findUniqueOrThrow({ where: { id } });
+    let acc: number | null = null, sub: number | null = null;
+    if (شيك.collectedTxnId) { const h = await tx.treasuryTxn.findUnique({ where: { id: شيك.collectedTxnId }, select: { accountId: true, subAccountId: true } }); acc = h?.accountId ?? null; sub = h?.subAccountId ?? null; }
+    const { احذف_قيد_ناعم } = await import("../src/lib/ledger");
+    const { احذف_حركة_خزنة_ناعم } = await import("../src/lib/treasury");
+    if (شيك.partyLedgerEntryId) await احذف_قيد_ناعم(tx, شيك.partyLedgerEntryId);
+    if (شيك.endorseLedgerEntryId) await احذف_قيد_ناعم(tx, شيك.endorseLedgerEntryId);
+    if (شيك.collectedTxnId) await احذف_حركة_خزنة_ناعم(tx, شيك.collectedTxnId);
+    const بحساب = شيك.status === "DEPOSITED" || شيك.status === "COLLECTED";
+    await tx.cheque.update({ where: { id }, data: { isOpening: true, openingBaseline: شيك.status, openingAccountId: بحساب ? acc : null, openingSubAccountId: بحساب ? sub : null, partyLedgerEntryId: null, endorseLedgerEntryId: null, collectedTxnId: null, receiptBatchId: null } });
+  });
+}
 // يحاكي حوّل_شيك_لعادي
 async function حوّل(id: number, ahmed: number) {
   await prisma.$transaction(async (tx) => {
@@ -46,6 +61,11 @@ async function main() {
     await حوّل(ش, ahmed);
     تحقق(await رطرف(عميل.id) === 15000, "تحويل: دين العميل 20000→15000 (اتسجّل الاستلام)");
     تحقق(!(await prisma.cheque.findUniqueOrThrow({ where: { id: ش } })).isOpening, "بقى عادياً (isOpening=false)");
+    // العكس: إرجاع لافتتاحي → يُزال الأثر
+    await أرجع_افتتاحي(ش, ahmed);
+    تحقق(await رطرف(عميل.id) === 20000, "إرجاع لافتتاحي: دين العميل رجع 20000 (اتشال الأثر)");
+    const بعد = await prisma.cheque.findUniqueOrThrow({ where: { id: ش } });
+    تحقق(بعد.isOpening && بعد.openingBaseline === "REGISTERED", "إرجاع لافتتاحي: بقى افتتاحياً بخط أساس = حالته");
     await prisma.ledgerEntry.deleteMany({ where: { partyId: عميل.id } });
     await prisma.cheque.delete({ where: { id: ش } });
     await prisma.party.delete({ where: { id: عميل.id } });

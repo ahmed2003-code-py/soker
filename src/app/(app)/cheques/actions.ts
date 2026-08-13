@@ -381,6 +381,66 @@ export async function حوّل_شيك_لعادي(id: number): Promise<نتيجة
   return نجح(undefined, "تم تحويل الشيك إلى عادي وتسجيله في حساب العميل");
 }
 
+/**
+ * إرجاع شيك عادي إلى افتتاحي (تراجع عن تحويل خاطئ) — يعكس آثاره على الحسابات ويجعله افتتاحياً
+ *  بخط أساس = حالته الحالية (بلا أثر). دين العميل/حركة الخزنة/التظهير كلها تُعكَس.
+ */
+export async function حوّل_شيك_لافتتاحي(id: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const شيك = await prisma.cheque.findUnique({ where: { id } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (شيك.isOpening) return فشل("الشيك افتتاحي بالفعل");
+  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر");
+  const بحساب = شيك.status === "DEPOSITED" || شيك.status === "COLLECTED";
+  try {
+    await prisma.$transaction(async (tx) => {
+      // التقط حساب التحصيل الحالي ليصبح حساب الافتتاحي المُفترَض (لعكسه مستقبلاً)
+      let acc: number | null = null, sub: number | null = null;
+      if (شيك.collectedTxnId) {
+        const h = await tx.treasuryTxn.findUnique({ where: { id: شيك.collectedTxnId }, select: { accountId: true, subAccountId: true } });
+        acc = h?.accountId ?? null; sub = h?.subAccountId ?? null;
+      }
+      // اعكس كل الآثار (يرجع دين العميل + مستحق المورد + حركة الخزنة)
+      if (شيك.partyLedgerEntryId) await احذف_قيد_ناعم(tx, شيك.partyLedgerEntryId);
+      if (شيك.endorseLedgerEntryId) await احذف_قيد_ناعم(tx, شيك.endorseLedgerEntryId);
+      if (شيك.collectedTxnId) await احذف_حركة_خزنة_ناعم(tx, شيك.collectedTxnId);
+      await tx.cheque.update({
+        where: { id },
+        data: {
+          isOpening: true,
+          openingBaseline: شيك.status,
+          openingAccountId: بحساب ? acc : null,
+          openingSubAccountId: بحساب ? sub : null,
+          partyLedgerEntryId: null,
+          endorseLedgerEntryId: null,
+          collectedTxnId: null,
+          receiptBatchId: null,
+          updatedById: فاعل.id,
+        },
+      });
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { إرجاع_لافتتاحي: true, الحالة: شيك.status, المبلغ: شيك.amount },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء الإرجاع");
+  }
+  revalidatePath("/cheques");
+  revalidatePath("/treasury");
+  if (شيك.partyId) {
+    revalidatePath(`/customers/${شيك.partyId}`);
+    revalidatePath(`/suppliers/${شيك.partyId}`);
+  }
+  if (شيك.endorsedToId) revalidatePath(`/suppliers/${شيك.endorsedToId}`);
+  return نجح(undefined, "تم إرجاع الشيك افتتاحياً (أُزيل أثره من الحسابات)");
+}
+
 /** تظهير شيك وارد لمورد (يقلّل مستحق المورد، بلا حركة خزنة). */
 export async function ظهّر_شيك(id: number, معرف_المورد: number): Promise<نتيجة> {
   return تغيير_حالة_شيك(id, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد });
