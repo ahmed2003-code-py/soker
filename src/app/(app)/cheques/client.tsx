@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock, ArrowLeftRight } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -336,6 +336,21 @@ export function شاشة_الشيكات({
           {ص.الاتجاه === "INCOMING" && ص.معرف_الطرف && (
             <الزر size="sm" variant="ghost" title="توزيع على فواتير العميل" onClick={() => تعيين_توزيع_شيك(ص)}>
               <ListChecks className="size-4 text-primary-blue" />
+            </الزر>
+          )}
+          {/* تحويل شيك افتتاحي إلى عادي — يُسجَّل في حساب العميل */}
+          {ص.افتتاحي && ص.الاتجاه === "INCOMING" && (
+            <الزر
+              size="sm"
+              variant="ghost"
+              title="تحويل لشيك عادي (تسجيله بحساب العميل)"
+              onClick={async () => {
+                const r = await حوّل_شيك_لعادي(ص.id);
+                r.نجاح ? إشعار.نجاح(r.رسالة!) : إشعار.خطأ(r.رسالة);
+                if (r.نجاح) router.refresh();
+              }}
+            >
+              <ArrowLeftRight className="size-4 text-amber-600" />
             </الزر>
           )}
           <سجل_التغييرات النوع="الشيك" المعرف={ص.id} تسمية="" />
