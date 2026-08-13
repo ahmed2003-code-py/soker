@@ -325,6 +325,62 @@ export async function أرجع_شيك_مظهّر(id: number): Promise<نتيجة
   return نجح(undefined, "رجع الشيك لليد وأصبح متاحاً لمعاملة أخرى");
 }
 
+/**
+ * تحويل شيك افتتاحي إلى شيك عادي (تصحيح إدخال خاطئ) — يُسجَّل في حساب العميل بتطبيق آثار حالته الحالية:
+ *  خط الأساس يصبح أصفاراً بدل حالة الدخول، فتُنشأ الآثار المُحتسَبة سلفاً فعلياً (دين العميل يقل، وحركة
+ *  الخزنة/التظهير حسب الحالة). للحالات {مسجّل/مودع/مظهّر/محصّل}؛ المرتد/الملغي بلا أثر.
+ */
+export async function حوّل_شيك_لعادي(id: number): Promise<نتيجة> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const شيك = await prisma.cheque.findUnique({ where: { id } });
+  if (!شيك) return فشل("الشيك غير موجود");
+  if (!شيك.isOpening) return فشل("الشيك ليس افتتاحياً");
+  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر");
+  const خيارات: خيارات_حالة = {};
+  if (شيك.status === "ENDORSED") خيارات.معرف_المورد_للتظهير = شيك.endorsedToId;
+  if (شيك.status === "DEPOSITED" || شيك.status === "COLLECTED") {
+    خيارات.معرف_حساب_التحصيل = شيك.openingAccountId;
+    خيارات.معرف_حساب_فرعي = شيك.openingSubAccountId;
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      // اجعله عادياً (خط الأساس = أصفار) ثم طبّق آثار حالته الحالية فتُسجَّل فعلاً
+      await tx.cheque.update({
+        where: { id },
+        data: {
+          isOpening: false,
+          openingBaseline: null,
+          openingAccountId: null,
+          openingSubAccountId: null,
+          ...(شيك.direction === "INCOMING" && شيك.partyId ? { receiptBatchId: id } : {}),
+          updatedById: فاعل.id,
+        },
+      });
+      const c = await tx.cheque.findUniqueOrThrow({ where: { id } });
+      await زامن_آثار_الشيك(tx, c, c.status, خيارات, فاعل.id);
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "UPDATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: { تحويل_من_افتتاحي_لعادي: true, الحالة: c.status, المبلغ: c.amount },
+      });
+    });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء التحويل");
+  }
+  revalidatePath("/cheques");
+  revalidatePath("/treasury");
+  if (شيك.partyId) {
+    revalidatePath(`/customers/${شيك.partyId}`);
+    revalidatePath(`/suppliers/${شيك.partyId}`);
+  }
+  if (شيك.endorsedToId) revalidatePath(`/suppliers/${شيك.endorsedToId}`);
+  return نجح(undefined, "تم تحويل الشيك إلى عادي وتسجيله في حساب العميل");
+}
+
 /** تظهير شيك وارد لمورد (يقلّل مستحق المورد، بلا حركة خزنة). */
 export async function ظهّر_شيك(id: number, معرف_المورد: number): Promise<نتيجة> {
   return تغيير_حالة_شيك(id, "ENDORSED", { معرف_المورد_للتظهير: معرف_المورد });
