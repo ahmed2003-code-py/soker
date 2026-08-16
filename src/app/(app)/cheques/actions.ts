@@ -45,6 +45,11 @@ function نموذج_جديد(شيك: { direction: string; accountingVersion?: nu
   return (شيك.accountingVersion ?? 1) >= 2 && شيك.direction === "INCOMING";
 }
 
+/** هل يدعم الشيك تبديل النوع افتتاحي ⇄ عادي؟ (وارد بالنموذج الجديد، أو أي شيك صادر) */
+function يدعم_الافتتاحي(شيك: { direction: string; accountingVersion?: number | null }): boolean {
+  return نموذج_جديد(شيك) || شيك.direction === "OUTGOING";
+}
+
 
 function فكّ_base64(صورة?: string | null): Buffer | null {
   if (!صورة) return null;
@@ -68,9 +73,9 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
   // اسم المدين اختياري — يُشتق من «محوّل من» (اسم العميل) أو المستفيد عند تركه فارغاً
   const اسم_المدين_نهائي = ب.اسم_المدين?.trim() || ب.محول_من?.trim() || ب.المستفيد?.trim() || "—";
 
-  // ── شيك افتتاحي: للوارد فقط، يُسجَّل في موديول الشيكات بلا أي حركة عند الإدخال ──
-  const افتتاحي = ب.افتتاحي === true && ب.الاتجاه === "INCOMING";
-  const مظهَّر_له_افتتاحي = افتتاحي && ب.الحالة === "ENDORSED" ? (ب.معرف_مورد_افتتاحي ?? null) : null;
+  // ── شيك افتتاحي (وارد أو صادر): يُسجَّل في موديول الشيكات بلا أي حركة عند الإدخال ──
+  const افتتاحي = ب.افتتاحي === true;
+  const مظهَّر_له_افتتاحي = افتتاحي && ب.الاتجاه === "INCOMING" && ب.الحالة === "ENDORSED" ? (ب.معرف_مورد_افتتاحي ?? null) : null;
   const حساب_افتتاحي = افتتاحي && (ب.الحالة === "DEPOSITED" || ب.الحالة === "COLLECTED") ? (ب.معرف_حساب_افتتاحي ?? null) : null;
   const حساب_فرعي_افتتاحي = افتتاحي && (ب.الحالة === "DEPOSITED" || ب.الحالة === "COLLECTED") ? (ب.معرف_حساب_فرعي_افتتاحي ?? null) : null;
 
@@ -108,7 +113,7 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
       tx,
       { id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId, chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status, collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null, endorsedToId: c.endorsedToId, accountingVersion: c.accountingVersion, isOpening: c.isOpening, openingBaseline: c.openingBaseline, openingAccountId: c.openingAccountId, openingSubAccountId: c.openingSubAccountId },
       c.status,
-      افتتاحي && ب.الحالة === "ENDORSED" ? { معرف_المورد_للتظهير: مظهَّر_له_افتتاحي } : {},
+      مظهَّر_له_افتتاحي ? { معرف_المورد_للتظهير: مظهَّر_له_افتتاحي } : {},
       فاعل.id
     );
     // معرّف «معاملة استلام» مستقل لكل شيك وارد مربوط بعميل (لا يُدمج مع غيره تلقائياً)
@@ -145,16 +150,24 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
   if (دخل_معاملة_مالية(حالي)) {
     return فشل("لا يمكن تعديل شيك دخل معاملة مالية — استخدم تغيير الحالة (إلغاء/عكس) بدلاً من ذلك");
   }
+  // شيك صادر عليه دفعات تسوية: تعديل المبلغ يفسد حساب المتبقّي — أزِل الدفعات أولاً
+  if (حالي.direction === "OUTGOING") {
+    const عدد_دفعات = await prisma.treasuryTxn.count({ where: { chequeId: id, deletedAt: null } });
+    if (عدد_دفعات > 0) return فشل("الشيك تحت التسوية على دفعات — أزِل الدفعات أولاً قبل التعديل");
+  }
   const تاريخ = تحليل_تاريخ(ب.تاريخ_الاستحقاق);
   if (!تاريخ) return فشل("تاريخ الاستحقاق غير صالح");
 
   const صورة = فكّ_base64(ب.صورة_base64);
   const v2 = نموذج_جديد(حالي);
+  // الصادر يُدار مثل v2 عند التعديل: الحالة ثابتة (تتغيّر بالانتقالات فقط) وأثر المورد يُعكَس ثم يُعاد
+  // ضبطه بالقيمة/الطرف الجديد — وإلا أمكن تغيير الحالة من النموذج بلا مزامنة للآثار.
+  const مُدار = v2 || حالي.direction === "OUTGOING";
   const اسم_المدين_نهائي = ب.اسم_المدين?.trim() || ب.محول_من?.trim() || ب.المستفيد?.trim() || "—";
 
   await prisma.$transaction(async (tx) => {
-    // v2: عكس أثر العميل القديم قبل التعديل ليُعاد ضبطه بالقيمة الجديدة (الحالة تتغيّر عبر «تغيير الحالة» فقط)
-    if (v2 && حالي.partyLedgerEntryId) {
+    // عكس أثر الطرف القديم قبل التعديل ليُعاد ضبطه بالقيمة الجديدة
+    if (مُدار && حالي.partyLedgerEntryId) {
       await احذف_قيد_ناعم(tx, حالي.partyLedgerEntryId);
     }
     await tx.cheque.update({
@@ -167,21 +180,21 @@ export async function تعديل_شيك(id: number, مدخلات: unknown): Prom
         bankName: ب.اسم_البنك || null,
         dueDate: تاريخ,
         chequeNumber: ب.رقم_الشيك || null,
-        // في v2 الاتجاه والحالة ثابتان أثناء التعديل (يُغيَّران عبر تغيير الحالة)
-        direction: v2 ? حالي.direction : ب.الاتجاه,
-        status: v2 ? حالي.status : ب.الحالة,
+        // في النموذج المُدار الاتجاه والحالة ثابتان أثناء التعديل (يُغيَّران عبر تغيير الحالة)
+        direction: مُدار ? حالي.direction : ب.الاتجاه,
+        status: مُدار ? حالي.status : ب.الحالة,
         partyId: ب.معرف_الطرف ?? null,
         chequeBookId: ب.معرف_الدفتر ?? null,
         bookLeafNo: ب.رقم_الورقة ?? null,
         notes: ب.ملاحظات || null,
-        ...(v2 ? { partyLedgerEntryId: null } : {}),
+        ...(مُدار ? { partyLedgerEntryId: null } : {}),
         ...(صورة ? { imageData: صورة, imageMime: ب.صورة_mime || null } : {}),
         ...(ب.نص_OCR ? { ocrText: ب.نص_OCR } : {}),
         updatedById: فاعل.id,
       },
     });
-    if (v2) {
-      // إعادة تطبيق أثر العميل بالقيمة/الطرف الجديد على نفس الحالة الحالية
+    if (مُدار) {
+      // إعادة تطبيق أثر الطرف بالقيمة/الطرف الجديد على نفس الحالة الحالية
       const c = await tx.cheque.findUniqueOrThrow({ where: { id } });
       await زامن_آثار_الشيك(tx, c, c.status, {}, فاعل.id);
     }
@@ -326,9 +339,9 @@ export async function أرجع_شيك_مظهّر(id: number): Promise<نتيجة
 }
 
 /**
- * تحويل شيك افتتاحي إلى شيك عادي (تصحيح إدخال خاطئ) — يُسجَّل في حساب العميل بتطبيق آثار حالته الحالية:
- *  خط الأساس يصبح أصفاراً بدل حالة الدخول، فتُنشأ الآثار المُحتسَبة سلفاً فعلياً (دين العميل يقل، وحركة
- *  الخزنة/التظهير حسب الحالة). للحالات {مسجّل/مودع/مظهّر/محصّل}؛ المرتد/الملغي بلا أثر.
+ * تحويل شيك افتتاحي إلى شيك عادي (تصحيح إدخال خاطئ) — يُسجَّل في حساب الطرف بتطبيق آثار حالته الحالية:
+ *  خط الأساس يصبح أصفاراً بدل حالة الدخول، فتُنشأ الآثار المُحتسَبة سلفاً فعلياً (وارد: دين العميل يقل؛
+ *  صادر: مستحق المورد يقل، وحركة الخزنة/التظهير حسب الحالة). المرتد/الملغي بلا أثر.
  */
 export async function حوّل_شيك_لعادي(id: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
@@ -336,7 +349,7 @@ export async function حوّل_شيك_لعادي(id: number): Promise<نتيجة
   const شيك = await prisma.cheque.findUnique({ where: { id } });
   if (!شيك) return فشل("الشيك غير موجود");
   if (!شيك.isOpening) return فشل("الشيك ليس افتتاحياً");
-  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (!يدعم_الافتتاحي(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) والصادرة فقط");
   if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر");
   const خيارات: خيارات_حالة = {};
   if (شيك.status === "ENDORSED") خيارات.معرف_المورد_للتظهير = شيك.endorsedToId;
@@ -378,12 +391,12 @@ export async function حوّل_شيك_لعادي(id: number): Promise<نتيجة
     revalidatePath(`/suppliers/${شيك.partyId}`);
   }
   if (شيك.endorsedToId) revalidatePath(`/suppliers/${شيك.endorsedToId}`);
-  return نجح(undefined, "تم تحويل الشيك إلى عادي وتسجيله في حساب العميل");
+  return نجح(undefined, `تم تحويل الشيك إلى عادي وتسجيله في حساب ${شيك.direction === "INCOMING" ? "العميل" : "المورد"}`);
 }
 
 /**
  * إرجاع شيك عادي إلى افتتاحي (تراجع عن تحويل خاطئ) — يعكس آثاره على الحسابات ويجعله افتتاحياً
- *  بخط أساس = حالته الحالية (بلا أثر). دين العميل/حركة الخزنة/التظهير كلها تُعكَس.
+ *  بخط أساس = حالته الحالية (بلا أثر). أثر الطرف/حركة الخزنة/التظهير كلها تُعكَس.
  */
 export async function حوّل_شيك_لافتتاحي(id: number): Promise<نتيجة> {
   const فاعل = await اطلب_المستخدم();
@@ -391,7 +404,7 @@ export async function حوّل_شيك_لافتتاحي(id: number): Promise<نت
   const شيك = await prisma.cheque.findUnique({ where: { id } });
   if (!شيك) return فشل("الشيك غير موجود");
   if (شيك.isOpening) return فشل("الشيك افتتاحي بالفعل");
-  if (!نموذج_جديد(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) فقط");
+  if (!يدعم_الافتتاحي(شيك)) return فشل("هذا الإجراء للشيكات الواردة (النموذج الجديد) والصادرة فقط");
   if (شيك.settlesChequeId != null) return فشل("الشيك مُستخدَم في تسوية شيك صادر");
   const بحساب = شيك.status === "DEPOSITED" || شيك.status === "COLLECTED";
   try {
