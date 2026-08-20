@@ -70,7 +70,7 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
           <tr className="bg-[#1F3864] text-white">
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">#</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">رقم الشيك</th>
-            <th className="border border-gray-300 px-2 py-2 text-start font-medium">المدين / محوّل من</th>
+            <th className="border border-gray-300 px-2 py-2 text-start font-medium">اسم المدين</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">البنك</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">الاستحقاق</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">الحالة</th>
@@ -83,7 +83,7 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
             <tr key={ش.id} className="odd:bg-white even:bg-gray-50">
               <td className="border border-gray-300 px-2 py-1.5 text-gray-500">{i + 1}</td>
               <td className="border border-gray-300 px-2 py-1.5 ltr-nums">{ش.chequeNumber || "—"}</td>
-              <td className="border border-gray-300 px-2 py-1.5">{ش.transferredFrom || ش.party?.name || ش.drawerName}</td>
+              <td className="border border-gray-300 px-2 py-1.5">{ش.drawerName || ش.transferredFrom || ش.party?.name || "—"}</td>
               <td className="border border-gray-300 px-2 py-1.5">{ش.bankName || "—"}</td>
               <td className="border border-gray-300 px-2 py-1.5 ltr-nums">{نص_يوم(ش.dueDate)}</td>
               <td className="border border-gray-300 px-2 py-1.5">{تسمية_حالة_الشيك[ش.status] ?? ش.status}</td>
@@ -92,13 +92,13 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr className="bg-gray-100 font-bold">
-            <td className="border border-gray-300 px-2 py-2" colSpan={مورد_سياق ? 7 : 6}>الإجمالي</td>
-            <td className="border border-gray-300 px-2 py-2 text-end ltr-nums">{نص_مبلغ(إجمالي)} ج.م</td>
-          </tr>
-        </tfoot>
       </table>
+
+      {/* الإجمالي مرة واحدة بعد الجدول (تفادي تكراره في كل صفحة عند الطباعة) */}
+      <div className="mt-3 flex items-center justify-between rounded-lg border-2 border-[#1F3864] bg-gray-100 px-4 py-2.5 font-bold">
+        <span>الإجمالي</span>
+        <span className="ltr-nums">{نص_مبلغ(إجمالي)} ج.م</span>
+      </div>
 
       <div className="mt-6 flex justify-end">
         <زر_طباعة_التقرير />
