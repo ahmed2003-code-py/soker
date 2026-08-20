@@ -54,6 +54,7 @@ export type شيك_للمزامنة = {
   partyLedgerEntryId: number | null;
   endorseLedgerEntryId: number | null;
   endorsedToId: number | null;
+  endorsedAt?: Date | null;
   accountingVersion?: number | null;
   // ── شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي) ──
   isOpening?: boolean | null;
@@ -362,6 +363,8 @@ async function زامن_آثار_الشيك_v2(
       endorseLedgerEntryId: معرف_قيد_التظهير,
       endorsedToId: مظهَّر_لـ,
       collectedTxnId: معرف_حركة_التحصيل,
+      // تاريخ التظهير: يُضبط عند الانتقال إلى «مظهّر» (يُحفظ إن كان مضبوطاً)، ويُفرَّغ عند مغادرة الحالة
+      endorsedAt: الحالة_الهدف === "ENDORSED" ? (شيك.endorsedAt ?? new Date()) : null,
       updatedById: فاعل,
     },
   });

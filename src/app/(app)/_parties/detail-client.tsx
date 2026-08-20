@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus, ReceiptText, Undo2 } from "lucide-react";
+import { HandCoins, Trash2, Pencil, ExternalLink, Landmark, Layers, Plus, ReceiptText, Undo2, FileText } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل } from "@/components/ui/input";
@@ -1213,7 +1213,9 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
 }) {
   const router = useRouter();
   const إشعار = useإشعار();
-  const [قائمة, تعيين_قائمة] = React.useState<معلومة_شيك_قيد[]>(الشيكات);
+  // ترتيب شيكات المعاملة بتاريخ الاستحقاق (تصاعدياً) للعرض
+  const رتّب = (ل: معلومة_شيك_قيد[]) => [...ل].sort((a, b) => a.تاريخ_الاستحقاق.localeCompare(b.تاريخ_الاستحقاق));
+  const [قائمة, تعيين_قائمة] = React.useState<معلومة_شيك_قيد[]>(() => رتّب(الشيكات));
   const [إزالة, تعيين_إزالة] = React.useState<معلومة_شيك_قيد | null>(null);
   const [إضافة, تعيين_إضافة] = React.useState(false);
   const إجمالي = قائمة.reduce((س, ش) => س + ش.المبلغ, 0);
@@ -1298,6 +1300,20 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
                 <Plus className="size-4" /> إضافة شيك للمعاملة
               </الزر>
             )}
+            {معرف_الطرف != null && قائمة.length > 0 && (
+              <الزر
+                variant="blue"
+                onClick={() =>
+                  window.open(
+                    `/cheque-report?ids=${قائمة.map((x) => x.id).join(",")}&party=${معرف_الطرف}&type=${نوع_الطرف ?? ""}`,
+                    "_blank",
+                    "noopener"
+                  )
+                }
+              >
+                <FileText className="size-4" /> تقرير
+              </الزر>
+            )}
             <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
           </تذييل_الحوار>
         </محتوى_الحوار>
@@ -1311,7 +1327,7 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
           معرفات_المعاملة={قائمة.map((x) => x.id)}
           عند_الإلغاء={() => تعيين_إضافة(false)}
           عند_الإضافة={(مضافة, معرف_معاملة_ناتج) => {
-            تعيين_قائمة((ح) => [
+            تعيين_قائمة((ح) => رتّب([
               ...ح.map((x) => ({ ...x, معرف_معاملة: معرف_معاملة_ناتج })),
               ...مضافة.map((m) => ({
                 id: m.id,
@@ -1325,7 +1341,7 @@ function حوار_تفاصيل_الشيكات_المجمّعة({
                 الحالة: حالة_المضاف,
                 معرف_معاملة: معرف_معاملة_ناتج,
               })),
-            ]);
+            ]));
             تعيين_إضافة(false);
             router.refresh();
           }}
