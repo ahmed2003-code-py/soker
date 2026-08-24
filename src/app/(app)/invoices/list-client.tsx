@@ -16,6 +16,7 @@ type صف = {
   الرقم: number | null;
   المرجع: string | null;
   النوع: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
+  غير_مسعّرة?: boolean;
   الطرف: string;
   التاريخ: string;
   الإجمالي: number;
@@ -75,7 +76,12 @@ function جدول_فواتير({
       محاذاة: "end",
       قابل_للفرز: true,
       قيمة: (ص) => ص.الإجمالي,
-      خلية: (ص) => <نص_مبلغ القيمة={ص.الإجمالي} />,
+      خلية: (ص) =>
+        ص.غير_مسعّرة ? (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 border border-amber-300">غير مسعّرة</span>
+        ) : (
+          <نص_مبلغ القيمة={ص.الإجمالي} />
+        ),
     },
   ];
 

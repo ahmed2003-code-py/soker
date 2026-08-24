@@ -44,6 +44,7 @@ export const مخطط_فاتورة = z.object({
   ملاحظات: z.string().trim().optional().nullable(),
   البنود: z.array(مخطط_بند).min(1, "أضف بنداً واحداً على الأقل"),
   الدفعة: مخطط_دفعة_الفاتورة.optional().nullable(),
+  غير_مسعّرة: z.boolean().optional(), // فاتورة تُحفظ بلا أسعار (بلا أثر مالي) حتى تُسعَّر لاحقاً
 });
 
 export type مدخلات_فاتورة = z.infer<typeof مخطط_فاتورة>;

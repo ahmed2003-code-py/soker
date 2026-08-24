@@ -156,6 +156,9 @@ export default async function صفحة_عرض_فاتورة({
                  نوع_الفاتورة === "SUPPLIER_RETURN" ? "مورد (بيع)" :
                  لها_مرتجعات ? "فاتورة بيع ومرتجع" :
                  t("inv.v.sales_invoice")}
+                {فاتورة.unpriced && (
+                  <span className="mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 border border-amber-300">غير مسعّرة</span>
+                )}
               </p>
             </div>
           </div>

@@ -98,6 +98,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           الهاتف: فاتورة.phone,
           التاريخ: فاتورة.date.toISOString(),
           ملاحظات: فاتورة.notes,
+          غير_مسعّرة: فاتورة.unpriced,
           دفعة: دفعة_موجودة,
           البنود: فاتورة.lines.map((l) => ({
             نوع_البند: (l.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
