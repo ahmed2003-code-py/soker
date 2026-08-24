@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PartyType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -66,6 +67,14 @@ export async function تفاصيل_الطرف({
   );
 
   const عميل = النوع === PartyType.CUSTOMER;
+  // فواتير غير مسعّرة لهذا العميل (بلا أثر مالي بعد — بانتظار التسعير)
+  const فواتير_غير_مسعّرة = عميل
+    ? await prisma.invoice.findMany({
+        where: { customerId: المعرف, unpriced: true },
+        orderBy: { date: "desc" },
+        select: { id: true, number: true, date: true, totalWeight: true, totalQty: true },
+      })
+    : [];
   const Σمدين = طرف.ledgerEntries.reduce((س, ح) => س + Number(ح.debit), 0);
   const Σدائن = طرف.ledgerEntries.reduce((س, ح) => س + Number(ح.credit), 0);
   const إجمالي_التعاملات = عميل ? Σمدين : Σدائن; // فواتير/مشتريات
@@ -205,6 +214,49 @@ export async function تفاصيل_الطرف({
           }
         />
       </div>
+
+      {فواتير_غير_مسعّرة.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <h2 className="mb-3 text-base font-semibold text-amber-900">
+            فواتير غير مسعّرة (بانتظار التسعير) — {فواتير_غير_مسعّرة.length}
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-amber-800/80">
+                <tr className="text-start">
+                  <th className="px-2 py-1.5 text-start font-medium">رقم الفاتورة</th>
+                  <th className="px-2 py-1.5 text-start font-medium">التاريخ</th>
+                  <th className="px-2 py-1.5 text-end font-medium">الكمية</th>
+                  <th className="px-2 py-1.5 text-end font-medium">الوزن (كجم)</th>
+                  <th className="px-2 py-1.5 text-end font-medium">إجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {فواتير_غير_مسعّرة.map((ف) => (
+                  <tr key={ف.id} className="border-t border-amber-200">
+                    <td className="px-2 py-1.5 ltr-nums">
+                      <Link href={`/invoices/${ف.id}`} className="font-medium text-primary-blue hover:underline">
+                        {ف.number ? String(ف.number).padStart(7, "0") : "—"}
+                      </Link>
+                    </td>
+                    <td className="px-2 py-1.5 ltr-nums">
+                      {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).format(ف.date)}
+                    </td>
+                    <td className="px-2 py-1.5 text-end ltr-nums">{Number(ف.totalQty)}</td>
+                    <td className="px-2 py-1.5 text-end ltr-nums">{Number(ف.totalWeight)}</td>
+                    <td className="px-2 py-1.5 text-end">
+                      <Link href={`/invoices/${ف.id}/edit`} className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700">
+                        سعّر الآن
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[12px] text-amber-800">هذه الفواتير محفوظة على حساب العميل بلا أثر مالي حتى تُسعَّر.</p>
+        </div>
+      )}
 
       <h2 className="mb-3 text-lg font-semibold">{t("party.d.ledger")}</h2>
       <حركات_الطرف
