@@ -151,6 +151,9 @@ model Invoice {
   externalRef String?  @map("external_ref") // رقم فاتورة المورد (للجاية)
   notes       String?  @map("notes")
   shareToken  String?  @unique @map("share_token")
+  // مجموعة الفاتورة المباشرة (مورد ← عميل): الفاتورتان المرتبطتان تحملان نفس المعرّف
+  directInvoiceId Int?           @map("direct_invoice_id")
+  directInvoice   DirectInvoice? @relation(fields: [directInvoiceId], references: [id], onDelete: SetNull)
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -166,6 +169,7 @@ model Invoice {
 
   @@index([date])
   @@index([customerId])
+  @@index([directInvoiceId])
   @@map("invoices")
 }
 
@@ -322,6 +326,18 @@ model DirectPayment {
   treasuryTxns  TreasuryTxn[]
 
   @@map("direct_payments")
+}
+
+// ==================== DirectInvoice (الفاتورة المباشرة: مورد ← عميل) ====================
+// البضاعة تروح من المورد للعميل على طول: إدخال واحد يُنشئ فاتورتين مربوطتين —
+// فاتورة شراء على المورد (دائن) + فاتورة بيع على العميل (مدين) — بنفس البنود ونفس السعر.
+model DirectInvoice {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  invoices Invoice[]
+
+  @@map("direct_invoices")
 }
 
 // ==================== SplitPayment (دفعة موزّعة — قيد واحد + حركات خزنة متعددة) ====================

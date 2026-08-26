@@ -451,17 +451,30 @@ export type ملخص_ارتباطات = {
 };
 export async function اجلب_ارتباطات_الفاتورة(id: number): Promise<ملخص_ارتباطات> {
   await اطلب_المستخدم();
+  const أساسية = await prisma.invoice.findUnique({
+    where: { id },
+    select: { directInvoiceId: true },
+  });
+  // الفاتورة المباشرة: الحذف يمسّ الجهتين ⇒ الملخص يعدّ ارتباطات الفاتورتين
+  const معرفات = أساسية?.directInvoiceId
+    ? (
+        await prisma.invoice.findMany({
+          where: { directInvoiceId: أساسية.directInvoiceId },
+          select: { id: true },
+        })
+      ).map((f) => f.id)
+    : [id];
   const [فاتورة, قيود, حركات] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id },
       select: { customer: { select: { name: true } }, guestName: true },
     }),
     prisma.ledgerEntry.findMany({
-      where: { invoiceId: id, deletedAt: null },
+      where: { invoiceId: { in: معرفات }, deletedAt: null },
       select: { debit: true, credit: true },
     }),
     prisma.treasuryTxn.findMany({
-      where: { invoiceId: id, deletedAt: null },
+      where: { invoiceId: { in: معرفات }, deletedAt: null },
       select: { amount: true },
     }),
   ]);
@@ -480,37 +493,57 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
   const فاتورة = await prisma.invoice.findUnique({ where: { id } });
   if (!فاتورة) return فشل("الفاتورة غير موجودة");
 
+  // الفاتورة المباشرة (مورد ← عميل): الجهتان تُحذفان معاً — لا يصح ترك جهة بلا الأخرى
+  const مجموعة = فاتورة.directInvoiceId
+    ? await prisma.invoice.findMany({ where: { directInvoiceId: فاتورة.directInvoiceId } })
+    : [فاتورة];
+
   await prisma.$transaction(async (tx) => {
-    // عكس حركات الخزنة المرتبطة بهذه الفاتورة (دفعات + مبيعات نقدية)
-    // اعكس_عملية_مرتبطة تعكس الجانبين (الخزنة + قيد الدفعة) فلا يبقى قيد دفعة يتيم
-    const حركات_الخزنة = await tx.treasuryTxn.findMany({
-      where: { invoiceId: id, deletedAt: null },
-      select: { id: true },
-    });
-    for (const ح of حركات_الخزنة) {
-      await اعكس_عملية_مرتبطة(tx, ح.id);
+    for (const ف of مجموعة) {
+      // عكس حركات الخزنة المرتبطة بهذه الفاتورة (دفعات + مبيعات نقدية)
+      // اعكس_عملية_مرتبطة تعكس الجانبين (الخزنة + قيد الدفعة) فلا يبقى قيد دفعة يتيم
+      const حركات_الخزنة = await tx.treasuryTxn.findMany({
+        where: { invoiceId: ف.id, deletedAt: null },
+        select: { id: true },
+      });
+      for (const ح of حركات_الخزنة) {
+        await اعكس_عملية_مرتبطة(tx, ح.id);
+      }
+      await اعكس_قيود_الفاتورة(tx, ف.id, ف.customerId);
+      await tx.invoice.delete({ where: { id: ف.id } }); // البنود Cascade
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "DELETE",
+        نوع_الكيان: "الفاتورة",
+        معرف_الكيان: ف.id,
+        التفاصيل: {
+          الرقم: ف.number,
+          ...(فاتورة.directInvoiceId ? { مباشرة: true, النوع: ف.invoiceType } : {}),
+        },
+      });
     }
-    await اعكس_قيود_الفاتورة(tx, id, فاتورة.customerId);
-    await tx.invoice.delete({ where: { id } }); // البنود Cascade
+    if (فاتورة.directInvoiceId) {
+      await tx.directInvoice.delete({ where: { id: فاتورة.directInvoiceId } });
+    }
     await tx.$executeRaw`
       UPDATE settings
       SET value = COALESCE((SELECT MAX(number)::text FROM invoices), '0')
       WHERE key = 'عداد_الفواتير'
     `;
-    await تسجيل_عملية(tx, {
-      المستخدم: فاعل.id,
-      العملية: "DELETE",
-      نوع_الكيان: "الفاتورة",
-      معرف_الكيان: id,
-      التفاصيل: { الرقم: فاتورة.number },
-    });
   });
 
   revalidatePath("/invoices");
-  if (فاتورة.customerId) {
-    revalidatePath(`/customers/${فاتورة.customerId}`);
+  for (const ف of مجموعة) {
+    if (!ف.customerId) continue;
+    revalidatePath(`/customers/${ف.customerId}`);
+    revalidatePath(`/suppliers/${ف.customerId}`);
   }
-  return نجح(undefined, "تم حذف الفاتورة وعكس قيدها");
+  return نجح(
+    undefined,
+    فاتورة.directInvoiceId
+      ? "تم حذف الفاتورة المباشرة بجهتيها (المورد والعميل) وعكس قيودها"
+      : "تم حذف الفاتورة وعكس قيدها"
+  );
 }
 
 // ─── قوائم التصنيفات والشركات (مخزنة في settings) ──────────

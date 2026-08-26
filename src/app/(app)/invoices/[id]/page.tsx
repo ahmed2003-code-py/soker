@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { نص_مبلغ } from "@/components/money-text";
@@ -50,6 +51,19 @@ export default async function صفحة_عرض_فاتورة({
     : (فاتورة.externalRef ?? "—");
   const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   const هو_مورد = نوع_الفاتورة === "PURCHASE" || نوع_الفاتورة === "SUPPLIER_RETURN";
+
+  // فاتورة مباشرة (مورد ← عميل): نجلب الجهة المقابلة لعرض رابط بينهما
+  const مقابلة = فاتورة.directInvoiceId
+    ? await prisma.invoice.findFirst({
+        where: { directInvoiceId: فاتورة.directInvoiceId, id: { not: فاتورة.id } },
+        select: {
+          id: true,
+          number: true,
+          invoiceType: true,
+          customer: { select: { name: true } },
+        },
+      })
+    : null;
   const عميل_زائر = !فاتورة.customerId;
   const اسم_الطرف = فاتورة.customer?.name ?? فاتورة.guestName ?? "عميل نقدي";
 
@@ -135,6 +149,23 @@ export default async function صفحة_عرض_فاتورة({
         رمز_المشاركة={فاتورة.shareToken}
       />
 
+      {/* شريط الفاتورة المباشرة — رابط الجهة المقابلة */}
+      {مقابلة && (
+        <div className="mx-auto mb-4 flex max-w-3xl flex-wrap items-center justify-between gap-2 rounded-xl border border-primary-blue/30 bg-primary-blue/5 px-4 py-2.5 text-[13px] text-primary-blue print:hidden">
+          <span>
+            <span className="font-semibold">فاتورة مباشرة (مورد ← عميل)</span> —{" "}
+            {هو_مورد ? "الجهة المقابلة: فاتورة العميل" : "الجهة المقابلة: فاتورة المورد"}{" "}
+            <span className="font-medium">{مقابلة.customer?.name ?? "—"}</span>
+          </span>
+          <Link
+            href={`/invoices/${مقابلة.id}`}
+            className="rounded-lg border border-primary-blue/40 px-3 py-1 font-medium transition-colors hover:bg-primary-blue/10"
+          >
+            فتح فاتورة {هو_مورد ? "العميل" : "المورد"}
+          </Link>
+        </div>
+      )}
+
       {/* ورقة الفاتورة (قابلة للطباعة) */}
       <div className="mx-auto max-w-3xl card-soft p-8 text-foreground print:max-w-none print:border-0 print:p-0 print:text-black print:shadow-none">
 
@@ -156,6 +187,11 @@ export default async function صفحة_عرض_فاتورة({
                  نوع_الفاتورة === "SUPPLIER_RETURN" ? "مورد (بيع)" :
                  لها_مرتجعات ? "فاتورة بيع ومرتجع" :
                  t("inv.v.sales_invoice")}
+                {فاتورة.directInvoiceId && (
+                  <span className="mr-2 rounded border border-primary-blue/40 bg-primary-blue/10 px-1.5 py-0.5 text-[11px] font-medium text-primary-blue print:border-black print:text-black">
+                    مباشرة
+                  </span>
+                )}
                 {فاتورة.unpriced && (
                   <span className="mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 border border-amber-300">غير مسعّرة</span>
                 )}

@@ -17,6 +17,7 @@ type صف = {
   المرجع: string | null;
   النوع: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   غير_مسعّرة?: boolean;
+  مباشرة?: boolean; // فاتورة مباشرة (مورد ← عميل) — جهتان مربوطتان
   الطرف: string;
   التاريخ: string;
   الإجمالي: number;
@@ -55,7 +56,24 @@ function جدول_فواتير({
           </span>
         ),
     },
-    { المفتاح: "الطرف", العنوان: عنوان_الطرف, قابل_للفرز: true },
+    {
+      المفتاح: "الطرف",
+      العنوان: عنوان_الطرف,
+      قابل_للفرز: true,
+      خلية: (ص) => (
+        <span className="flex items-center gap-1.5">
+          {ص.الطرف}
+          {ص.مباشرة && (
+            <span
+              title="فاتورة مباشرة (مورد ← عميل)"
+              className="rounded border border-primary-blue/40 bg-primary-blue/10 px-1.5 py-0.5 text-[11px] font-medium text-primary-blue"
+            >
+              مباشرة
+            </span>
+          )}
+        </span>
+      ),
+    },
     {
       المفتاح: "التاريخ",
       العنوان: t("inv.col.date"),

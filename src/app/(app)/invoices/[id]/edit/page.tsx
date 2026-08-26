@@ -40,6 +40,102 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
   ]);
   if (!فاتورة) notFound();
 
+  const حسابات_للنموذج = حسابات.map((h) => ({
+    id: h.id,
+    النوع: h.type,
+    التسمية: تسمية_حساب_الخزنة[h.type],
+  }));
+  const جمع_دفعات = (
+    حركات: { amount: unknown; accountId: number; subAccountId: number | null }[]
+  ) =>
+    حركات.length
+      ? {
+          المبلغ: حركات.reduce((س, ح) => س + Number(ح.amount), 0),
+          معرف_الحساب: حركات[0].accountId,
+          معرف_حساب_فرعي: حركات[0].subAccountId,
+        }
+      : null;
+
+  // ── فاتورة مباشرة (مورد ← عميل): تُحرَّر بجهتيها معاً في نموذج واحد ──
+  if (فاتورة.directInvoiceId) {
+    const مجموعة = await prisma.invoice.findMany({
+      where: { directInvoiceId: فاتورة.directInvoiceId },
+      include: {
+        lines: true,
+        treasuryTxns: {
+          where: { deletedAt: null },
+          select: { amount: true, accountId: true, subAccountId: true },
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+    const ف_مورد = مجموعة.find((x) => x.invoiceType === "PURCHASE");
+    const ف_عميل = مجموعة.find((x) => x.invoiceType === "SALE");
+    if (ف_مورد && ف_عميل) {
+      const دفعة_العميل = جمع_دفعات(ف_عميل.treasuryTxns);
+      const دفعة_المورد = جمع_دفعات(ف_مورد.treasuryTxns);
+      const إجمالي = Number(ف_عميل.totalAmount);
+      // رصيد ما قبل الفاتورة لكل جهة (للمعاينة داخل النموذج)
+      const عملاء_مباشر = عملاء.map((c) => ({
+        ...c,
+        balance:
+          c.id === ف_عميل.customerId
+            ? Number(c.balance) - إجمالي + (دفعة_العميل?.المبلغ ?? 0)
+            : Number(c.balance),
+      }));
+      const موردون_مباشر = موردون.map((s) => ({
+        ...s,
+        balance:
+          s.id === ف_مورد.customerId
+            ? Number(s.balance) - إجمالي + (دفعة_المورد?.المبلغ ?? 0)
+            : Number(s.balance),
+      }));
+      return (
+        <div>
+          <ترويسة_الصفحة
+            العنوان={t("inv.edit_title", {
+              number: ف_عميل.number ? String(ف_عميل.number).padStart(7, "0") : "—",
+            })}
+            الوصف="فاتورة مباشرة (مورد ← عميل) — التعديل يُطبَّق على الجهتين معاً"
+          />
+          <نموذج_فاتورة
+            العملاء={عملاء_مباشر}
+            الموردون={موردون_مباشر}
+            حسابات_الخزنة={حسابات_للنموذج}
+            حسابات_فرعية={حسابات_فرعية}
+            التصنيفات={تصنيفات}
+            الشركات={شركات}
+            فاتورة={{
+              id: فاتورة.id,
+              الرقم: ف_عميل.number,
+              نوع_الفاتورة: "SALE",
+              مباشرة: true,
+              معرف_المورد: ف_مورد.customerId,
+              معرف_العميل: ف_عميل.customerId,
+              مرجع_خارجي: ف_مورد.externalRef ?? null,
+              الهاتف: ف_عميل.phone,
+              التاريخ: ف_عميل.date.toISOString(),
+              ملاحظات: ف_عميل.notes,
+              غير_مسعّرة: ف_عميل.unpriced,
+              دفعة: دفعة_العميل,
+              دفعة_المورد,
+              البنود: ف_عميل.lines.map((l) => ({
+                نوع_البند: "SALE" as const,
+                اللون: l.color,
+                الشركة: l.company ?? "",
+                الكمية: String(Number(l.qty)),
+                الوزن: String(Number(l.weight)),
+                التصنيف: l.category,
+                السعر: l.price != null ? String(Number(l.price)) : "",
+                ملاحظات: l.notes ?? "",
+              })),
+            }}
+          />
+        </div>
+      );
+    }
+  }
+
   const نوع_الفاتورة = (فاتورة.invoiceType ?? "SALE") as "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
   const هو_مورد = نوع_الفاتورة !== "SALE";
   const عميل_زائر = !فاتورة.customerId;
