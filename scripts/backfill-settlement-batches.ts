@@ -12,7 +12,7 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const نفّذ = process.argv.includes("--apply");
-const نافذة_ثواني = 20;
+const نافذة_ثواني = 30;
 const نص = (v: unknown) => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
 async function main() {
@@ -33,16 +33,21 @@ async function main() {
 
     const من = new Date(دفعة.createdAt.getTime() - نافذة_ثواني * 1000);
     const إلى = new Date(دفعة.createdAt.getTime() + نافذة_ثواني * 1000);
-    const شيكات = await prisma.cheque.findMany({
-      where: {
-        endorsedToId: قيد.partyId,
-        settlementBatchId: null,
-        endorseLedgerEntryId: { not: null },
-        status: "ENDORSED",
-        updatedAt: { gte: من, lte: إلى },
-      },
-      select: { id: true, chequeNumber: true, amount: true },
+    // قيود التظهير اللي اتكتبت في نفس لحظة الدفعة الموزّعة ⇒ نفس المعاملة
+    const قيود_تظهير = await prisma.ledgerEntry.findMany({
+      where: { partyId: قيد.partyId, deletedAt: null, createdAt: { gte: من, lte: إلى } },
+      select: { id: true },
     });
+    const شيكات = قيود_تظهير.length
+      ? await prisma.cheque.findMany({
+          where: {
+            settlementBatchId: null,
+            endorsedToId: قيد.partyId,
+            endorseLedgerEntryId: { in: قيود_تظهير.map((q) => q.id) },
+          },
+          select: { id: true, chequeNumber: true, amount: true },
+        })
+      : [];
     if (!شيكات.length) continue;
 
     const إجمالي_شيكات = شيكات.reduce((س, ش) => س + Number(ش.amount), 0);
