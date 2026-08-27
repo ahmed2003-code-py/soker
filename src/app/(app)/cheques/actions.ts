@@ -12,7 +12,7 @@ import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
 import { د } from "@/lib/decimal";
-import { مخطط_شيك } from "@/lib/schemas/cheque";
+import { مخطط_شيك, مخطط_دفعة_شيكات_واردة } from "@/lib/schemas/cheque";
 import { ChequeStatus, TxnKind } from "@prisma/client";
 import { تسمية_حالة_الشيك, تسمية_حساب_الخزنة } from "@/lib/enums";
 
@@ -136,6 +136,109 @@ export async function إنشاء_شيك(مدخلات: unknown): Promise<نتيج
     revalidatePath(`/suppliers/${ب.معرف_الطرف}`);
   }
   return نجح({ id: شيك.id }, "تمت إضافة الشيك");
+}
+
+/**
+ * إضافة عدة شيكات واردة من عميل دفعة واحدة — «معاملة استلام» واحدة.
+ * كل الشيكات: وارد + مربوطة بالعميل + حالة «مسجّل» (معي) + نفس receiptBatchId
+ * ⇒ تتجمّع في صف واحد بكشف حساب العميل، ويخرج لها تقرير معاملة واحد.
+ * أثر كل شيك على حساب العميل (دائن يقلّل دينه) يُسجَّل عبر زامن_آثار_الشيك.
+ */
+export async function أضف_شيكات_واردة_دفعة(
+  مدخلات: unknown
+): Promise<نتيجة<{ عدد: number; معرف_معاملة: number; الإجمالي: string; معرفات: number[] }>> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "كتابة");
+  const t = مخطط_دفعة_شيكات_واردة.safeParse(مدخلات);
+  if (!t.success) return فشل(t.error.errors[0].message);
+  const ب = t.data;
+
+  const عميل = await prisma.party.findUnique({ where: { id: ب.معرف_العميل } });
+  if (!عميل || عميل.type !== "CUSTOMER") return فشل("اختر عميلاً مسجّلاً");
+
+  // تحقق التواريخ قبل فتح المعاملة
+  const صفوف: { المبلغ: string; اسم_المدين: string; اسم_البنك: string | null; رقم_الشيك: string | null; تاريخ: Date }[] = [];
+  for (const [i, ص] of ب.الشيكات.entries()) {
+    const تاريخ = تحليل_تاريخ(ص.تاريخ_الاستحقاق);
+    if (!تاريخ) return فشل(`تاريخ الاستحقاق غير صالح في الشيك رقم ${i + 1}`);
+    صفوف.push({
+      المبلغ: ص.المبلغ!,
+      اسم_المدين: ص.اسم_المدين?.trim() || عميل.name,
+      اسم_البنك: ص.اسم_البنك?.trim() || null,
+      رقم_الشيك: ص.رقم_الشيك?.trim() || null,
+      تاريخ,
+    });
+  }
+  const افتتاحي = ب.افتتاحي === true;
+  const الإجمالي = صفوف.reduce((س, ص) => س.plus(د(ص.المبلغ)), د(0));
+
+  const ناتج = await prisma.$transaction(async (tx) => {
+    const معرفات: number[] = [];
+    for (const ص of صفوف) {
+      const c = await tx.cheque.create({
+        data: {
+          drawerName: ص.اسم_المدين,
+          amount: ص.المبلغ,
+          transferredFrom: عميل.name,
+          bankName: ص.اسم_البنك,
+          dueDate: ص.تاريخ,
+          chequeNumber: ص.رقم_الشيك,
+          direction: "INCOMING",
+          status: "REGISTERED",
+          partyId: عميل.id,
+          notes: ب.ملاحظات || null,
+          // شيك افتتاحي: خط الأساس = «مسجّل» ⇒ بلا أثر مالي عند الإدخال
+          isOpening: افتتاحي,
+          openingBaseline: افتتاحي ? "REGISTERED" : null,
+          createdById: فاعل.id,
+        },
+      });
+      await زامن_آثار_الشيك(
+        tx,
+        {
+          id: c.id, direction: c.direction, amount: c.amount, partyId: c.partyId,
+          chequeNumber: c.chequeNumber, drawerName: c.drawerName, status: c.status,
+          collectedTxnId: null, partyLedgerEntryId: null, endorseLedgerEntryId: null,
+          endorsedToId: null, accountingVersion: c.accountingVersion,
+          isOpening: c.isOpening, openingBaseline: c.openingBaseline,
+          openingAccountId: null, openingSubAccountId: null,
+        },
+        c.status,
+        {},
+        فاعل.id
+      );
+      معرفات.push(c.id);
+    }
+
+    // معرّف معاملة الاستلام المشترك (أصغر معرّف — نفس عُرف باقي المعاملات)
+    const معرف_معاملة = Math.min(...معرفات);
+    await tx.cheque.updateMany({ where: { id: { in: معرفات } }, data: { receiptBatchId: معرف_معاملة } });
+
+    for (const id of معرفات) {
+      await تسجيل_عملية(tx, {
+        المستخدم: فاعل.id,
+        العملية: "CREATE",
+        نوع_الكيان: "الشيك",
+        معرف_الكيان: id,
+        التفاصيل: {
+          إضافة_دفعة: true,
+          معاملة_الاستلام: معرف_معاملة,
+          العميل: عميل.name,
+          عدد_الشيكات: معرفات.length,
+          إجمالي_الدفعة: الإجمالي.toString(),
+          افتتاحي,
+        },
+      });
+    }
+    return { معرف_معاملة, معرفات };
+  }, { timeout: 30000 });
+
+  revalidatePath("/cheques");
+  revalidatePath(`/customers/${عميل.id}`);
+  return نجح(
+    { عدد: ناتج.معرفات.length, معرف_معاملة: ناتج.معرف_معاملة, الإجمالي: الإجمالي.toString(), معرفات: ناتج.معرفات },
+    `تمت إضافة ${ناتج.معرفات.length} شيكات بإجمالي ${الإجمالي.toFixed(2)} على حساب ${عميل.name}`
+  );
 }
 
 export async function تعديل_شيك(id: number, مدخلات: unknown): Promise<نتيجة> {

@@ -34,4 +34,27 @@ export const مخطط_شيك = z.object({
   معرف_مورد_افتتاحي: z.number().int().positive().optional().nullable(),
 });
 
+/**
+ * دفعة شيكات واردة من عميل — إدخال عدة شيكات مرة واحدة في «معاملة استلام» واحدة.
+ * كلها ترتبط بنفس العميل وبنفس معرّف المعاملة ⇒ تتجمّع في كشف حسابه ويخرج لها تقرير واحد.
+ */
+export const مخطط_شيك_دفعة = z.object({
+  المبلغ: z
+    .union([z.string(), z.number()])
+    .transform((v) => تحليل_مبلغ(v))
+    .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ الشيك يجب أن يكون أكبر من صفر" }),
+  اسم_المدين: z.string().trim().optional().nullable(),
+  اسم_البنك: z.string().trim().optional().nullable(),
+  تاريخ_الاستحقاق: z.string().min(1, "تاريخ الاستحقاق مطلوب"),
+  رقم_الشيك: z.string().trim().optional().nullable(),
+});
+
+export const مخطط_دفعة_شيكات_واردة = z.object({
+  معرف_العميل: z.number().int().positive("اختر العميل"),
+  افتتاحي: z.boolean().optional().default(false),
+  ملاحظات: z.string().trim().optional().nullable(),
+  الشيكات: z.array(مخطط_شيك_دفعة).min(1, "أضف شيكاً واحداً على الأقل"),
+});
+
 export type مدخلات_شيك = z.infer<typeof مخطط_شيك>;
+export type مدخلات_دفعة_شيكات_واردة = z.infer<typeof مخطط_دفعة_شيكات_واردة>;

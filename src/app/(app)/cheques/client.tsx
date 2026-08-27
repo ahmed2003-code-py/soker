@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيكات, احذف_دفعة_شيك, حوّل_شيك_لعادي, حوّل_شيك_لافتتاحي } from "./actions";
+import { إنشاء_شيك, أضف_شيكات_واردة_دفعة, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيكات, احذف_دفعة_شيك, حوّل_شيك_لعادي, حوّل_شيك_لافتتاحي } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -728,6 +728,23 @@ export function شاشة_الشيكات({
   );
 }
 
+/** صف في وضع «عدة شيكات» (دفعة واردة من نفس العميل) */
+type صف_شيك_دفعة = {
+  المبلغ: string;
+  اسم_المدين: string;
+  اسم_البنك: string;
+  تاريخ_الاستحقاق: string;
+  رقم_الشيك: string;
+};
+const صف_دفعة_فارغ = (تاريخ?: string): صف_شيك_دفعة => ({
+  المبلغ: "",
+  اسم_المدين: "",
+  اسم_البنك: "",
+  // التاريخ يرث من الصف السابق لتسريع الإدخال
+  تاريخ_الاستحقاق: تاريخ || new Date().toISOString().slice(0, 10),
+  رقم_الشيك: "",
+});
+
 export function حوار_شيك({
   شيك,
   اتجاه_افتراضي = "INCOMING",
@@ -772,6 +789,9 @@ export function حوار_شيك({
   );
   const [صورة, تعيين_صورة] = React.useState<{ base64: string; mime: string; نص?: string } | null>(null);
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  // ── وضع «عدة شيكات»: إدخال دفعة شيكات واردة من نفس العميل في معاملة استلام واحدة ──
+  const [وضع_دفعة, تعيين_وضع_دفعة] = React.useState(false);
+  const [صفوف, تعيين_صفوف] = React.useState<صف_شيك_دفعة[]>([صف_دفعة_فارغ()]);
   // ── شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي): بلا حركة عند الإدخال ──
   const [افتتاحي, تعيين_افتتاحي] = React.useState<boolean>(!!شيك?.افتتاحي);
   const [معرف_مورد_افتتاحي, تعيين_معرف_مورد_افتتاحي] = React.useState<string>("");
@@ -798,7 +818,41 @@ export function حوار_شيك({
     if (p) حدّث(وارد ? "محول_من" : "المستفيد", p.الاسم);
   }
 
+  const حدّث_صف = (i: number, ك: keyof صف_شيك_دفعة, v: string) =>
+    تعيين_صفوف((س) => س.map((ص, j) => (j === i ? { ...ص, [ك]: v } : ص)));
+  const أضف_صف = () => تعيين_صفوف((س) => [...س, صف_دفعة_فارغ(س[س.length - 1]?.تاريخ_الاستحقاق)]);
+  const احذف_صف = (i: number) => تعيين_صفوف((س) => (س.length > 1 ? س.filter((_, j) => j !== i) : س));
+  const صفوف_فعلية = صفوف.filter((ص) => String(ص.المبلغ).trim() !== "");
+  const إجمالي_الدفعة = صفوف_فعلية.reduce((س, ص) => س + (Number(String(ص.المبلغ).replace(/,/g, "")) || 0), 0);
+
+  /** حفظ دفعة شيكات واردة من نفس العميل — معاملة استلام واحدة */
+  async function احفظ_دفعة() {
+    if (!معرف_الطرف) { إشعار.خطأ("اختر العميل (محوّل من)"); return; }
+    if (صفوف_فعلية.length === 0) { إشعار.خطأ("أدخل شيكاً واحداً على الأقل (المبلغ مطلوب)"); return; }
+    const ناقص = صفوف_فعلية.findIndex((ص) => !ص.تاريخ_الاستحقاق);
+    if (ناقص >= 0) { إشعار.خطأ(`تاريخ الاستحقاق مطلوب في الشيك رقم ${ناقص + 1}`); return; }
+    تعيين_جارٍ(true);
+    const r = await أضف_شيكات_واردة_دفعة({
+      معرف_العميل: Number(معرف_الطرف),
+      افتتاحي,
+      ملاحظات: ق.ملاحظات || null,
+      الشيكات: صفوف_فعلية.map((ص) => ({
+        المبلغ: ص.المبلغ,
+        اسم_المدين: ص.اسم_المدين || null,
+        اسم_البنك: ص.اسم_البنك || null,
+        تاريخ_الاستحقاق: ص.تاريخ_الاستحقاق,
+        رقم_الشيك: ص.رقم_الشيك || null,
+      })),
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    عند_الإغلاق();
+    router.refresh();
+  }
+
   async function احفظ() {
+    if (وضع_دفعة) return احفظ_دفعة();
     if (!معرف_الطرف) { إشعار.خطأ(وارد ? "اختر العميل (محوّل من)" : "اختر المورد"); return; }
     if (!ق.المبلغ || Number(String(ق.المبلغ).replace(/,/g, "")) <= 0) { إشعار.خطأ("أدخل مبلغاً صحيحاً"); return; }
     // تحقق بيانات الشيك الافتتاحي حسب حالة الدخول
@@ -831,10 +885,39 @@ export function حوار_شيك({
 
   return (
     <الحوار open onOpenChange={(o) => !o && عند_الإغلاق()}>
-      <محتوى_الحوار className="max-w-2xl">
+      <محتوى_الحوار className={وضع_دفعة ? "max-w-5xl" : "max-w-2xl"}>
         <رأس_الحوار>
-          <عنوان_الحوار>{شيك ? t("cheque.dlg.edit") : t("cheque.dlg.add")}</عنوان_الحوار>
+          <عنوان_الحوار>
+            {شيك ? t("cheque.dlg.edit") : وضع_دفعة ? "إضافة عدة شيكات (دفعة من عميل)" : t("cheque.dlg.add")}
+          </عنوان_الحوار>
         </رأس_الحوار>
+
+        {/* مفتاح: شيك واحد / عدة شيكات — للوارد عند الإضافة فقط */}
+        {!شيك && وارد && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-appgray p-3">
+            <span className="text-sm text-muted-foreground">طريقة الإدخال</span>
+            <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+              {([
+                { قيمة: false, تسمية: "شيك واحد" },
+                { قيمة: true, تسمية: "عدة شيكات (دفعة)" },
+              ]).map(({ قيمة, تسمية }) => (
+                <button
+                  key={String(قيمة)}
+                  type="button"
+                  className={`px-4 py-1.5 transition-colors ${وضع_دفعة === قيمة ? "bg-primary text-white" : "bg-white hover:bg-muted"}`}
+                  onClick={() => تعيين_وضع_دفعة(قيمة)}
+                >
+                  {تسمية}
+                </button>
+              ))}
+            </div>
+            {وضع_دفعة && (
+              <span className="text-[12px] text-muted-foreground">
+                كل الشيكات تتسجّل على نفس العميل في معاملة واحدة — وتتجمّع في كشف حسابه بتقرير واحد.
+              </span>
+            )}
+          </div>
+        )}
 
         {/* اختيار الاتجاه */}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-appgray p-3">
@@ -848,6 +931,7 @@ export function حوار_شيك({
                 onClick={() => {
                   if (dir === ق.الاتجاه) return;
                   حدّث("الاتجاه", dir);
+                  if (dir === "OUTGOING") تعيين_وضع_دفعة(false);
                   if (!شيك) حدّث("الحالة", dir === "INCOMING" ? "REGISTERED" : "PENDING");
                   // الأطراف تختلف حسب الاتجاه (عملاء ⇄ موردون) — نفرّغ الاختيار السابق
                   تعيين_معرف_الطرف("");
@@ -910,6 +994,103 @@ export function حوار_شيك({
           />
         )}
 
+        {/* ── وضع الدفعة: عميل واحد + جدول شيكات ── */}
+        {وضع_دفعة && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <العنوان مطلوب>محوّل من (العميل)</العنوان>
+                <قائمة_اختيار
+                  autoFocus
+                  الخيارات={أطراف_مناسبة.map((p) => ({ القيمة: String(p.id), التسمية: p.الاسم }))}
+                  القيمة={معرف_الطرف}
+                  عند_التغيير={اختر_الطرف}
+                  نص_بديل="اختر العميل…"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <العنوان>ملاحظات (تُطبَّق على كل شيكات الدفعة)</العنوان>
+                <الحقل value={ق.ملاحظات} onChange={(e) => حدّث("ملاحظات", e.target.value)} />
+              </div>
+            </div>
+            {افتتاحي && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                شيكات افتتاحية — هتتسجّل كلها بحالة «معي (تحت اليد)» بلا أي أثر على حساب العميل
+                (قيمتها محسوبة أصلاً ضمن رصيده الافتتاحي).
+              </p>
+            )}
+
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-appgray text-muted-foreground">
+                  <tr>
+                    <th className="w-8 p-2">#</th>
+                    <th className="p-2 text-start">المبلغ *</th>
+                    <th className="p-2 text-start">اسم المدين</th>
+                    <th className="p-2 text-start">البنك</th>
+                    <th className="p-2 text-start">الاستحقاق *</th>
+                    <th className="p-2 text-start">رقم الشيك</th>
+                    <th className="w-10 p-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {صفوف.map((ص, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="p-1.5 text-center text-muted-foreground">{i + 1}</td>
+                      <td className="min-w-28 p-1.5">
+                        <الحقل selectOnFocus className="ltr-nums" value={ص.المبلغ}
+                          onChange={(e) => حدّث_صف(i, "المبلغ", e.target.value)} placeholder="0.00" />
+                      </td>
+                      <td className="min-w-36 p-1.5">
+                        <الحقل value={ص.اسم_المدين}
+                          onChange={(e) => حدّث_صف(i, "اسم_المدين", e.target.value)}
+                          placeholder="اسم العميل لو فاضي" />
+                      </td>
+                      <td className="min-w-32 p-1.5">
+                        <الحقل value={ص.اسم_البنك} onChange={(e) => حدّث_صف(i, "اسم_البنك", e.target.value)} />
+                      </td>
+                      <td className="min-w-40 p-1.5">
+                        <منتقي_تاريخ القيمة={ص.تاريخ_الاستحقاق} عند_التغيير={(v) => حدّث_صف(i, "تاريخ_الاستحقاق", v)} />
+                      </td>
+                      <td className="min-w-32 p-1.5">
+                        <الحقل className="ltr-nums" value={ص.رقم_الشيك}
+                          onChange={(e) => حدّث_صف(i, "رقم_الشيك", e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (i === صفوف.length - 1) أضف_صف();
+                            }
+                          }} />
+                      </td>
+                      <td className="p-1.5">
+                        <الزر size="sm" variant="ghost" onClick={() => احذف_صف(i)} disabled={صفوف.length === 1}>
+                          <Trash2 className="size-4 text-danger" />
+                        </الزر>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <الزر size="sm" variant="outline" onClick={أضف_صف}>
+                <Plus className="size-4" /> إضافة صف
+              </الزر>
+              <div className="text-sm">
+                <span className="text-muted-foreground">عدد الشيكات: </span>
+                <span className="font-semibold ltr-nums">{صفوف_فعلية.length}</span>
+                <span className="mx-2 text-muted-foreground">|</span>
+                <span className="text-muted-foreground">الإجمالي: </span>
+                <span className="font-bold ltr-nums">
+                  {إجمالي_الدفعة.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!وضع_دفعة && (
         <div className="grid gap-3 sm:grid-cols-2">
           {/* الطرف أولاً وإجبارياً في الاتجاهين: العميل للوارد، المورد للصادر */}
           <div className="space-y-1.5">
@@ -1037,6 +1218,7 @@ export function حوار_شيك({
             <منطقة_نص value={ق.ملاحظات} onChange={(e) => حدّث("ملاحظات", e.target.value)} />
           </div>
         </div>
+        )}
 
         <تذييل_الحوار>
           <الزر variant="success" onClick={احفظ} disabled={جارٍ}>
