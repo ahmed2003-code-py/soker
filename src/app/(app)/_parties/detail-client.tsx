@@ -394,6 +394,20 @@ export function حركات_الطرف({
             return (
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground bg-appgray rounded px-1">موزّعة</span>
+                <الزر
+                  size="sm"
+                  variant="ghost"
+                  title="تقرير المعاملة (شامل كل وسائل السداد)"
+                  onClick={() =>
+                    window.open(
+                      `/cheque-report?split=${ص.معرف_دفعة_موزعة}&party=${الطرف.id}&type=${الطرف.النوع}`,
+                      "_blank",
+                      "noopener"
+                    )
+                  }
+                >
+                  <FileText className="size-4 text-primary-blue" />
+                </الزر>
                 <الزر size="sm" variant="ghost" onClick={() => تعيين_تعديل_موزعة(ص.معرف_دفعة_موزعة)} title="تعديل الدفعة الموزّعة">
                   <Pencil className="size-4 text-primary" />
                 </الزر>

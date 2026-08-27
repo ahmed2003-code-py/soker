@@ -91,6 +91,7 @@ model User {
   chequesUpdated      Cheque[]          @relation("ChequeUpdatedBy")
   chequeAllocsCreated ChequeInvoiceAllocation[] @relation("ChequeAllocCreatedBy")
   chequeBooksCreated  ChequeBook[]      @relation("ChequeBookCreatedBy")
+  settlementBatches   SettlementBatch[] @relation("SettlementBatchCreatedBy")
   settingsUpdated     Setting[]         @relation("SettingUpdatedBy")
 
   @@map("users")
@@ -124,6 +125,7 @@ model Party {
   treasuryTxns  TreasuryTxn[]
   cheques       Cheque[]      @relation("PartyCheques")
   endorsedCheques Cheque[]    @relation("PartyEndorsedCheques")
+  settlementBatches SettlementBatch[]
 
   @@index([type])
   @@index([name])
@@ -345,11 +347,34 @@ model SplitPayment {
   id        Int       @id @default(autoincrement())
   deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  settlementBatchId Int?            @map("settlement_batch_id") // معاملة السداد المركّب التي تنتمي إليها
+  settlementBatch   SettlementBatch? @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
 
   ledgerEntries LedgerEntry[]
   treasuryTxns  TreasuryTxn[]
 
+  @@index([settlementBatchId])
   @@map("split_payments")
+}
+
+// ==================== SettlementBatch (معاملة سداد مركّب) ====================
+// تجمع كل وسائل السداد في معاملة واحدة: شيكات مُظهَّرة + دفعة موزّعة (نقدي/تحويلات)
+// حتى يخرج للمعاملة تقرير شامل واحد بكل الوسائل بدل تقرير للشيكات فقط.
+model SettlementBatch {
+  id          Int      @id @default(autoincrement())
+  partyId     Int      @map("party_id")
+  party       Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  date        DateTime @map("date")
+  note        String?  @map("note")
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("SettlementBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  cheques       Cheque[]
+  splitPayments SplitPayment[]
+
+  @@index([partyId])
+  @@map("settlement_batches")
 }
 
 // ==================== Cheque (الشيك) ====================
@@ -368,6 +393,8 @@ model Cheque {
   partyLedgerEntryId Int?          @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
   endorseLedgerEntryId Int?        @map("endorse_ledger_entry_id") // قيد أثر التظهير على المورد (شيك وارد مُظهَّر)
   endorseBatchId  Int?             @map("endorse_batch_id") // معرّف «معاملة» التظهير — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
+  settlementBatchId Int?           @map("settlement_batch_id") // معاملة السداد المركّب (شيكات + نقدي/تحويلات معاً)
+  settlementBatch SettlementBatch? @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
   receiptBatchId  Int?             @map("receipt_batch_id") // معرّف «معاملة» الاستلام من العميل — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
   endorsedToId    Int?             @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
   endorsedAt      DateTime?        @map("endorsed_at") // تاريخ تظهير الشيك للمورد (يُعرض بجانب «مظهّر»)
@@ -405,6 +432,7 @@ model Cheque {
   @@index([status])
   @@index([direction])
   @@index([partyId])
+  @@index([settlementBatchId])
   // فهارس trigram لتسريع البحث (contains/ILIKE) في البحث الموحّد
   @@index([drawerName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_drawer_name_trgm_idx")
   @@index([bankName(ops: raw("gin_trgm_ops"))], type: Gin, map: "cheques_bank_name_trgm_idx")
