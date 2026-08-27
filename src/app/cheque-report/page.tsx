@@ -36,10 +36,43 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
   const إجمالي = شيكات.reduce((س, ش) => س + Number(ش.amount), 0);
 
   return (
-    <div dir="rtl" className="mx-auto max-w-4xl bg-white p-8 text-[#111827]">
-      <style>{`@media print { .no-print { display:none !important } body { background:#fff } @page { margin: 14mm } }`}</style>
+    <div dir="rtl" className="report-sheet mx-auto max-w-4xl bg-white p-8 text-[#111827]">
+      <style>{`
+        @media print {
+          .no-print { display: none !important }
+          html, body { background: #fff !important }
+          @page { size: A4 portrait; margin: 10mm }
 
-      <div className="mb-6 flex items-start justify-between border-b-2 border-[#1F3864] pb-4">
+          /* اطبع الخلفيات والألوان زي ما هي على الشاشة (رأس الجدول الكحلي + تظليل الصفوف) */
+          *, *::before, *::after {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* الورقة تاخد عرض الصفحة كامل — هوامش @page بتكفي */
+          .report-sheet {
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          /* حجم الخط متناسب مع ضيق الورقة عن الشاشة → نفس التوزيع بلا لفّ */
+          .report-sheet table { font-size: 12px !important }
+          .report-sheet th, .report-sheet td { padding: 5px 6px !important }
+          .report-sheet .nowrap { white-space: nowrap !important }
+
+          /* الترويسة والبطاقات ما تتقسمش على صفحتين */
+          .report-head { break-inside: avoid; break-after: avoid; page-break-inside: avoid }
+          .report-cards { break-inside: avoid; page-break-inside: avoid }
+          /* رأس الجدول يتكرر في كل صفحة والصف ما يتقسمش */
+          thead { display: table-header-group }
+          tr { break-inside: avoid; page-break-inside: avoid }
+          .report-total { break-inside: avoid; page-break-inside: avoid }
+        }
+      `}</style>
+
+      <div className="report-head mb-6 flex items-start justify-between border-b-2 border-[#1F3864] pb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1F3864]">تقرير معاملة الشيكات</h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -54,7 +87,7 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
         </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="report-cards mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
           <div className="text-xs text-gray-500">عدد الشيكات</div>
           <div className="text-lg font-bold ltr-nums">{شيكات.length}</div>
@@ -69,33 +102,33 @@ export default async function صفحة_تقرير_المعاملة({ searchParam
         <thead>
           <tr className="bg-[#1F3864] text-white">
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">#</th>
-            <th className="border border-gray-300 px-2 py-2 text-start font-medium">رقم الشيك</th>
+            <th className="nowrap border border-gray-300 px-2 py-2 text-start font-medium">رقم الشيك</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">اسم المدين</th>
             <th className="border border-gray-300 px-2 py-2 text-start font-medium">البنك</th>
-            <th className="border border-gray-300 px-2 py-2 text-start font-medium">الاستحقاق</th>
-            <th className="border border-gray-300 px-2 py-2 text-start font-medium">الحالة</th>
-            {مورد_سياق && <th className="border border-gray-300 px-2 py-2 text-start font-medium">تاريخ التظهير</th>}
-            <th className="border border-gray-300 px-2 py-2 text-end font-medium">المبلغ</th>
+            <th className="nowrap border border-gray-300 px-2 py-2 text-start font-medium">الاستحقاق</th>
+            <th className="nowrap border border-gray-300 px-2 py-2 text-start font-medium">الحالة</th>
+            {مورد_سياق && <th className="nowrap border border-gray-300 px-2 py-2 text-start font-medium">تاريخ التظهير</th>}
+            <th className="nowrap border border-gray-300 px-2 py-2 text-end font-medium">المبلغ</th>
           </tr>
         </thead>
         <tbody>
           {شيكات.map((ش, i) => (
             <tr key={ش.id} className="odd:bg-white even:bg-gray-50">
               <td className="border border-gray-300 px-2 py-1.5 text-gray-500">{i + 1}</td>
-              <td className="border border-gray-300 px-2 py-1.5 ltr-nums">{ش.chequeNumber || "—"}</td>
+              <td className="nowrap border border-gray-300 px-2 py-1.5 ltr-nums">{ش.chequeNumber || "—"}</td>
               <td className="border border-gray-300 px-2 py-1.5">{ش.drawerName || ش.transferredFrom || ش.party?.name || "—"}</td>
               <td className="border border-gray-300 px-2 py-1.5">{ش.bankName || "—"}</td>
-              <td className="border border-gray-300 px-2 py-1.5 ltr-nums">{نص_يوم(ش.dueDate)}</td>
-              <td className="border border-gray-300 px-2 py-1.5">{تسمية_حالة_الشيك[ش.status] ?? ش.status}</td>
-              {مورد_سياق && <td className="border border-gray-300 px-2 py-1.5 ltr-nums">{نص_يوم(ش.endorsedAt)}</td>}
-              <td className="border border-gray-300 px-2 py-1.5 text-end ltr-nums">{نص_مبلغ(Number(ش.amount))}</td>
+              <td className="nowrap border border-gray-300 px-2 py-1.5 ltr-nums">{نص_يوم(ش.dueDate)}</td>
+              <td className="nowrap border border-gray-300 px-2 py-1.5">{تسمية_حالة_الشيك[ش.status] ?? ش.status}</td>
+              {مورد_سياق && <td className="nowrap border border-gray-300 px-2 py-1.5 ltr-nums">{نص_يوم(ش.endorsedAt)}</td>}
+              <td className="nowrap border border-gray-300 px-2 py-1.5 text-end ltr-nums">{نص_مبلغ(Number(ش.amount))}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
       {/* الإجمالي مرة واحدة بعد الجدول (تفادي تكراره في كل صفحة عند الطباعة) */}
-      <div className="mt-3 flex items-center justify-between rounded-lg border-2 border-[#1F3864] bg-gray-100 px-4 py-2.5 font-bold">
+      <div className="report-total mt-3 flex items-center justify-between rounded-lg border-2 border-[#1F3864] bg-gray-100 px-4 py-2.5 font-bold">
         <span>الإجمالي</span>
         <span className="ltr-nums">{نص_مبلغ(إجمالي)} ج.م</span>
       </div>
