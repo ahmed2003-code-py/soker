@@ -26,6 +26,7 @@ export default async function صفحة_الخزنة() {
         party: { select: { name: true } },
         subAccount: { select: { name: true } },
         createdBy: { select: { name: true } },
+        monthlyExpensePeriod: { select: { id: true, item: { select: { name: true } } } },
       },
     }),
     prisma.party.findMany({ select: { id: true, name: true, type: true }, orderBy: { name: "asc" } }),
@@ -57,6 +58,8 @@ export default async function صفحة_الخزنة() {
     معرف_الطرف: ح.partyId ?? null,
     مرتبط: ح.partyId != null,
     معرف_دفع_مباشر: ح.directPaymentId ?? null,
+    معرف_بند_مصروف_شهري: ح.monthlyExpensePeriod?.id ?? null,
+    بند_مصروف_شهري: ح.monthlyExpensePeriod?.item.name ?? null,
     أنشأ_بواسطة: ح.createdBy.name,
   }));
 

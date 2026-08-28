@@ -92,6 +92,9 @@ model User {
   chequeAllocsCreated ChequeInvoiceAllocation[] @relation("ChequeAllocCreatedBy")
   chequeBooksCreated  ChequeBook[]      @relation("ChequeBookCreatedBy")
   settlementBatches   SettlementBatch[] @relation("SettlementBatchCreatedBy")
+  expenseItemsCreated MonthlyExpenseItem[]   @relation("ExpenseItemCreatedBy")
+  expenseItemsUpdated MonthlyExpenseItem[]   @relation("ExpenseItemUpdatedBy")
+  expensePeriods      MonthlyExpensePeriod[] @relation("ExpensePeriodCreatedBy")
   settingsUpdated     Setting[]         @relation("SettingUpdatedBy")
 
   @@map("users")
@@ -299,6 +302,9 @@ model TreasuryTxn {
   splitPayment    SplitPayment?  @relation(fields: [splitPaymentId], references: [id], onDelete: SetNull)
   chequeId        Int?           @map("cheque_id") // دفعة تسوية لشيك صادر (بدون أثر على دفتر الأستاذ)
   cheque          Cheque?        @relation("ChequeSettlementTxns", fields: [chequeId], references: [id], onDelete: SetNull)
+  // بند المصروف الشهري الذي تُخصم منه هذه الحركة (تصنيف فقط — لا أثر محاسبي إضافي)
+  monthlyExpensePeriodId Int?                  @map("monthly_expense_period_id")
+  monthlyExpensePeriod   MonthlyExpensePeriod? @relation(fields: [monthlyExpensePeriodId], references: [id], onDelete: SetNull)
 
   createdById Int       @map("created_by_id")
   createdBy   User      @relation("TreasuryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -313,6 +319,7 @@ model TreasuryTxn {
   @@index([directPaymentId])
   @@index([splitPaymentId])
   @@index([chequeId])
+  @@index([monthlyExpensePeriodId])
   // فهرس trigram لتسريع البحث (contains/ILIKE) في البيان ضمن البحث الموحّد
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "treasury_txns_description_trgm_idx")
   @@map("treasury_txns")
@@ -482,6 +489,54 @@ model ChequeBook {
   @@index([direction])
   @@index([isActive])
   @@map("cheque_books")
+}
+
+// ==================== MonthlyExpenseItem (بند مصروف شهري — قالب متكرر) ====================
+// البند نفسه (إيجار/كهربا/مرتبات…) بمبلغه المقرر الافتراضي. يتكرر تلقائياً كل شهر:
+// عند فتح شهر جديد يُولَّد له «بند شهر» بالمبلغ الافتراضي + فرق الشهر السابق (مرحَّل).
+model MonthlyExpenseItem {
+  id            Int      @id @default(autoincrement())
+  name          String   @map("name")
+  defaultAmount Decimal  @map("default_amount") @db.Decimal(18, 4) // المبلغ المقرر الافتراضي
+  active        Boolean  @default(true) @map("active")
+  notes         String?  @map("notes")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("ExpenseItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("ExpenseItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  periods MonthlyExpensePeriod[]
+
+  @@index([active])
+  @@map("monthly_expense_items")
+}
+
+// ==================== MonthlyExpensePeriod (بند المصروف في شهر بعينه) ====================
+// المقرر لهذا الشهر + المرحَّل من الشهر السابق (موجب = فائض لم يُصرَف، سالب = تجاوز).
+// المتاح = المقرر + المرحَّل، والمدفوع = مجموع حركات الخزنة المرتبطة بهذا البند.
+model MonthlyExpensePeriod {
+  id        Int     @id @default(autoincrement())
+  itemId    Int     @map("item_id")
+  item      MonthlyExpenseItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  year      Int     @map("year")
+  month     Int     @map("month") // 1..12
+  amount    Decimal @map("amount") @db.Decimal(18, 4)                 // المقرر لهذا الشهر
+  carriedIn Decimal @default(0) @map("carried_in") @db.Decimal(18, 4) // المرحَّل من الشهر السابق (± )
+  notes     String? @map("notes")
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("ExpensePeriodCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  txns TreasuryTxn[]
+
+  @@unique([itemId, year, month])
+  @@index([year, month])
+  @@map("monthly_expense_periods")
 }
 
 // ==================== ActivityLog (سجل العمليات) ====================

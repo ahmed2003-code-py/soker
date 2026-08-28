@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { اطلب_المستخدم } from "@/lib/session";
 import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
-import { TxnKind } from "@prisma/client";
+import { TxnKind, type Prisma } from "@prisma/client";
+import { متبقي_بند_الشهر } from "@/lib/monthly-expenses";
 import { أضف_حركة_خزنة, أعد_حساب_حساب_الخزنة } from "@/lib/treasury";
 import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة, حذف_دفع_مباشر, حذف_دفعة_موزعة, type اتجاه } from "@/lib/integration";
 import { أضف_قيد } from "@/lib/ledger";
@@ -13,6 +14,46 @@ import { تحليل_تاريخ } from "@/lib/date";
 import { مسار_صفحة_الطرف } from "@/lib/paths";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { مخطط_حركة_خزنة, مخطط_تحويل_خزنة, مخطط_دفع_مباشر, مخطط_تعديل_دفع_مباشر } from "@/lib/schemas/treasury";
+
+/**
+ * فحص بند المصروف الشهري المختار مع الحركة (المصروفات فقط):
+ * يتأكد إن البند موجود، ويمنع تجاوز المتاح إلا بتأكيد صريح من المستخدم
+ * (وقتها الزيادة بتترحّل للشهر الجاي تلقائياً).
+ */
+async function افحص_بند_المصروف(
+  ب: {
+    النوع: TxnKind | "INCOME" | "EXPENSE";
+    المبلغ?: string | null;
+    معرف_بند_مصروف_شهري?: number | null;
+    تأكيد_تجاوز_المصروف?: boolean;
+  },
+  استثنِ_حركة?: number | null
+): Promise<{ خطأ?: string; معرف: number | null }> {
+  const معرف = ب.النوع === "EXPENSE" ? (ب.معرف_بند_مصروف_شهري ?? null) : null;
+  if (!معرف) return { معرف: null };
+  const حالة = await متبقي_بند_الشهر(معرف, استثنِ_حركة ?? null);
+  if (!حالة) return { معرف: null, خطأ: "بند المصروف الشهري غير موجود" };
+  const قيمة = Number(ب.المبلغ ?? 0);
+  if (!ب.تأكيد_تجاوز_المصروف && قيمة - حالة.المتبقي > 0.0001) {
+    return {
+      معرف: null,
+      خطأ: `المبلغ يتجاوز المتبقي في بند «${حالة.الاسم}» (المتبقي ${حالة.المتبقي.toFixed(2)}) — أكّد التجاوز أو عدّل المبلغ المقرر`,
+    };
+  }
+  return { معرف };
+}
+
+/** ربط/فك ربط حركة الخزنة ببند المصروف الشهري */
+async function اربط_بمصروف(
+  tx: Prisma.TransactionClient,
+  معرف_الحركة: number,
+  معرف_البند: number | null
+) {
+  await tx.treasuryTxn.update({
+    where: { id: معرف_الحركة },
+    data: { monthlyExpensePeriodId: معرف_البند },
+  });
+}
 
 /** هل ستجعل الحركة رصيد الحساب سالباً؟ (للتنبيه فقط — مسموح) */
 async function سيصبح_سالباً(معرف_الحساب: number): Promise<boolean> {
@@ -27,6 +68,8 @@ export async function تسجيل_حركة(مدخلات: unknown): Promise<نتي
   if (!t.success) return فشل(t.error.errors[0].message);
   const ب = t.data;
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+  const فحص_المصروف = await افحص_بند_المصروف(ب);
+  if (فحص_المصروف.خطأ) return فشل(فحص_المصروف.خطأ);
 
   // إذا كان الطرف عميلاً مسجّلاً → عملية مرتبطة (خزنة + دفتر أستاذ)
   if (ب.معرف_الطرف) {
@@ -46,15 +89,20 @@ export async function تسجيل_حركة(مدخلات: unknown): Promise<نتي
         البيان: ب.البيان,
         أنشأ: فاعل.id,
       });
+      if (فحص_المصروف.معرف) await اربط_بمصروف(tx, r.معرف_حركة_الخزنة, فحص_المصروف.معرف);
       await تسجيل_عملية(tx, {
         المستخدم: فاعل.id,
         العملية: "CREATE",
         نوع_الكيان: "حركة_الخزنة",
         معرف_الكيان: r.معرف_حركة_الخزنة,
-        التفاصيل: { النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب, مرتبط: true },
+        التفاصيل: {
+          النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب, مرتبط: true,
+          ...(فحص_المصروف.معرف ? { بند_مصروف_شهري: فحص_المصروف.معرف } : {}),
+        },
       });
     });
     revalidatePath("/treasury");
+    revalidatePath("/monthly-expenses");
     revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
     return نجح(undefined, "تم التسجيل وتحديث حساب العميل/المورد");
   }
@@ -73,17 +121,22 @@ export async function تسجيل_حركة(مدخلات: unknown): Promise<نتي
       طريقة_الدفع: null,
       أنشأ: فاعل.id,
     });
+    if (فحص_المصروف.معرف) await اربط_بمصروف(tx, h.id, فحص_المصروف.معرف);
     await تسجيل_عملية(tx, {
       المستخدم: فاعل.id,
       العملية: "CREATE",
       نوع_الكيان: "حركة_الخزنة",
       معرف_الكيان: h.id,
-      التفاصيل: { النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب },
+      التفاصيل: {
+        النوع: ب.النوع, المبلغ: ب.المبلغ, الحساب: ب.معرف_الحساب,
+        ...(فحص_المصروف.معرف ? { بند_مصروف_شهري: فحص_المصروف.معرف } : {}),
+      },
     });
     return h;
   });
 
   revalidatePath("/treasury");
+  if (فحص_المصروف.معرف) revalidatePath("/monthly-expenses");
   const سالب = ب.النوع === "EXPENSE" && (await سيصبح_سالباً(ب.معرف_الحساب));
   return نجح(undefined, سالب ? "تم التسجيل (تنبيه: رصيد الحساب أصبح سالباً)" : "تم تسجيل الحركة");
 }
@@ -100,6 +153,9 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
   });
   if (!حالي) return فشل("الحركة غير موجودة");
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+  // بند المصروف الشهري: نستثني الحركة الحالية من حساب المدفوع (عشان التعديل ما يتحسبش مرتين)
+  const فحص_المصروف = await افحص_بند_المصروف(ب, id);
+  if (فحص_المصروف.خطأ) return فشل(فحص_المصروف.خطأ);
 
   // هل الحركة الحالية مرتبطة بطرف؟
   const حالياً_مرتبط = !!حالي.partyId;
@@ -128,6 +184,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
             البيان: ب.البيان,
             أنشأ: فاعل.id,
           });
+          await اربط_بمصروف(tx, r.معرف_حركة_الخزنة, فحص_المصروف.معرف);
           await تسجيل_عملية(tx, {
             المستخدم: فاعل.id,
             العملية: "UPDATE",
@@ -142,6 +199,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
       return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
     }
     revalidatePath("/treasury");
+    revalidatePath("/monthly-expenses");
     revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
     // لو تغيّر الطرف → revalidate الطرف القديم كمان
     if (حالياً_مرتبط && حالي.party && حالي.party.id !== طرف.id) {
@@ -171,6 +229,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
             طريقة_الدفع: null,
             أنشأ: فاعل.id,
           });
+          await اربط_بمصروف(tx, h.id, فحص_المصروف.معرف);
           await تسجيل_عملية(tx, {
             المستخدم: فاعل.id,
             العملية: "UPDATE",
@@ -216,6 +275,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
             البيان: ب.البيان,
             أنشأ: فاعل.id,
           });
+          await اربط_بمصروف(tx, r.معرف_حركة_الخزنة, فحص_المصروف.معرف);
           await تسجيل_عملية(tx, {
             المستخدم: فاعل.id,
             العملية: "UPDATE",
@@ -230,6 +290,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
       return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
     }
     revalidatePath("/treasury");
+    revalidatePath("/monthly-expenses");
     revalidatePath(مسار_صفحة_الطرف(طرف.type, طرف.id));
     return نجح(undefined, "تم تعديل العملية وتحديث حساب الطرف");
   }
@@ -249,6 +310,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
             description: ب.البيان,
             externalPartyName: ب.اسم_الطرف_الخارجي ?? null,
             method: null,
+            monthlyExpensePeriodId: فحص_المصروف.معرف,
             updatedById: فاعل.id,
           },
         });
@@ -273,6 +335,7 @@ export async function تعديل_حركة_خزنة(id: number, مدخلات: unk
     return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الحركة");
   }
   revalidatePath("/treasury");
+  revalidatePath("/monthly-expenses");
   return نجح(undefined, "تم تعديل الحركة وإعادة حساب الأرصدة");
 }
 

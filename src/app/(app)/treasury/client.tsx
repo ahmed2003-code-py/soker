@@ -26,6 +26,7 @@ import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
+import { اجلب_بنود_شهر_للاختيار, افحص_تجاوز_المصروف, عدّل_مبلغ_الشهر } from "@/app/(app)/monthly-expenses/actions";
 import { تسجيل_حركة, تعديل_حركة_خزنة, حذف_حركة_خزنة, حذف_حركات_خزنة_متعددة, تحويل_بين_الخزائن, دفع_مباشر_من_عميل_لمورد, تعديل_دفع_مباشر_من_خزنة } from "./actions";
 import { سجل_دفعة_موزعة } from "@/app/(app)/_parties/actions";
 import { أنشئ_حساب_فرعي, عدّل_حساب_فرعي, احذف_حساب_فرعي, type خريطة_حسابات_فرعية, type حساب_فرعي } from "./sub-account-actions";
@@ -53,6 +54,8 @@ type حركة = {
   معرف_الطرف: number | null;
   مرتبط: boolean;
   معرف_دفع_مباشر: number | null;
+  معرف_بند_مصروف_شهري?: number | null;
+  بند_مصروف_شهري?: string | null; // اسم البند (للعرض في الجدول)
   أنشأ_بواسطة: string;
 };
 
@@ -238,7 +241,17 @@ export function شاشة_الخزنة({
       العنوان: t("ledger.col.statement"),
       خلية: (ص) => (
         <div>
-          <div>{ص.البيان}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span>{ص.البيان}</span>
+            {ص.بند_مصروف_شهري && (
+              <span
+                title="مخصوم من ميزانية بند مصروف شهري"
+                className="rounded border border-primary-blue/40 bg-primary-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-blue"
+              >
+                {ص.بند_مصروف_شهري}
+              </span>
+            )}
+          </div>
           <div className="text-[10px] text-muted-foreground">{ص.أنشأ_بواسطة}</div>
         </div>
       ),
@@ -1200,7 +1213,18 @@ function حوار_حركة({
 
   // للإضافة الجديدة: النوع والحساب فاضيان (يختارهما المستخدم). التعديل يحتفظ بقيمه.
   const [تاريخ, تعيين_تاريخ] = React.useState(الحركة ? الحركة.التاريخ.slice(0, 10) : اليوم());
-  const [نوع, تعيين_نوع] = React.useState<TxnKind | "">(الحركة?.النوع ?? "");
+  // نوع العرض: إيراد / مصروف عادي / مصروف شهري (الأخير = مصروف + بند إجباري)
+  const [نوع_العرض, تعيين_نوع_العرض] = React.useState<"INCOME" | "EXPENSE" | "MONTHLY" | "">(
+    الحركة
+      ? الحركة.معرف_بند_مصروف_شهري
+        ? "MONTHLY"
+        : الحركة.النوع === "INCOME"
+        ? "INCOME"
+        : "EXPENSE" // التحويلات ما بتتعدّلش من هنا
+      : ""
+  );
+  const نوع: TxnKind | "" = نوع_العرض === "" ? "" : نوع_العرض === "INCOME" ? "INCOME" : "EXPENSE";
+  const مصروف_شهري = نوع_العرض === "MONTHLY";
   const [مبلغ, تعيين_مبلغ] = React.useState(الحركة ? String(الحركة.المبلغ) : "");
   const [حساب, تعيين_حساب] = React.useState<string>(
     String(الحركة?.معرف_الحساب ?? "")
@@ -1220,6 +1244,23 @@ function حوار_حركة({
   );
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
   const [خيارات_فرعية_محلية, تعيين_خيارات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
+  // ── بند المصروف الشهري (للمصروفات فقط) ──
+  const [بنود_المصروفات, تعيين_بنود_المصروفات] = React.useState<
+    { id: number; الاسم: string; المتاح: number; المدفوع: number; المتبقي: number }[]
+  >([]);
+  const [بند_مصروف, تعيين_بند_مصروف] = React.useState<string>(
+    الحركة?.معرف_بند_مصروف_شهري ? String(الحركة.معرف_بند_مصروف_شهري) : ""
+  );
+  const [تحذير_تجاوز, تعيين_تحذير_تجاوز] = React.useState<
+    { الاسم: string; المقرر: number; المتبقي: number; الزيادة: number } | null
+  >(null);
+
+  // تحميل بنود الشهر أول ما المستخدم يختار «مصروف شهري»
+  React.useEffect(() => {
+    if (!مصروف_شهري || بنود_المصروفات.length) return;
+    اجلب_بنود_شهر_للاختيار().then(تعيين_بنود_المصروفات).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [مصروف_شهري]);
 
   const نوع_الحساب_المختار = React.useMemo(
     () => الحسابات.find((h) => h.id === Number(حساب))?.النوع ?? null,
@@ -1263,6 +1304,19 @@ function حوار_حركة({
     if (له_فرعية && !حساب_فرعي) {
       return إشعار.خطأ(`يرجى اختيار ${تسمية_فرعي(نوع_الحساب_المختار!)}`);
     }
+    if (مصروف_شهري && !بند_مصروف) return إشعار.خطأ("اختر بند المصروف الشهري");
+    // بند مصروف شهري: نفحص التجاوز الأول ونسأل المستخدم قبل ما نحفظ
+    if (مصروف_شهري && بند_مصروف) {
+      const فحص = await افحص_تجاوز_المصروف(Number(بند_مصروف), مبلغ, الحركة?.id ?? null);
+      if (فحص?.متجاوز) {
+        تعيين_تحذير_تجاوز({ الاسم: فحص.الاسم, المقرر: فحص.المقرر, المتبقي: فحص.المتبقي, الزيادة: فحص.الزيادة });
+        return;
+      }
+    }
+    await احفظ_فعلياً(false);
+  }
+
+  async function احفظ_فعلياً(أكّد_التجاوز: boolean) {
     تعيين_جارٍ(true);
     const payload = {
       التاريخ: تاريخ,
@@ -1274,6 +1328,8 @@ function حوار_حركة({
       معرف_الطرف: نوع_الطرف === "customer" && طرف_عميل ? Number(طرف_عميل) : null,
       اسم_الطرف_الخارجي: نوع_الطرف === "external" && طرف_خارجي.trim() ? طرف_خارجي.trim() : null,
       صريح_الطرف: true,
+      معرف_بند_مصروف_شهري: مصروف_شهري && بند_مصروف ? Number(بند_مصروف) : null,
+      تأكيد_تجاوز_المصروف: أكّد_التجاوز,
     };
     const r = الحركة
       ? await تعديل_حركة_خزنة(الحركة.id, payload)
@@ -1302,9 +1358,13 @@ function حوار_حركة({
               الخيارات={[
                 { القيمة: "INCOME", التسمية: t("treasury.income") },
                 { القيمة: "EXPENSE", التسمية: t("treasury.expense") },
+                { القيمة: "MONTHLY", التسمية: "مصروف شهري" },
               ]}
-              القيمة={نوع}
-              عند_التغيير={(v) => تعيين_نوع(v as TxnKind)}
+              القيمة={نوع_العرض}
+              عند_التغيير={(v) => {
+                تعيين_نوع_العرض(v as "INCOME" | "EXPENSE" | "MONTHLY");
+                if (v !== "MONTHLY") تعيين_بند_مصروف(""); // مصروف عادي: بلا بند
+              }}
               قابل_للبحث={false}
               نص_بديل="اختر النوع…"
               autoFocus={!الحركة}
@@ -1337,6 +1397,45 @@ function حوار_حركة({
                 تسمية_الإضافة={`إضافة ${تسمية_فرعي(نوع_الحساب_المختار)}`}
                 نص_بديل={`اختر ${تسمية_فرعي(نوع_الحساب_المختار)}…`}
               />
+            </div>
+          )}
+
+          {/* بند المصروف الشهري — يظهر مع نوع «مصروف شهري» وإجباري */}
+          {مصروف_شهري && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <العنوان مطلوب>بند المصروف الشهري</العنوان>
+              <قائمة_اختيار
+                الخيارات={بنود_المصروفات.map((ب) => ({
+                  القيمة: String(ب.id),
+                  التسمية: `${ب.الاسم} — باقي ${ب.المتبقي.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                }))}
+                القيمة={بند_مصروف}
+                عند_التغيير={(v) => {
+                  تعيين_بند_مصروف(v);
+                  // البيان يتملّى باسم البند لو لسه فاضي (توفير كتابة)
+                  const ب = بنود_المصروفات.find((x) => String(x.id) === v);
+                  if (ب && !بيان.trim()) تعيين_بيان(ب.الاسم);
+                }}
+                نص_بديل={بنود_المصروفات.length ? "اختر بند المصروف…" : "مفيش بنود مصروفات لهذا الشهر"}
+              />
+              {بنود_المصروفات.length === 0 && (
+                <p className="text-[12px] text-muted-foreground">
+                  ضيف بنودك من تاب «المصروفات الشهرية» الأول.
+                </p>
+              )}
+              {بند_مصروف && (() => {
+                const ب = بنود_المصروفات.find((x) => String(x.id) === بند_مصروف);
+                if (!ب) return null;
+                const قيمة = Number(String(مبلغ).replace(/,/g, "")) || 0;
+                const بعد = ب.المتبقي - قيمة;
+                return (
+                  <p className={`text-[12px] ${بعد < 0 ? "text-warning" : "text-muted-foreground"}`}>
+                    {بعد < 0
+                      ? `تنبيه: المبلغ ده هيتجاوز المتبقي بـ ${Math.abs(بعد).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — هيتسألك تأكيد قبل الحفظ.`
+                      : `المتبقي بعد الحركة دي: ${بعد.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </p>
+                );
+              })()}
             </div>
           )}
 
@@ -1399,6 +1498,128 @@ function حوار_حركة({
           <الزر variant="outline" onClick={عند_الإغلاق}>
             {t("common.cancel")}
           </الزر>
+        </تذييل_الحوار>
+
+        {تحذير_تجاوز && (
+          <حوار_تجاوز_المصروف
+            تفاصيل={تحذير_تجاوز}
+            معرف_البند={Number(بند_مصروف)}
+            عند_الإلغاء={() => تعيين_تحذير_تجاوز(null)}
+            عند_التأكيد={async () => {
+              تعيين_تحذير_تجاوز(null);
+              await احفظ_فعلياً(true);
+            }}
+            عند_تعديل_المبلغ={async (مبلغ_جديد) => {
+              const r = await عدّل_مبلغ_الشهر(Number(بند_مصروف), مبلغ_جديد, false);
+              if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+              إشعار.نجاح(r.رسالة!);
+              تعيين_تحذير_تجاوز(null);
+              const محدثة = await اجلب_بنود_شهر_للاختيار();
+              تعيين_بنود_المصروفات(محدثة);
+              await احفظ_فعلياً(false);
+            }}
+          />
+        )}
+      </محتوى_الحوار>
+    </الحوار>
+  );
+}
+
+/**
+ * تحذير تجاوز ميزانية بند المصروف الشهري — خيارين واضحين للمستخدم:
+ *  1) تعديل المبلغ المقرر للشهر (ويكمّل الحفظ)
+ *  2) تسجيل التجاوز كما هو ⇒ الزيادة تترحّل تلقائياً للشهر الجاي
+ */
+function حوار_تجاوز_المصروف({
+  تفاصيل,
+  عند_الإلغاء,
+  عند_التأكيد,
+  عند_تعديل_المبلغ,
+}: {
+  تفاصيل: { الاسم: string; المقرر: number; المتبقي: number; الزيادة: number };
+  معرف_البند: number;
+  عند_الإلغاء: () => void;
+  عند_التأكيد: () => Promise<void>;
+  عند_تعديل_المبلغ: (مبلغ: string) => Promise<void>;
+}) {
+  const [وضع_التعديل, تعيين_وضع_التعديل] = React.useState(false);
+  const [مبلغ_جديد, تعيين_مبلغ_جديد] = React.useState(
+    String(Math.round((تفاصيل.المقرر + تفاصيل.الزيادة) * 100) / 100)
+  );
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  const رقم = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <الحوار open onOpenChange={(o) => !o && عند_الإلغاء()}>
+      <محتوى_الحوار className="max-w-lg">
+        <رأس_الحوار>
+          <عنوان_الحوار className="flex items-center gap-2">
+            <AlertTriangle className="size-5 text-warning" /> المبلغ يتجاوز ميزانية البند
+          </عنوان_الحوار>
+        </رأس_الحوار>
+
+        <div className="space-y-3 text-sm">
+          <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 leading-6 text-warning">
+            بند <span className="font-semibold">«{تفاصيل.الاسم}»</span> المتبقي فيه{" "}
+            <span className="ltr-nums font-semibold">{رقم(تفاصيل.المتبقي)}</span> بس، والحركة دي هتزوّد{" "}
+            <span className="ltr-nums font-semibold">{رقم(تفاصيل.الزيادة)}</span> فوق المقرر.
+          </div>
+
+          {وضع_التعديل ? (
+            <div className="space-y-1.5">
+              <العنوان مطلوب>المبلغ المقرر الجديد للشهر</العنوان>
+              <الحقل
+                autoFocus
+                selectOnFocus
+                className="ltr-nums"
+                value={مبلغ_جديد}
+                onChange={(e) => تعيين_مبلغ_جديد(e.target.value)}
+              />
+              <p className="text-[12px] text-muted-foreground">
+                المقرر الحالي {رقم(تفاصيل.المقرر)} — لو رفعته لـ {رقم(تفاصيل.المقرر + تفاصيل.الزيادة)} تبقى الحركة جوه الميزانية.
+              </p>
+            </div>
+          ) : (
+            <ul className="list-disc space-y-1 ps-5 text-muted-foreground">
+              <li>
+                <span className="font-medium text-foreground">تعديل المبلغ المقرر:</span> ترفع ميزانية البند للشهر ده
+                وتكمّل التسجيل عادي.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">تسجيل التجاوز:</span> الحركة تتسجّل زي ما هي، والزيادة
+                تظهر بالسالب وتترحّل على ميزانية الشهر الجاي تلقائياً.
+              </li>
+            </ul>
+          )}
+        </div>
+
+        <تذييل_الحوار>
+          {وضع_التعديل ? (
+            <>
+              <الزر
+                variant="success"
+                disabled={جارٍ}
+                onClick={async () => { تعيين_جارٍ(true); await عند_تعديل_المبلغ(مبلغ_جديد); تعيين_جارٍ(false); }}
+              >
+                حفظ المبلغ وتسجيل الحركة
+              </الزر>
+              <الزر variant="outline" onClick={() => تعيين_وضع_التعديل(false)}>رجوع</الزر>
+            </>
+          ) : (
+            <>
+              <الزر variant="outline" onClick={() => تعيين_وضع_التعديل(true)}>
+                <Pencil className="size-4" /> تعديل المبلغ المقرر
+              </الزر>
+              <الزر
+                variant="danger"
+                disabled={جارٍ}
+                onClick={async () => { تعيين_جارٍ(true); await عند_التأكيد(); تعيين_جارٍ(false); }}
+              >
+                تسجيل التجاوز وترحيله للشهر الجاي
+              </الزر>
+              <الزر variant="ghost" onClick={عند_الإلغاء}>إلغاء</الزر>
+            </>
+          )}
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>
