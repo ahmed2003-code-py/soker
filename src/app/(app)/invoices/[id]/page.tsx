@@ -92,6 +92,15 @@ export default async function صفحة_عرض_فاتورة({
     .reduce((s, l) => s + Number(l.weight), 0);
   const صافي_الوزن = إجمالي_مبيعات_وزن - إجمالي_مرتجعات_وزن;
 
+  // وصف البند للعرض: «اللون — الشركة» (يُعرض جنب التصنيف في الملخص للتوضيح)
+  const وصف_البند = (ب: { color: string; company: string | null }) =>
+    ب.company ? `${ب.color} — ${ب.company}` : ب.color;
+  /** أوصاف مجموعة التصنيف في سطر واحد (بحد أقصى 4 وبعدها +العدد) */
+  const نص_الأوصاف = (أوصاف: Set<string>) => {
+    const ق = [...أوصاف];
+    return ق.length <= 4 ? ق.join("، ") : `${ق.slice(0, 4).join("، ")} +${ق.length - 4}`;
+  };
+
   // مجموعات الجدول الرئيسي (كل البنود، مع بنود للعرض)
   type مجموعة_جدول = {
     التصنيف: string;
@@ -100,12 +109,13 @@ export default async function صفحة_عرض_فاتورة({
     إجمالي_المبلغ: number;
     بنود: typeof فاتورة.lines;
     أسعار: Set<number>;
+    أوصاف: Set<string>;
   };
   const خريطة_جدول = new Map<string, مجموعة_جدول>();
   for (const بند of فاتورة.lines) {
     const م = خريطة_جدول.get(بند.category) ?? {
       التصنيف: بند.category, إجمالي_الكمية: 0, إجمالي_الوزن: 0,
-      إجمالي_المبلغ: 0, بنود: [], أسعار: new Set<number>(),
+      إجمالي_المبلغ: 0, بنود: [], أسعار: new Set<number>(), أوصاف: new Set<string>(),
     };
     const إشارة = بند.lineType === "RETURN" ? -1 : 1;
     م.بنود.push(بند);
@@ -113,21 +123,23 @@ export default async function صفحة_عرض_فاتورة({
     م.إجمالي_الوزن  += Number(بند.weight) * إشارة;
     م.إجمالي_المبلغ += Number(بند.lineTotal) * إشارة;
     if (Number(بند.price) > 0) م.أسعار.add(Number(بند.price));
+    م.أوصاف.add(وصف_البند(بند));
     خريطة_جدول.set(بند.category, م);
   }
   const مجموعات = [...خريطة_جدول.values()];
 
   // مجموعات الملخص — مبيعات ومرتجعات منفصلَين
-  type مجموعة_ملخص = { التصنيف: string; إجمالي_الكمية: number; إجمالي_الوزن: number; إجمالي_المبلغ: number; أسعار: Set<number> };
+  type مجموعة_ملخص = { التصنيف: string; إجمالي_الكمية: number; إجمالي_الوزن: number; إجمالي_المبلغ: number; أسعار: Set<number>; أوصاف: Set<string> };
   type بند_فاتورة = (typeof فاتورة)["lines"][number];
   function اجمع_ملخص(بنود: بند_فاتورة[]): مجموعة_ملخص[] {
     const خريطة = new Map<string, مجموعة_ملخص>();
     for (const بند of بنود) {
-      const م = خريطة.get(بند.category) ?? { التصنيف: بند.category, إجمالي_الكمية: 0, إجمالي_الوزن: 0, إجمالي_المبلغ: 0, أسعار: new Set<number>() };
+      const م = خريطة.get(بند.category) ?? { التصنيف: بند.category, إجمالي_الكمية: 0, إجمالي_الوزن: 0, إجمالي_المبلغ: 0, أسعار: new Set<number>(), أوصاف: new Set<string>() };
       م.إجمالي_الكمية += Number(بند.qty);
       م.إجمالي_الوزن  += Number(بند.weight);
       م.إجمالي_المبلغ += Number(بند.lineTotal);
       if (Number(بند.price) > 0) م.أسعار.add(Number(بند.price));
+      م.أوصاف.add(وصف_البند(بند));
       خريطة.set(بند.category, م);
     }
     return [...خريطة.values()];
@@ -283,6 +295,10 @@ export default async function صفحة_عرض_فاتورة({
                           — {بند.company}
                         </span>
                       )}
+                      {/* التصنيف جنب اللون للتوضيح */}
+                      <span className="mr-1.5 inline-block rounded border border-foreground/25 px-1 text-[10px] font-semibold text-foreground/70 print:border-black/40 print:text-black">
+                        {بند.category}
+                      </span>
                     </td>
                     <td className={`px-2 py-1.5 text-end ltr-nums ${بند.lineType === "RETURN" ? "text-amber-700" : ""}`}>
                       {Number(بند.qty)}
@@ -335,7 +351,10 @@ export default async function صفحة_عرض_فاتورة({
                         : أسعار.length > 1 ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}` : "—";
                       return (
                         <tr key={`s-${م.التصنيف}`} className="border-b border-foreground/10 print:border-black/10">
-                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 font-medium">
+                            {م.التصنيف}
+                            <div className="text-[11.5px] font-normal leading-4 text-muted-foreground">{نص_الأوصاف(م.أوصاف)}</div>
+                          </td>
                           <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الكمية}</td>
                           <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
                           <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر}</td>
@@ -363,7 +382,10 @@ export default async function صفحة_عرض_فاتورة({
                         : أسعار.length > 1 ? `${Math.min(...أسعار).toFixed(0)}–${Math.max(...أسعار).toFixed(0)}` : "—";
                       return (
                         <tr key={`r-${م.التصنيف}`} className="border-b border-foreground/10 text-amber-700 dark:text-amber-400 print:border-black/10">
-                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 font-medium">
+                            {م.التصنيف}
+                            <div className="text-[11.5px] font-normal leading-4 opacity-75">{نص_الأوصاف(م.أوصاف)}</div>
+                          </td>
                           <td className="px-2 py-1.5 text-end ltr-nums">({م.إجمالي_الكمية})</td>
                           <td className="px-2 py-1.5 text-end ltr-nums">({م.إجمالي_الوزن.toFixed(2)})</td>
                           <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر}</td>
@@ -417,7 +439,10 @@ export default async function صفحة_عرض_فاتورة({
                         : أسعار_م.length > 1 ? `${Math.min(...أسعار_م).toFixed(0)}–${Math.max(...أسعار_م).toFixed(0)}` : "—";
                       return (
                         <tr key={م.التصنيف} className="border-b border-foreground/10 print:border-black/10">
-                          <td className="px-2 py-1.5 font-medium">{م.التصنيف}</td>
+                          <td className="px-2 py-1.5 font-medium">
+                            {م.التصنيف}
+                            <div className="text-[11.5px] font-normal leading-4 text-muted-foreground">{نص_الأوصاف(م.أوصاف)}</div>
+                          </td>
                           <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الكمية}</td>
                           <td className="px-2 py-1.5 text-end ltr-nums">{م.إجمالي_الوزن.toFixed(2)}</td>
                           <td className="px-2 py-1.5 text-end ltr-nums text-muted-foreground text-[12px]">{سعر_نص_م}</td>
