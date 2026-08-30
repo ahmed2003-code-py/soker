@@ -100,6 +100,7 @@ export function نموذج_فاتورة({
     نوع_الفاتورة: "SALE" | "PURCHASE" | "SUPPLIER_RETURN";
     مباشرة?: boolean;              // فاتورة مباشرة (مورد ← عميل) — تُحرَّر بجهتيها معاً
     معرف_المورد?: number | null;   // المورد في الفاتورة المباشرة
+    أسعار_المورد?: Record<string, string>; // سعر الشراء لكل تصنيف (الفاتورة المباشرة)
     دفعة_المورد?: { المبلغ: number; معرف_الحساب: number; معرف_حساب_فرعي: number | null } | null;
     معرف_العميل: number | null;
     اسم_الزائر?: string | null;
@@ -132,6 +133,10 @@ export function نموذج_فاتورة({
   // المورد في الفاتورة المباشرة (العميل يظل في حالة «عميل»)
   const [مورد_مباشر, تعيين_مورد_مباشر] = React.useState<string>(
     فاتورة?.معرف_المورد ? String(فاتورة.معرف_المورد) : ""
+  );
+  // الفاتورة المباشرة: سعر شراء لكل تصنيف (سعر العميل في أسعار_تصنيفات)
+  const [أسعار_المورد, تعيين_أسعار_المورد] = React.useState<Record<string, string>>(
+    فاتورة?.أسعار_المورد ?? {}
   );
   // اتجاه فاتورة المورد: جاية (PURCHASE) أو رايحة (SUPPLIER_RETURN)
   const [اتجاه_المورد, تعيين_اتجاه_المورد] = React.useState<"PURCHASE" | "SUPPLIER_RETURN">(
@@ -182,7 +187,11 @@ export function نموذج_فاتورة({
   const سيُحفظ_غير_مسعّر =
     ((نوع_الطرف === "CUSTOMER" && !عميل_زائر) || مباشرة) &&
     أسطر_فعلية_للتسعير.length > 0 &&
-    أسطر_فعلية_للتسعير.some((ب) => String(ب.السعر ?? "").trim() === "");
+    أسطر_فعلية_للتسعير.some(
+      (ب) =>
+        String(ب.السعر ?? "").trim() === "" ||
+        (مباشرة && String(أسعار_المورد[ب.التصنيف] ?? "").trim() === "")
+    );
 
   // ─── الدفعة الفورية ───────────────────────────────────────
   // عند التعديل: نحمّل الدفعة الموجودة لتظهر وتُحفظ (بدل فقدانها)
@@ -429,6 +438,10 @@ export function نموذج_فاتورة({
     );
   }
 
+  function حدّث_سعر_المورد(تصنيف: string, سعر: string) {
+    تعيين_أسعار_المورد((prev) => ({ ...prev, [تصنيف]: سعر }));
+  }
+
   function حدّث_سعر_تصنيف(تصنيف: string, سعر: string) {
     تعيين_أسعار((prev) => ({ ...prev, [تصنيف]: سعر }));
     تعيين_بنود((س) => س.map((ب) => (ب.التصنيف === تصنيف ? { ...ب, السعر: سعر } : ب)));
@@ -457,6 +470,12 @@ export function نموذج_فاتورة({
     return س + سعر * ع(ب.الوزن);
   }, 0);
   const الإجمالي_المالي = إجمالي_المبيعات_النموذج - إجمالي_المرتجعات_النموذج; // قد يكون سالباً
+  // الفاتورة المباشرة: إجمالي جهة المورد (بسعر الشراء) والربح = بيع − شراء
+  const إجمالي_المورد_النموذج = بنود.reduce(
+    (س, ب) => س + ع(أسعار_المورد[ب.التصنيف] ?? "") * ع(ب.الوزن),
+    0
+  );
+  const ربح_المباشرة = الإجمالي_المالي - إجمالي_المورد_النموذج;
   const لها_مرتجعات = يسمح_بمرتجع && إجمالي_المرتجعات_النموذج > 0;
 
   const تجميع = React.useMemo(() => {
@@ -530,7 +549,7 @@ export function نموذج_فاتورة({
       الهاتف: هاتف,
       التاريخ: تاريخ,
       ملاحظات,
-      البنود: بنود_للإرسال(),
+      البنود: بنود_للإرسال().map((ب) => ({ ...ب, سعر_المورد: أسعار_المورد[ب.التصنيف] ?? "" })),
       ...(!سيُحفظ_غير_مسعّر && دفعة_مفعلة && مبلغ_الدفعة && حساب_الدفعة ? {
         دفعة_العميل: {
           المبلغ: مبلغ_الدفعة,
@@ -703,8 +722,9 @@ export function نموذج_فاتورة({
             <ArrowLeftRight className="mt-1 size-4 shrink-0" />
             <span>
               البضاعة رايحة من المورد للعميل على طول: الحفظ بيعمل{" "}
-              <span className="font-semibold">فاتورتين مربوطتين</span> — فاتورة شراء على حساب المورد (مستحق له)
-              وفاتورة بيع على حساب العميل (مديونية) — بنفس البنود ونفس السعر. التعديل أو الحذف بيمسّ الجهتين معاً.
+              <span className="font-semibold">فاتورتين مربوطتين</span> — فاتورة شراء على حساب المورد
+              (بسعر الشراء) وفاتورة بيع على حساب العميل (بسعر البيع)، والفرق بينهم ربح المعاملة.
+              التعديل أو الحذف بيمسّ الجهتين معاً.
             </span>
           </div>
         )}
@@ -1039,38 +1059,72 @@ export function نموذج_فاتورة({
       </div>
 
       {/* ملخص التجميع + الإجماليات */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={`grid gap-4 ${مباشرة ? "" : "lg:grid-cols-2"}`}>
         <div className="card-soft p-5">
           <h3 className="mb-3 font-semibold">{t("inv.f.summary_by_cat")}</h3>
           {تجميع.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("inv.f.enter_items")}</p>
           ) : (
+            <div className={مباشرة ? "overflow-x-auto" : ""}>
             <table className="w-full text-sm">
               <thead className="text-muted-foreground">
+                {/* الوضع المباشر: رأس مجموعة لكل جهة عشان يبان السعر بتاع مين */}
+                {مباشرة && (
+                  <tr className="border-b border-border text-[12px] font-semibold">
+                    <th colSpan={3} />
+                    <th colSpan={2} className="border-s border-border bg-amber-50/70 p-1.5 text-center text-amber-800 dark:bg-amber-900/15 dark:text-amber-300">
+                      المورد (شراء)
+                    </th>
+                    <th colSpan={2} className="border-s border-border bg-green-50/70 p-1.5 text-center text-green-800 dark:bg-green-900/15 dark:text-green-300">
+                      العميل (بيع)
+                    </th>
+                  </tr>
+                )}
                 <tr className="border-b border-border">
                   <th className="p-2 text-start">{t("inv.f.category")}</th>
                   <th className="p-2 text-end">{t("inv.f.total_count")}</th>
                   <th className="p-2 text-end">{t("inv.col.total_weight")}</th>
-                  <th className="p-2 text-end">{t("inv.f.price_kg")}</th>
-                  <th className="p-2 text-end">{t("inv.f.subtotal")}</th>
+                  {مباشرة && <th className="border-s border-border p-2 text-end whitespace-nowrap">السعر/كجم</th>}
+                  {مباشرة && <th className="p-2 text-end whitespace-nowrap">الإجمالي</th>}
+                  <th className={`p-2 text-end whitespace-nowrap ${مباشرة ? "border-s border-border" : ""}`}>
+                    {مباشرة ? "السعر/كجم" : t("inv.f.price_kg")}
+                  </th>
+                  <th className="p-2 text-end whitespace-nowrap">{مباشرة ? "الإجمالي" : t("inv.f.subtotal")}</th>
                 </tr>
               </thead>
               <tbody>
                 {تجميع.map(([ت, ح]) => {
                   const سعر_التصنيف = أسعار_تصنيفات[ت] ?? "";
                   const مبلغ_التصنيف = ع(سعر_التصنيف) * ح.وزن;
+                  const سعر_المورد_ت = أسعار_المورد[ت] ?? "";
+                  const مبلغ_المورد_ت = ع(سعر_المورد_ت) * ح.وزن;
                   return (
                     <tr key={ت} className="border-b border-border/60">
                       <td className="p-2 font-medium">{ت}</td>
                       <td className="p-2 text-end ltr-nums">{ح.كمية}</td>
-                      <td className="p-2 text-end ltr-nums">{ح.وزن.toFixed(2)} {t("inv.kg")}</td>
-                      <td className="p-1.5">
-                        <الحقل className="ltr-nums text-end w-24" selectOnFocus
+                      <td className="p-2 text-end ltr-nums whitespace-nowrap">{ح.وزن.toFixed(2)} {t("inv.kg")}</td>
+                      {مباشرة && (
+                        <td className="border-s border-border bg-amber-50/40 p-1.5 text-end dark:bg-amber-900/10">
+                          <الحقل className="ltr-nums text-end w-24 inline-block" selectOnFocus
+                            value={سعر_المورد_ت}
+                            onChange={(e) => حدّث_سعر_المورد(ت, e.target.value)}
+                            placeholder="0.00" />
+                        </td>
+                      )}
+                      {مباشرة && (
+                        <td className="bg-amber-50/40 p-2 text-end ltr-nums font-medium whitespace-nowrap dark:bg-amber-900/10">
+                          {مبلغ_المورد_ت !== 0
+                            ? Math.abs(مبلغ_المورد_ت).toLocaleString("en-US", { minimumFractionDigits: 2 })
+                            : "—"}
+                        </td>
+                      )}
+                      <td className={`p-1.5 text-end ${مباشرة ? "border-s border-border bg-green-50/40 dark:bg-green-900/10" : ""}`}>
+                        <الحقل className="ltr-nums text-end w-24 inline-block" selectOnFocus
                           value={سعر_التصنيف}
                           onChange={(e) => حدّث_سعر_تصنيف(ت, e.target.value)}
                           placeholder="0.00" />
                       </td>
-                      <td className="p-2 text-end ltr-nums font-medium">
+                      <td className={`p-2 text-end ltr-nums font-medium whitespace-nowrap ${مباشرة ? "bg-green-50/40 dark:bg-green-900/10" : ""}`}>
                         {مبلغ_التصنيف !== 0
                           ? Math.abs(مبلغ_التصنيف).toLocaleString("en-US", { minimumFractionDigits: 2 })
                           : "—"}
@@ -1080,6 +1134,7 @@ export function نموذج_فاتورة({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
         <div className="card-soft space-y-2 p-5">
@@ -1112,6 +1167,21 @@ export function نموذج_فاتورة({
                 <نص_مبلغ القيمة={الإجمالي_المالي} />
               </div>
             </>
+          ) : مباشرة ? (
+            <>
+              <div className="flex justify-between border-t border-border pt-2">
+                <span className="text-muted-foreground">إجمالي المورد (شراء)</span>
+                <نص_مبلغ القيمة={إجمالي_المورد_النموذج} />
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">إجمالي العميل (بيع)</span>
+                <نص_مبلغ القيمة={الإجمالي_المالي} />
+              </div>
+              <div className="flex justify-between border-t border-border pt-2 text-lg">
+                <span className="font-semibold">الربح</span>
+                <نص_مبلغ القيمة={ربح_المباشرة} النوع={ربح_المباشرة < 0 ? "مصروف" : "إيراد"} />
+              </div>
+            </>
           ) : (
             <div className="flex justify-between border-t border-border pt-2 text-lg">
               <span className="font-semibold">{t("inv.f.financial_total")}</span>
@@ -1132,11 +1202,11 @@ export function نموذج_فاتورة({
               const جهة = (
                 اسم: string,
                 رصيد: number,
-                إشارة: 1 | -1,
+                قيمة: number,
                 دفعة: number,
                 تسمية_الأثر: string
               ) => {
-                const بعد = رصيد + إشارة * الإجمالي_المالي - دفعة;
+                const بعد = رصيد + قيمة - دفعة;
                 return (
                   <div className="space-y-1.5">
                     <div className="flex justify-between font-medium">
@@ -1145,7 +1215,7 @@ export function نموذج_فاتورة({
                     </div>
                     <div className="flex justify-between text-muted-foreground">
                       <span>{تسمية_الأثر}</span>
-                      <نص_مبلغ القيمة={الإجمالي_المالي} />
+                      <نص_مبلغ القيمة={قيمة} />
                     </div>
                     {دفعة > 0 && (
                       <div className="flex justify-between text-success">
@@ -1162,8 +1232,8 @@ export function نموذج_فاتورة({
               };
               return (
                 <div className="mt-3 grid gap-4 rounded-xl border border-primary-blue/30 bg-primary-blue/5 p-3 text-sm sm:grid-cols-2">
-                  {م ? جهة(`المورد: ${م.name}`, م.balance, 1, دفعة_مورد, "+ مستحق للمورد") : <div />}
-                  {ع_ ? جهة(`العميل: ${ع_.name}`, ع_.balance, 1, دفعة_عميل, "+ مديونية العميل") : <div />}
+                  {م ? جهة(`المورد: ${م.name}`, م.balance, إجمالي_المورد_النموذج, دفعة_مورد, "+ مستحق للمورد (بسعر الشراء)") : <div />}
+                  {ع_ ? جهة(`العميل: ${ع_.name}`, ع_.balance, الإجمالي_المالي, دفعة_عميل, "+ مديونية العميل (بسعر البيع)") : <div />}
                 </div>
               );
             }
@@ -1326,8 +1396,8 @@ export function نموذج_فاتورة({
             checked={دفعة_المورد_مفعلة}
             onChange={(e) => {
               تعيين_دفعة_المورد_مفعلة(e.target.checked);
-              if (e.target.checked && !مبلغ_دفعة_المورد && الإجمالي_المالي > 0) {
-                تعيين_مبلغ_دفعة_المورد(String(الإجمالي_المالي));
+              if (e.target.checked && !مبلغ_دفعة_المورد && إجمالي_المورد_النموذج > 0) {
+                تعيين_مبلغ_دفعة_المورد(String(إجمالي_المورد_النموذج));
               }
             }}
             className="size-4 rounded accent-primary"

@@ -72,22 +72,30 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
     const ف_مورد = مجموعة.find((x) => x.invoiceType === "PURCHASE");
     const ف_عميل = مجموعة.find((x) => x.invoiceType === "SALE");
     if (ف_مورد && ف_عميل) {
+      // سعر الشراء لكل تصنيف من بنود فاتورة المورد (الأسعار مُدخَلة لكل تصنيف)
+      const أسعار_المورد: Record<string, string> = {};
+      for (const ب of ف_مورد.lines) {
+        if (ب.price != null && !(ب.category in أسعار_المورد)) {
+          أسعار_المورد[ب.category] = String(Number(ب.price));
+        }
+      }
       const دفعة_العميل = جمع_دفعات(ف_عميل.treasuryTxns);
       const دفعة_المورد = جمع_دفعات(ف_مورد.treasuryTxns);
-      const إجمالي = Number(ف_عميل.totalAmount);
-      // رصيد ما قبل الفاتورة لكل جهة (للمعاينة داخل النموذج)
+      // رصيد ما قبل الفاتورة لكل جهة (للمعاينة داخل النموذج) — كل جهة بقيمتها
+      const قيمة_العميل = Number(ف_عميل.totalAmount);
+      const قيمة_المورد = Number(ف_مورد.totalAmount);
       const عملاء_مباشر = عملاء.map((c) => ({
         ...c,
         balance:
           c.id === ف_عميل.customerId
-            ? Number(c.balance) - إجمالي + (دفعة_العميل?.المبلغ ?? 0)
+            ? Number(c.balance) - قيمة_العميل + (دفعة_العميل?.المبلغ ?? 0)
             : Number(c.balance),
       }));
       const موردون_مباشر = موردون.map((s) => ({
         ...s,
         balance:
           s.id === ف_مورد.customerId
-            ? Number(s.balance) - إجمالي + (دفعة_المورد?.المبلغ ?? 0)
+            ? Number(s.balance) - قيمة_المورد + (دفعة_المورد?.المبلغ ?? 0)
             : Number(s.balance),
       }));
       return (
@@ -111,6 +119,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
               نوع_الفاتورة: "SALE",
               مباشرة: true,
               معرف_المورد: ف_مورد.customerId,
+              أسعار_المورد,
               معرف_العميل: ف_عميل.customerId,
               مرجع_خارجي: ف_مورد.externalRef ?? null,
               الهاتف: ف_عميل.phone,
