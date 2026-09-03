@@ -41,6 +41,7 @@ export function شاشة_المخزن({
   const [شركات_مفتوحة, تعيين_شركات_مفتوحة] = React.useState<Set<string>>(
     () => new Set(البحث ? الأرصدة.map((ش) => ش.الشركة) : الأرصدة.slice(0, 1).map((ش) => ش.الشركة))
   );
+  const [أصناف_مفتوحة, تعيين_أصناف_مفتوحة] = React.useState<Set<string>>(new Set());
   const [ألوان_مفتوحة, تعيين_ألوان_مفتوحة] = React.useState<Set<string>>(new Set());
   const [افتتاحي, تعيين_افتتاحي] = React.useState(false);
   const [حدود_مفتوحة, تعيين_حدود_مفتوحة] = React.useState(false);
@@ -187,22 +188,38 @@ export function شاشة_المخزن({
                 {/* الأصناف */}
                 {مفتوحة && (
                   <div className="border-t border-border">
-                    {ش.الأصناف.map((ص) => (
+                    {ش.الأصناف.map((ص) => {
+                      const مفتاح_الصنف = `${ش.الشركة}||${ص.التصنيف}`;
+                      const صنف_مفتوح = أصناف_مفتوحة.has(مفتاح_الصنف);
+                      return (
                       <div key={ص.التصنيف} className="border-b border-border/60 last:border-b-0">
-                        <div className="flex items-center justify-between gap-3 bg-appgray/70 px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => بدّل(أصناف_مفتوحة, تعيين_أصناف_مفتوحة, مفتاح_الصنف)}
+                          className="flex w-full items-center justify-between gap-3 bg-appgray/70 px-4 py-2 text-start transition-colors hover:bg-muted/60"
+                        >
                           <span className="flex items-center gap-2">
+                            {صنف_مفتوح
+                              ? <ChevronDown className="size-3.5 text-muted-foreground" />
+                              : <ChevronLeft className="size-3.5 text-muted-foreground" />}
                             <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[12px] font-bold text-primary">
                               {ص.التصنيف}
                             </span>
-                            <span className="text-[12px] text-muted-foreground">{ص.الألوان.length} لون</span>
+                            <span className="text-[12px] text-muted-foreground">{ص.الألوان.length} لون · {ص.عدد_اللطات} لط</span>
+                            {ص.الألوان.some((ل) => ل.تحت_الحد_الأدنى) && (
+                              <span className="rounded-md border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">
+                                {ص.الألوان.filter((ل) => ل.تحت_الحد_الأدنى).length} تحت الحد
+                              </span>
+                            )}
                           </span>
                           <span className="flex items-center gap-4 text-[13px]">
                             <span className="ltr-nums font-semibold">{رقم(ص.الكمية)}</span>
                             <span className="ltr-nums text-muted-foreground">{رقم(ص.الوزن)} كجم</span>
                           </span>
-                        </div>
+                        </button>
 
                         {/* الألوان */}
+                        {صنف_مفتوح && (
                         <table className="w-full text-sm">
                           <tbody>
                             {ص.الألوان.map((ل) => {
@@ -293,8 +310,10 @@ export function شاشة_المخزن({
                             })}
                           </tbody>
                         </table>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
