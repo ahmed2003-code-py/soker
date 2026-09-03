@@ -157,13 +157,14 @@ export async function أضف_شيكات_واردة_دفعة(
   if (!عميل || عميل.type !== "CUSTOMER") return فشل("اختر عميلاً مسجّلاً");
 
   // تحقق التواريخ قبل فتح المعاملة
-  const صفوف: { المبلغ: string; اسم_المدين: string; اسم_البنك: string | null; رقم_الشيك: string | null; تاريخ: Date }[] = [];
+  const صفوف: { المبلغ: string; اسم_المدين: string; المستفيد: string | null; اسم_البنك: string | null; رقم_الشيك: string | null; تاريخ: Date }[] = [];
   for (const [i, ص] of ب.الشيكات.entries()) {
     const تاريخ = تحليل_تاريخ(ص.تاريخ_الاستحقاق);
     if (!تاريخ) return فشل(`تاريخ الاستحقاق غير صالح في الشيك رقم ${i + 1}`);
     صفوف.push({
       المبلغ: ص.المبلغ!,
       اسم_المدين: ص.اسم_المدين?.trim() || عميل.name,
+      المستفيد: ص.المستفيد?.trim() || null,
       اسم_البنك: ص.اسم_البنك?.trim() || null,
       رقم_الشيك: ص.رقم_الشيك?.trim() || null,
       تاريخ,
@@ -180,6 +181,7 @@ export async function أضف_شيكات_واردة_دفعة(
           drawerName: ص.اسم_المدين,
           amount: ص.المبلغ,
           transferredFrom: عميل.name,
+          beneficiary: ص.المستفيد,
           bankName: ص.اسم_البنك,
           dueDate: ص.تاريخ,
           chequeNumber: ص.رقم_الشيك,

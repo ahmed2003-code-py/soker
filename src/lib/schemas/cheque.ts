@@ -44,6 +44,7 @@ export const مخطط_شيك_دفعة = z.object({
     .transform((v) => تحليل_مبلغ(v))
     .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ الشيك يجب أن يكون أكبر من صفر" }),
   اسم_المدين: z.string().trim().optional().nullable(),
+  المستفيد: z.string().trim().optional().nullable(),
   اسم_البنك: z.string().trim().optional().nullable(),
   تاريخ_الاستحقاق: z.string().min(1, "تاريخ الاستحقاق مطلوب"),
   رقم_الشيك: z.string().trim().optional().nullable(),

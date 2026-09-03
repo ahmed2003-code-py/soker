@@ -732,6 +732,7 @@ export function شاشة_الشيكات({
 type صف_شيك_دفعة = {
   المبلغ: string;
   اسم_المدين: string;
+  المستفيد: string;
   اسم_البنك: string;
   تاريخ_الاستحقاق: string;
   رقم_الشيك: string;
@@ -739,6 +740,7 @@ type صف_شيك_دفعة = {
 const صف_دفعة_فارغ = (تاريخ?: string): صف_شيك_دفعة => ({
   المبلغ: "",
   اسم_المدين: "",
+  المستفيد: "",
   اسم_البنك: "",
   // التاريخ يرث من الصف السابق لتسريع الإدخال
   تاريخ_الاستحقاق: تاريخ || new Date().toISOString().slice(0, 10),
@@ -839,6 +841,7 @@ export function حوار_شيك({
       الشيكات: صفوف_فعلية.map((ص) => ({
         المبلغ: ص.المبلغ,
         اسم_المدين: ص.اسم_المدين || null,
+        المستفيد: ص.المستفيد || null,
         اسم_البنك: ص.اسم_البنك || null,
         تاريخ_الاستحقاق: ص.تاريخ_الاستحقاق,
         رقم_الشيك: ص.رقم_الشيك || null,
@@ -1027,6 +1030,7 @@ export function حوار_شيك({
                     <th className="w-8 p-2">#</th>
                     <th className="p-2 text-start">المبلغ *</th>
                     <th className="p-2 text-start">اسم المدين</th>
+                    <th className="p-2 text-start">المستفيد</th>
                     <th className="p-2 text-start">البنك</th>
                     <th className="p-2 text-start">الاستحقاق *</th>
                     <th className="p-2 text-start">رقم الشيك</th>
@@ -1045,6 +1049,10 @@ export function حوار_شيك({
                         <الحقل value={ص.اسم_المدين}
                           onChange={(e) => حدّث_صف(i, "اسم_المدين", e.target.value)}
                           placeholder="اسم العميل لو فاضي" />
+                      </td>
+                      <td className="min-w-36 p-1.5">
+                        <الحقل value={ص.المستفيد}
+                          onChange={(e) => حدّث_صف(i, "المستفيد", e.target.value)} />
                       </td>
                       <td className="min-w-32 p-1.5">
                         <الحقل value={ص.اسم_البنك} onChange={(e) => حدّث_صف(i, "اسم_البنك", e.target.value)} />
