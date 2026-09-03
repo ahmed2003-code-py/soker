@@ -12,16 +12,18 @@ import { استخدام_اللغة } from "@/components/providers/i18n-provider"
 
 export function هيكل_التطبيق({
   المستخدم,
+  مخزن_مفعّل = false,
   children,
 }: {
   المستخدم: { name: string; role: Role };
+  مخزن_مفعّل?: boolean;
   children: React.ReactNode;
 }) {
   const [مطوي, تعيين_مطوي] = React.useState(false);
   const [درج, تعيين_درج] = React.useState(false);
   const مسار = usePathname();
   const { t } = استخدام_اللغة();
-  const العناصر = عناصر_مرئية(المستخدم.role);
+  const العناصر = عناصر_مرئية(المستخدم.role, مخزن_مفعّل);
   const الشريط_السفلي = العناصر.filter((ع) => ع.ضمن_الشريط_السفلي).slice(0, 5);
 
   // إغلاق الدرج عند تغيّر المسار (موبايل)

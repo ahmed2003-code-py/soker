@@ -6,6 +6,7 @@ import {
   Wallet,
   Receipt,
   PiggyBank,
+  Boxes,
   BarChart3,
   UserCog,
   ScrollText,
@@ -37,6 +38,16 @@ export const عناصر_التنقل: عنصر_تنقل[] = [
   { المفتاح: "nav.settings", المسار: "/settings", الأيقونة: Settings, مديرون_فقط: true },
 ];
 
-export function عناصر_مرئية(الدور: Role): عنصر_تنقل[] {
-  return عناصر_التنقل.filter((ع) => !ع.مديرون_فقط || الدور === "ADMIN");
+/** عنصر المخزن — يظهر فقط لما يكون مفعّلاً من الإعدادات */
+const عنصر_المخزن: عنصر_تنقل = { المفتاح: "nav.inventory", المسار: "/inventory", الأيقونة: Boxes };
+
+export function عناصر_مرئية(الدور: Role, مخزن_مفعّل = false): عنصر_تنقل[] {
+  const الكل = مخزن_مفعّل
+    ? [
+        ...عناصر_التنقل.slice(0, عناصر_التنقل.findIndex((ع) => ع.المسار === "/reports")),
+        عنصر_المخزن,
+        ...عناصر_التنقل.slice(عناصر_التنقل.findIndex((ع) => ع.المسار === "/reports")),
+      ]
+    : عناصر_التنقل;
+  return الكل.filter((ع) => !ع.مديرون_فقط || الدور === "ADMIN");
 }

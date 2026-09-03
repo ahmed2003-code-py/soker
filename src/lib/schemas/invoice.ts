@@ -20,6 +20,9 @@ export const مخطط_بند = z.object({
   التصنيف: z.string().trim().min(1, "التصنيف مطلوب"),
   السعر: رقم_اختياري,
   ملاحظات: z.string().trim().optional().nullable(),
+  // ── المخزن (يُتجاهَل تماماً وقت إقفال متغير التشغيل) ──
+  معرف_اللط: z.number().int().positive().optional().nullable(), // الصرف/المرتجع: من أي لط
+  رقم_اللط: z.string().trim().optional().nullable(),            // الوارد: رقم اللط (تلقائي لو فاضي)
 });
 
 export const مخطط_دفعة_الفاتورة = z.object({
@@ -34,6 +37,8 @@ export const مخطط_دفعة_الفاتورة = z.object({
 
 export const مخطط_فاتورة = z.object({
   نوع_الفاتورة: z.enum(["SALE", "PURCHASE", "SUPPLIER_RETURN"]).default("SALE"),
+  // وجهة بضاعة فاتورة الشراء: المخزن (افتراضي) أو توريد مباشر للعميل (بلا أثر مخزني)
+  وجهة_البضاعة: z.enum(["WAREHOUSE", "DIRECT"]).optional().nullable(),
   مرجع_خارجي: z.string().trim().optional().nullable(),
   رقم_الفاتورة_المحدد: z.number().int().positive().optional().nullable(),
   معرف_العميل: z.number().int().positive().optional().nullable(), // null = عميل زائر/مؤقت

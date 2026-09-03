@@ -7,6 +7,7 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_مبلغ } from "@/lib/money";
+import { مفتاح_المخزن, المخزن_مفعّل } from "@/lib/flags";
 
 const مخطط_عام = z.object({
   اسم_الشركة: z.string().trim().min(2, "اسم الشركة مطلوب"),
@@ -109,4 +110,41 @@ export async function حفظ_حدود_الخزنة(مدخلات: Record<string, 
   revalidatePath("/treasury");
   revalidatePath("/dashboard");
   return نجح(undefined, "تم حفظ حدود الخزنة");
+}
+
+/**
+ * تشغيل/إقفال المخزن.
+ * وهو مقفول: النظام يشتغل بالسلوك القديم بالظبط — مفيش تاب مخزن، ومفيش خانات
+ * لطات في الفواتير، ومفيش أي أثر مخزني. البيانات المسجّلة بتفضل مكانها فلو
+ * قفلته وفتحته تاني هتلاقي كل حاجة زي ما سِبتها.
+ */
+export async function بدّل_تفعيل_المخزن(): Promise<نتيجة<{ مفعّل: boolean }>> {
+  const فاعل = await اطلب_المستخدم();
+  تحقق_الصلاحية(فاعل.role, "إدارة_الإعدادات");
+  const الحالي = await المخزن_مفعّل();
+  const الجديد = !الحالي;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.setting.upsert({
+      where: { key: مفتاح_المخزن },
+      update: { value: String(الجديد), updatedById: فاعل.id },
+      create: { key: مفتاح_المخزن, value: String(الجديد), updatedById: فاعل.id },
+    });
+    await تسجيل_عملية(tx, {
+      المستخدم: فاعل.id,
+      العملية: "UPDATE",
+      نوع_الكيان: "الإعدادات",
+      معرف_الكيان: null,
+      التفاصيل: { المخزن: الجديد ? "تم التفعيل" : "تم الإقفال" },
+    });
+  });
+
+  revalidatePath("/", "layout");
+  revalidatePath("/settings");
+  revalidatePath("/inventory");
+  revalidatePath("/invoices");
+  return نجح(
+    { مفعّل: الجديد },
+    الجديد ? "تم تفعيل المخزن — هتلاقي تابه في القائمة" : "تم إقفال المخزن — النظام رجع للسلوك القديم"
+  );
 }

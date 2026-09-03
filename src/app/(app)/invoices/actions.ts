@@ -19,6 +19,7 @@ import {
 import { أنشئ_عملية_مرتبطة, اعكس_عملية_مرتبطة } from "@/lib/integration";
 import { أضف_حركة_خزنة } from "@/lib/treasury";
 import { مخطط_فاتورة } from "@/lib/schemas/invoice";
+import { رحّل_مخزن_الفاتورة, اعكس_مخزن_الفاتورة, امنع_عكس_غير_آمن } from "@/lib/invoice-stock";
 
 /** يُرجع رقم الفاتورة التالي دون تعديل العدّاد (للعرض المبدئي في النموذج) */
 export async function احصل_رقم_الفاتورة_التالي(): Promise<number> {
@@ -66,7 +67,9 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
   const { إجمالي_الكمية, إجمالي_الوزن, الإجمالي_المالي, إجمالي_المبيعات, إجمالي_المرتجعات, بنود_محسوبة } =
     احسب_إجماليات(ب.البنود);
 
-  const فاتورة = await prisma.$transaction(async (tx) => {
+  let فاتورة: { id: number; number: number | null; customerId: number | null };
+  try {
+  فاتورة = await prisma.$transaction(async (tx) => {
     // عميل مؤقت: أنشئ حساباً مؤقتاً (اسم مُدخَل أو مُولّد تلقائياً) داخل نفس المعاملة
     let طرف_فعلي = طرف;
     if (وضع_مؤقت) {
@@ -103,6 +106,7 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
         number: رقم,
         invoiceType: ب.نوع_الفاتورة,
         unpriced: غير_مسعّرة,
+        goodsDestination: ب.نوع_الفاتورة === "PURCHASE" ? (ب.وجهة_البضاعة ?? "WAREHOUSE") : null,
         externalRef: ب.مرجع_خارجي || null,
         customerId: طرف_فعلي?.id ?? null,
         guestName: !طرف_فعلي ? (ب.اسم_الزائر?.trim() || null) : null,
@@ -129,6 +133,30 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
           })),
         },
       },
+    });
+
+    // ── ترحيل المخزن (لا يعمل إلا لو متغير التشغيل مفعّل) ──
+    const بنود_منشأة = await tx.invoiceLine.findMany({
+      where: { invoiceId: f.id }, orderBy: { id: "asc" },
+      select: { id: true, category: true, color: true, company: true, qty: true, weight: true, lineType: true },
+    });
+    await رحّل_مخزن_الفاتورة(tx, {
+      معرف_الفاتورة: f.id,
+      نوع_الفاتورة: ب.نوع_الفاتورة,
+      وجهة_البضاعة: ب.وجهة_البضاعة ?? null,
+      التاريخ: تاريخ,
+      معرف_المورد: هو_مورد ? (طرف_فعلي?.id ?? null) : null,
+      مرجع: ب.مرجع_خارجي ?? null,
+      وصف: `فاتورة ${رقم ?? ب.مرجع_خارجي ?? ""} — ${طرف_فعلي?.name ?? "عميل نقدي"}`,
+      البنود: بنود_منشأة.map((س, i) => ({
+        معرف_البند: س.id,
+        التصنيف: س.category, اللون: س.color, الشركة: س.company,
+        الكمية: س.qty, الوزن: س.weight,
+        نوع_البند: (س.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
+        معرف_اللط: ب.البنود[i]?.معرف_اللط ?? null,
+        رقم_اللط: ب.البنود[i]?.رقم_اللط ?? null,
+      })),
+      أنشأ: فاعل.id,
     });
 
     // ترحيل القيود على حساب الطرف
@@ -226,8 +254,12 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
     });
     return f;
   });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء إنشاء الفاتورة");
+  }
 
   revalidatePath("/invoices");
+  revalidatePath("/inventory");
   if (طرف) {
     if (هو_مورد) revalidatePath(`/suppliers/${طرف.id}`);
     else revalidatePath(`/customers/${طرف.id}`);
@@ -282,7 +314,12 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
     if (مكرر) return فشل(`رقم الفاتورة ${رقم_الجديد} مستخدم بالفعل`);
   }
 
+  try {
   await prisma.$transaction(async (tx) => {
+    // المخزن: امنع التعديل لو البضاعة الواردة اتصرفت (يُطلب مرتجع/تسوية)
+    const مانع = await امنع_عكس_غير_آمن(tx, id);
+    if (مانع) throw new Error(مانع);
+    await اعكس_مخزن_الفاتورة(tx, id);
     // عكس حركات الخزنة المرتبطة بالفاتورة القديمة (دفعات + مبيعات نقدية)
     // نستخدم اعكس_عملية_مرتبطة ليُعكَس الجانبان معاً (الخزنة + قيد الدفعة) — بلا قيود يتيمة
     const حركات_قديمة = await tx.treasuryTxn.findMany({
@@ -300,6 +337,7 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
         number: رقم_الجديد,
         invoiceType: ب.نوع_الفاتورة,
         unpriced: غير_مسعّرة,
+        goodsDestination: ب.نوع_الفاتورة === "PURCHASE" ? (ب.وجهة_البضاعة ?? "WAREHOUSE") : null,
         externalRef: ب.مرجع_خارجي || null,
         customerId: طرف?.id ?? null,
         guestName: !طرف ? (ب.اسم_الزائر?.trim() || null) : null,
@@ -332,6 +370,30 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
         WHERE key = 'عداد_الفواتير' AND value::int < ${رقم_الجديد}
       `;
     }
+
+    // ── إعادة ترحيل المخزن بالبنود الجديدة ──
+    const بنود_محدثة = await tx.invoiceLine.findMany({
+      where: { invoiceId: id }, orderBy: { id: "asc" },
+      select: { id: true, category: true, color: true, company: true, qty: true, weight: true, lineType: true },
+    });
+    await رحّل_مخزن_الفاتورة(tx, {
+      معرف_الفاتورة: id,
+      نوع_الفاتورة: ب.نوع_الفاتورة,
+      وجهة_البضاعة: ب.وجهة_البضاعة ?? null,
+      التاريخ: تاريخ,
+      معرف_المورد: هو_مورد ? (طرف?.id ?? null) : null,
+      مرجع: ب.مرجع_خارجي ?? null,
+      وصف: `فاتورة ${رقم_الجديد ?? ب.مرجع_خارجي ?? ""} — ${طرف?.name ?? "عميل نقدي"}`,
+      البنود: بنود_محدثة.map((س, i) => ({
+        معرف_البند: س.id,
+        التصنيف: س.category, اللون: س.color, الشركة: س.company,
+        الكمية: س.qty, الوزن: س.weight,
+        نوع_البند: (س.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
+        معرف_اللط: ب.البنود[i]?.معرف_اللط ?? null,
+        رقم_اللط: ب.البنود[i]?.رقم_اللط ?? null,
+      })),
+      أنشأ: فاعل.id,
+    });
 
     if (هو_مورد && طرف) {
       await رحّل_فاتورة_للمورد(tx, {
@@ -422,9 +484,13 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
       },
     });
   });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الفاتورة");
+  }
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
+  revalidatePath("/inventory");
   if (طرف) {
     if (هو_مورد) {
       revalidatePath(`/suppliers/${طرف.id}`);
@@ -498,8 +564,13 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
     ? await prisma.invoice.findMany({ where: { directInvoiceId: فاتورة.directInvoiceId } })
     : [فاتورة];
 
+  try {
   await prisma.$transaction(async (tx) => {
     for (const ف of مجموعة) {
+      // المخزن: امنع الحذف لو البضاعة الواردة اتصرفت
+      const مانع = await امنع_عكس_غير_آمن(tx, ف.id);
+      if (مانع) throw new Error(مانع);
+      await اعكس_مخزن_الفاتورة(tx, ف.id);
       // عكس حركات الخزنة المرتبطة بهذه الفاتورة (دفعات + مبيعات نقدية)
       // اعكس_عملية_مرتبطة تعكس الجانبين (الخزنة + قيد الدفعة) فلا يبقى قيد دفعة يتيم
       const حركات_الخزنة = await tx.treasuryTxn.findMany({
@@ -531,8 +602,12 @@ export async function حذف_فاتورة(id: number): Promise<نتيجة> {
       WHERE key = 'عداد_الفواتير'
     `;
   });
+  } catch (e) {
+    return فشل(e instanceof Error ? e.message : "خطأ أثناء حذف الفاتورة");
+  }
 
   revalidatePath("/invoices");
+  revalidatePath("/inventory");
   for (const ف of مجموعة) {
     if (!ف.customerId) continue;
     revalidatePath(`/customers/${ف.customerId}`);

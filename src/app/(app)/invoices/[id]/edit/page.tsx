@@ -6,17 +6,19 @@ import { نموذج_فاتورة } from "../../form";
 import { احصل_قوائم_الفواتير } from "../../actions";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
+import { المخزن_مفعّل } from "@/lib/flags";
 
 export const metadata = { title: "تعديل فاتورة — سُكر" };
 
 export default async function صفحة_تعديل_فاتورة({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   const { t } = مترجم_الخادم();
+  const مخزن = await المخزن_مفعّل();
   const [فاتورة, عملاء, موردون, { تصنيفات, شركات }, حسابات, حسابات_فرعية] = await Promise.all([
     prisma.invoice.findUnique({
       where: { id },
       include: {
-        lines: true,
+        lines: { include: { lot: { select: { lotNo: true } } } },
         treasuryTxns: {
           where: { deletedAt: null },
           select: { amount: true, accountId: true, subAccountId: true },
@@ -111,6 +113,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
             الموردون={موردون_مباشر}
             حسابات_الخزنة={حسابات_للنموذج}
             حسابات_فرعية={حسابات_فرعية}
+            مخزن_مفعّل={مخزن}
             التصنيفات={تصنيفات}
             الشركات={شركات}
             فاتورة={{
@@ -191,6 +194,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
         الموردون={موردون_معدّلة}
         حسابات_الخزنة={حسابات.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}
         حسابات_فرعية={حسابات_فرعية}
+        مخزن_مفعّل={مخزن}
         التصنيفات={تصنيفات}
         الشركات={شركات}
         فاتورة={{
@@ -207,6 +211,8 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           دفعة: دفعة_موجودة,
           البنود: فاتورة.lines.map((l) => ({
             نوع_البند: (l.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
+            معرف_اللط: l.lotId ? String(l.lotId) : "",
+            رقم_اللط: l.lot?.lotNo ?? "",
             اللون: l.color,
             الشركة: l.company ?? "",
             الكمية: String(Number(l.qty)),

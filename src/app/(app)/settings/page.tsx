@@ -5,6 +5,7 @@ import { ترويسة_الصفحة } from "@/components/page-header";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شاشة_الإعدادات } from "./client";
+import { المخزن_مفعّل } from "@/lib/flags";
 
 export const metadata = { title: "الإعدادات — سُكر" };
 export const dynamic = "force-dynamic";
@@ -15,9 +16,10 @@ export default async function صفحة_الإعدادات() {
   if (م.role !== "ADMIN") redirect("/");
   const { t } = مترجم_الخادم();
 
-  const [إعدادات, حسابات] = await Promise.all([
+  const [إعدادات, حسابات, مخزن] = await Promise.all([
     prisma.setting.findMany(),
     prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }),
+    المخزن_مفعّل(),
   ]);
 
   const قاموس: Record<string, string> = {};
@@ -41,6 +43,7 @@ export default async function صفحة_الإعدادات() {
           حد_الائتمان_الافتراضي: قاموس["حد_الائتمان_الافتراضي"] ?? "0",
           طرق_الدفع,
         }}
+        مخزن_مفعّل={مخزن}
         الحسابات={حسابات.map((h) => ({
           id: h.id,
           التسمية: تسمية_حساب_الخزنة[h.type],

@@ -7,7 +7,7 @@ import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
-import { حفظ_الإعدادات_العامة, حفظ_شعار_الشركة, حفظ_حدود_الخزنة } from "./actions";
+import { حفظ_الإعدادات_العامة, حفظ_شعار_الشركة, حفظ_حدود_الخزنة , بدّل_تفعيل_المخزن } from "./actions";
 
 type قيم = {
   اسم_الشركة: string;
@@ -21,15 +21,77 @@ type حساب_خزنة = { id: number; التسمية: string; الحد_الأد
 export function شاشة_الإعدادات({
   القيم,
   الحسابات,
+  مخزن_مفعّل = false,
 }: {
   القيم: قيم;
   الحسابات: حساب_خزنة[];
+  مخزن_مفعّل?: boolean;
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <بطاقة_الشركة الابتدائي={القيم} />
       <بطاقة_الشعار الشعار={القيم.شعار_الشركة} />
       <بطاقة_حدود_الخزنة الحسابات={الحسابات} />
+      <بطاقة_المخزن مفعّل={مخزن_مفعّل} />
+    </div>
+  );
+}
+
+// ============================================================
+// بطاقة: تشغيل/إقفال المخزن
+// ============================================================
+function بطاقة_المخزن({ مفعّل }: { مفعّل: boolean }) {
+  const router = useRouter();
+  const إشعار = useإشعار();
+  const [جارٍ, تعيين_جارٍ] = React.useState(false);
+
+  return (
+    <div className="card-soft space-y-4 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">المخزن</h3>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            تتبّع الأصناف والألوان واللطات — الوارد من فواتير الشراء والصادر من فواتير البيع
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-semibold ${
+            مفعّل
+              ? "border border-success/40 bg-success/10 text-success"
+              : "border border-border bg-appgray text-muted-foreground"
+          }`}
+        >
+          {مفعّل ? "مفعّل" : "مقفول"}
+        </span>
+      </div>
+
+      <ul className="space-y-1.5 text-[13px] text-muted-foreground">
+        <li>• تاب «المخزن» بأرصدة كل صنف ولون ولط، وكشف حركة لكل لط.</li>
+        <li>• فاتورة البيع بتختار اللط وبتمنع الصرف بأكتر من المتاح.</li>
+        <li>• فاتورة الشراء بتضيف البضاعة للمخزن كلطات جديدة.</li>
+        <li>• تنبيه لما أي صنف يوصل للحد الأدنى.</li>
+      </ul>
+
+      <p className="rounded-lg border border-border bg-appgray px-3 py-2 text-[12px] leading-6 text-muted-foreground">
+        {مفعّل
+          ? "لو قفلته: التاب هيختفي والفواتير هترجع تشتغل من غير لطات، وبيانات المخزن هتفضل محفوظة زي ما هي لحد ما تفتحه تاني."
+          : "وهو مقفول النظام شغّال بالسلوك القديم بالظبط — مفيش تاب مخزن ولا خانات لطات في الفواتير ولا أي أثر مخزني."}
+      </p>
+
+      <الزر
+        variant={مفعّل ? "outline" : "success"}
+        disabled={جارٍ}
+        onClick={async () => {
+          تعيين_جارٍ(true);
+          const r = await بدّل_تفعيل_المخزن();
+          تعيين_جارٍ(false);
+          if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+          إشعار.نجاح(r.رسالة!);
+          router.refresh();
+        }}
+      >
+        {جارٍ ? "لحظة…" : مفعّل ? "إقفال المخزن" : "تفعيل المخزن"}
+      </الزر>
     </div>
   );
 }

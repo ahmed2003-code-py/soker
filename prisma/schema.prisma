@@ -41,18 +41,32 @@ enum TxnKind {
 
 enum ChequeStatus {
   REGISTERED // مسجّل (لم يدخل التحصيل بعد)
-  PENDING    // تحت التحصيل / منتظر
-  DEPOSITED  // مودع بالبنك
-  ENDORSED   // مظهّر (سُلّم لمورد)
-  COLLECTED  // محصّل / تم صرفه من البنك
-  SETTLED    // تمت التسوية على دفعات (بدون بنك)
-  BOUNCED    // مرتد
-  CANCELLED  // ملغي
+  PENDING // تحت التحصيل / منتظر
+  DEPOSITED // مودع بالبنك
+  ENDORSED // مظهّر (سُلّم لمورد)
+  COLLECTED // محصّل / تم صرفه من البنك
+  SETTLED // تمت التسوية على دفعات (بدون بنك)
+  BOUNCED // مرتد
+  CANCELLED // ملغي
 }
 
 enum ChequeDirection {
   INCOMING // وارد
   OUTGOING // صادر
+}
+
+enum StockMoveKind {
+  OPENING // جرد افتتاحي (رصيد البداية — بلا مصدر)
+  PURCHASE_IN // وارد شراء من مورد
+  SALE_OUT // صادر بيع لعميل
+  CUSTOMER_RETURN_IN // مرتجع من عميل (يرجع للط)
+  SUPPLIER_RETURN_OUT // مرتجع إلى مورد (يخرج من اللط)
+  ADJUST // تسوية جرد (زيادة أو عجز)
+}
+
+enum GoodsDestination {
+  WAREHOUSE // إضافة للمخزن
+  DIRECT // توريد مباشر للعميل (لا يمس المخزن)
 }
 
 enum ActivityAction {
@@ -77,44 +91,47 @@ model User {
   activities ActivityLog[] @relation("ActivityActor")
 
   // علاقات الطوابع (أنشئ/عُدّل بواسطة)
-  partiesCreated      Party[]           @relation("PartyCreatedBy")
-  partiesUpdated      Party[]           @relation("PartyUpdatedBy")
-  invoicesCreated     Invoice[]         @relation("InvoiceCreatedBy")
-  invoicesUpdated     Invoice[]         @relation("InvoiceUpdatedBy")
-  invoiceLinesCreated InvoiceLine[]     @relation("InvoiceLineCreatedBy")
-  invoiceLinesUpdated InvoiceLine[]     @relation("InvoiceLineUpdatedBy")
-  ledgerCreated       LedgerEntry[]     @relation("LedgerCreatedBy")
-  ledgerUpdated       LedgerEntry[]     @relation("LedgerUpdatedBy")
-  treasuryCreated     TreasuryTxn[]     @relation("TreasuryCreatedBy")
-  treasuryUpdated     TreasuryTxn[]     @relation("TreasuryUpdatedBy")
-  chequesCreated      Cheque[]          @relation("ChequeCreatedBy")
-  chequesUpdated      Cheque[]          @relation("ChequeUpdatedBy")
+  partiesCreated      Party[]                   @relation("PartyCreatedBy")
+  partiesUpdated      Party[]                   @relation("PartyUpdatedBy")
+  invoicesCreated     Invoice[]                 @relation("InvoiceCreatedBy")
+  invoicesUpdated     Invoice[]                 @relation("InvoiceUpdatedBy")
+  invoiceLinesCreated InvoiceLine[]             @relation("InvoiceLineCreatedBy")
+  invoiceLinesUpdated InvoiceLine[]             @relation("InvoiceLineUpdatedBy")
+  ledgerCreated       LedgerEntry[]             @relation("LedgerCreatedBy")
+  ledgerUpdated       LedgerEntry[]             @relation("LedgerUpdatedBy")
+  treasuryCreated     TreasuryTxn[]             @relation("TreasuryCreatedBy")
+  treasuryUpdated     TreasuryTxn[]             @relation("TreasuryUpdatedBy")
+  chequesCreated      Cheque[]                  @relation("ChequeCreatedBy")
+  chequesUpdated      Cheque[]                  @relation("ChequeUpdatedBy")
   chequeAllocsCreated ChequeInvoiceAllocation[] @relation("ChequeAllocCreatedBy")
-  chequeBooksCreated  ChequeBook[]      @relation("ChequeBookCreatedBy")
-  settlementBatches   SettlementBatch[] @relation("SettlementBatchCreatedBy")
-  expenseItemsCreated MonthlyExpenseItem[]   @relation("ExpenseItemCreatedBy")
-  expenseItemsUpdated MonthlyExpenseItem[]   @relation("ExpenseItemUpdatedBy")
-  expensePeriods      MonthlyExpensePeriod[] @relation("ExpensePeriodCreatedBy")
-  settingsUpdated     Setting[]         @relation("SettingUpdatedBy")
+  chequeBooksCreated  ChequeBook[]              @relation("ChequeBookCreatedBy")
+  settlementBatches   SettlementBatch[]         @relation("SettlementBatchCreatedBy")
+  expenseItemsCreated MonthlyExpenseItem[]      @relation("ExpenseItemCreatedBy")
+  expenseItemsUpdated MonthlyExpenseItem[]      @relation("ExpenseItemUpdatedBy")
+  expensePeriods      MonthlyExpensePeriod[]    @relation("ExpensePeriodCreatedBy")
+  lotsCreated         Lot[]                     @relation("LotCreatedBy")
+  stockMovesCreated   StockMovement[]           @relation("StockMoveCreatedBy")
+  stockMinimums       StockMinimum[]            @relation("StockMinCreatedBy")
+  settingsUpdated     Setting[]                 @relation("SettingUpdatedBy")
 
   @@map("users")
 }
 
 // ==================== Party (الطرف: عميل/مورد) ====================
 model Party {
-  id          Int       @id @default(autoincrement())
-  name        String    @map("name")
-  phone       String?   @map("phone")
-  address     String?   @map("address")
-  type        PartyType @map("type")
-  creditLimit     Decimal?  @map("credit_limit") @db.Decimal(18, 4)
-  openingBalance  Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
-  balance         Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
-  phones          Json      @default("[]") @map("phones")
-  notes           String?   @map("notes")
-  active      Boolean   @default(true) @map("active")
-  isTemporary Boolean   @default(false) @map("is_temporary") // عميل مؤقت (بيع نقدي غير مسجّل)
-  archivedAt  DateTime? @map("archived_at")                  // أُرشف تلقائياً عند تصفية رصيده
+  id             Int       @id @default(autoincrement())
+  name           String    @map("name")
+  phone          String?   @map("phone")
+  address        String?   @map("address")
+  type           PartyType @map("type")
+  creditLimit    Decimal?  @map("credit_limit") @db.Decimal(18, 4)
+  openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
+  balance        Decimal   @default(0) @map("balance") @db.Decimal(18, 4)
+  phones         Json      @default("[]") @map("phones")
+  notes          String?   @map("notes")
+  active         Boolean   @default(true) @map("active")
+  isTemporary    Boolean   @default(false) @map("is_temporary") // عميل مؤقت (بيع نقدي غير مسجّل)
+  archivedAt     DateTime? @map("archived_at") // أُرشف تلقائياً عند تصفية رصيده
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("PartyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -123,12 +140,13 @@ model Party {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  invoices      Invoice[]
-  ledgerEntries LedgerEntry[]
-  treasuryTxns  TreasuryTxn[]
-  cheques       Cheque[]      @relation("PartyCheques")
-  endorsedCheques Cheque[]    @relation("PartyEndorsedCheques")
+  invoices          Invoice[]
+  ledgerEntries     LedgerEntry[]
+  treasuryTxns      TreasuryTxn[]
+  cheques           Cheque[]          @relation("PartyCheques")
+  endorsedCheques   Cheque[]          @relation("PartyEndorsedCheques")
   settlementBatches SettlementBatch[]
+  lotsSupplied      Lot[]             @relation("LotSupplier")
 
   @@index([type])
   @@index([name])
@@ -141,24 +159,28 @@ model Party {
 
 // ==================== Invoice (الفاتورة) ====================
 model Invoice {
-  id          Int      @id @default(autoincrement())
-  number      Int?     @unique @map("number") // تسلسلي — null لفواتير الشراء (رقمها من المورد)
-  customerId  Int?     @map("customer_id")   // null = عميل زائر (walk-in)
-  customer    Party?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  guestName   String?  @map("guest_name")   // اسم العميل الزائر للطباعة
-  phone       String?  @map("phone")
-  date        DateTime @map("date") @db.Date
-  totalQty    Decimal  @default(0) @map("total_qty") @db.Decimal(18, 4)
-  totalWeight Decimal  @default(0) @map("total_weight") @db.Decimal(18, 4)
-  totalAmount Decimal  @default(0) @map("total_amount") @db.Decimal(18, 4)
-  invoiceType String   @default("SALE") @map("invoice_type") // SALE | PURCHASE | SUPPLIER_RETURN
-  unpriced    Boolean  @default(false) @map("unpriced") // فاتورة غير مسعّرة — محفوظة بلا أثر مالي حتى تُسعَّر
-  externalRef String?  @map("external_ref") // رقم فاتورة المورد (للجاية)
-  notes       String?  @map("notes")
-  shareToken  String?  @unique @map("share_token")
+  id               Int               @id @default(autoincrement())
+  number           Int?              @unique @map("number") // تسلسلي — null لفواتير الشراء (رقمها من المورد)
+  customerId       Int?              @map("customer_id") // null = عميل زائر (walk-in)
+  customer         Party?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  guestName        String?           @map("guest_name") // اسم العميل الزائر للطباعة
+  phone            String?           @map("phone")
+  date             DateTime          @map("date") @db.Date
+  totalQty         Decimal           @default(0) @map("total_qty") @db.Decimal(18, 4)
+  totalWeight      Decimal           @default(0) @map("total_weight") @db.Decimal(18, 4)
+  totalAmount      Decimal           @default(0) @map("total_amount") @db.Decimal(18, 4)
+  invoiceType      String            @default("SALE") @map("invoice_type") // SALE | PURCHASE | SUPPLIER_RETURN
+  unpriced         Boolean           @default(false) @map("unpriced") // فاتورة غير مسعّرة — محفوظة بلا أثر مالي حتى تُسعَّر
+  externalRef      String?           @map("external_ref") // رقم فاتورة المورد (للجاية)
+  notes            String?           @map("notes")
+  shareToken       String?           @unique @map("share_token")
+  // ── المخزن ──
+  goodsDestination GoodsDestination? @map("goods_destination") // وجهة بضاعة فاتورة الشراء
+  stockPosted      Boolean           @default(false) @map("stock_posted") // أثّرت على المخزون؟
+  stockMovements   StockMovement[]
   // مجموعة الفاتورة المباشرة (مورد ← عميل): الفاتورتان المرتبطتان تحملان نفس المعرّف
-  directInvoiceId Int?           @map("direct_invoice_id")
-  directInvoice   DirectInvoice? @relation(fields: [directInvoiceId], references: [id], onDelete: SetNull)
+  directInvoiceId  Int?              @map("direct_invoice_id")
+  directInvoice    DirectInvoice?    @relation(fields: [directInvoiceId], references: [id], onDelete: SetNull)
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -167,9 +189,9 @@ model Invoice {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  lines         InvoiceLine[]
-  ledgerEntries LedgerEntry[]
-  treasuryTxns  TreasuryTxn[]
+  lines             InvoiceLine[]
+  ledgerEntries     LedgerEntry[]
+  treasuryTxns      TreasuryTxn[]
   chequeAllocations ChequeInvoiceAllocation[]
 
   @@index([date])
@@ -180,18 +202,22 @@ model Invoice {
 
 // ==================== InvoiceLine (بند الفاتورة) ====================
 model InvoiceLine {
-  id        Int      @id @default(autoincrement())
-  invoiceId Int      @map("invoice_id")
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  lineType  String   @default("SALE") @map("line_type") // SALE | RETURN
-  color     String   @map("color")
-  company   String?  @map("company") // الشركة / المصنع
-  qty       Decimal  @default(0) @map("qty") @db.Decimal(18, 4)
-  weight    Decimal  @default(0) @map("weight") @db.Decimal(18, 4)
-  category  String   @map("category")
-  price     Decimal? @map("price") @db.Decimal(18, 4)
-  lineTotal Decimal  @default(0) @map("line_total") @db.Decimal(18, 4) // السعر × الوزن
-  notes     String?  @map("notes")
+  id             Int             @id @default(autoincrement())
+  invoiceId      Int             @map("invoice_id")
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineType       String          @default("SALE") @map("line_type") // SALE | RETURN
+  color          String          @map("color")
+  company        String?         @map("company") // الشركة / المصنع
+  qty            Decimal         @default(0) @map("qty") @db.Decimal(18, 4)
+  weight         Decimal         @default(0) @map("weight") @db.Decimal(18, 4)
+  category       String          @map("category")
+  price          Decimal?        @map("price") @db.Decimal(18, 4)
+  lineTotal      Decimal         @default(0) @map("line_total") @db.Decimal(18, 4) // السعر × الوزن
+  notes          String?         @map("notes")
+  // اللط: الوارد ينشئه، والصادر/المرتجع يخصم منه أو يرجّع إليه
+  lotId          Int?            @map("lot_id")
+  lot            Lot?            @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  stockMovements StockMovement[]
 
   createdById Int?     @map("created_by_id")
   createdBy   User?    @relation("InvoiceLineCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -202,6 +228,7 @@ model InvoiceLine {
 
   @@index([invoiceId])
   @@index([category])
+  @@index([lotId])
   @@map("invoice_lines")
 }
 
@@ -220,10 +247,10 @@ model LedgerEntry {
   credit       Decimal  @default(0) @map("credit") @db.Decimal(18, 4) // دائن
   balanceAfter Decimal  @default(0) @map("balance_after") @db.Decimal(18, 4)
 
-  invoiceId     Int?         @map("invoice_id")
-  invoice       Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
-  treasuryTxnId Int?         @unique @map("treasury_txn_id")
-  treasuryTxn   TreasuryTxn? @relation(fields: [treasuryTxnId], references: [id], onDelete: SetNull)
+  invoiceId       Int?           @map("invoice_id")
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  treasuryTxnId   Int?           @unique @map("treasury_txn_id")
+  treasuryTxn     TreasuryTxn?   @relation(fields: [treasuryTxnId], references: [id], onDelete: SetNull)
   directPaymentId Int?           @map("direct_payment_id")
   directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
   splitPaymentId  Int?           @map("split_payment_id")
@@ -276,32 +303,32 @@ model TreasuryAccount {
 
 // ==================== TreasuryTxn (حركة الخزنة) ====================
 model TreasuryTxn {
-  id           Int             @id @default(autoincrement())
-  date         DateTime        @map("date")
-  kind         TxnKind         @map("kind")
-  amount       Decimal         @map("amount") @db.Decimal(18, 4)
-  accountId    Int             @map("account_id")
-  account      TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  description  String          @map("description")
-  partyId          Int?            @map("party_id")
-  party            Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
-  externalPartyName String?        @map("external_party_name") // اسم الطرف الخارجي (غير مسجّل)
-  invoiceId    Int?            @map("invoice_id")
-  invoice      Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
-  method       String?         @map("method")
-  balanceAfter Decimal         @default(0) @map("balance_after") @db.Decimal(18, 4)
+  id                Int             @id @default(autoincrement())
+  date              DateTime        @map("date")
+  kind              TxnKind         @map("kind")
+  amount            Decimal         @map("amount") @db.Decimal(18, 4)
+  accountId         Int             @map("account_id")
+  account           TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  description       String          @map("description")
+  partyId           Int?            @map("party_id")
+  party             Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  externalPartyName String?         @map("external_party_name") // اسم الطرف الخارجي (غير مسجّل)
+  invoiceId         Int?            @map("invoice_id")
+  invoice           Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  method            String?         @map("method")
+  balanceAfter      Decimal         @default(0) @map("balance_after") @db.Decimal(18, 4)
 
   subAccountId Int?        @map("sub_account_id")
   subAccount   SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: SetNull)
 
   // الجهة المقابلة في دفتر الأستاذ (تحصيل/صرف)
-  ledgerEntry     LedgerEntry?  @relation
-  directPaymentId Int?           @map("direct_payment_id")
-  directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
-  splitPaymentId  Int?           @map("split_payment_id")
-  splitPayment    SplitPayment?  @relation(fields: [splitPaymentId], references: [id], onDelete: SetNull)
-  chequeId        Int?           @map("cheque_id") // دفعة تسوية لشيك صادر (بدون أثر على دفتر الأستاذ)
-  cheque          Cheque?        @relation("ChequeSettlementTxns", fields: [chequeId], references: [id], onDelete: SetNull)
+  ledgerEntry            LedgerEntry?          @relation
+  directPaymentId        Int?                  @map("direct_payment_id")
+  directPayment          DirectPayment?        @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
+  splitPaymentId         Int?                  @map("split_payment_id")
+  splitPayment           SplitPayment?         @relation(fields: [splitPaymentId], references: [id], onDelete: SetNull)
+  chequeId               Int?                  @map("cheque_id") // دفعة تسوية لشيك صادر (بدون أثر على دفتر الأستاذ)
+  cheque                 Cheque?               @relation("ChequeSettlementTxns", fields: [chequeId], references: [id], onDelete: SetNull)
   // بند المصروف الشهري الذي تُخصم منه هذه الحركة (تصنيف فقط — لا أثر محاسبي إضافي)
   monthlyExpensePeriodId Int?                  @map("monthly_expense_period_id")
   monthlyExpensePeriod   MonthlyExpensePeriod? @relation(fields: [monthlyExpensePeriodId], references: [id], onDelete: SetNull)
@@ -351,10 +378,10 @@ model DirectInvoice {
 
 // ==================== SplitPayment (دفعة موزّعة — قيد واحد + حركات خزنة متعددة) ====================
 model SplitPayment {
-  id        Int       @id @default(autoincrement())
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  settlementBatchId Int?            @map("settlement_batch_id") // معاملة السداد المركّب التي تنتمي إليها
+  id                Int              @id @default(autoincrement())
+  deletedAt         DateTime?        @map("deleted_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  settlementBatchId Int?             @map("settlement_batch_id") // معاملة السداد المركّب التي تنتمي إليها
   settlementBatch   SettlementBatch? @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
 
   ledgerEntries LedgerEntry[]
@@ -386,47 +413,47 @@ model SettlementBatch {
 
 // ==================== Cheque (الشيك) ====================
 model Cheque {
-  id              Int              @id @default(autoincrement())
-  drawerName      String           @map("drawer_name")
-  amount          Decimal          @map("amount") @db.Decimal(18, 4)
-  direction       ChequeDirection  @default(INCOMING) @map("direction")
-  beneficiary     String?          @map("beneficiary")
-  transferredFrom String?          @map("transferred_from")
-  bankName        String?          @map("bank_name")
-  dueDate         DateTime         @map("due_date") @db.Date
-  chequeNumber    String?          @map("cheque_number")
-  status          ChequeStatus     @default(PENDING) @map("status")
-  collectedTxnId  Int?             @unique @map("collected_txn_id") // حركة الخزنة عند التحصيل الفعلي (نقدي/بنك)
-  partyLedgerEntryId Int?          @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
-  endorseLedgerEntryId Int?        @map("endorse_ledger_entry_id") // قيد أثر التظهير على المورد (شيك وارد مُظهَّر)
-  endorseBatchId  Int?             @map("endorse_batch_id") // معرّف «معاملة» التظهير — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
-  settlementBatchId Int?           @map("settlement_batch_id") // معاملة السداد المركّب (شيكات + نقدي/تحويلات معاً)
-  settlementBatch SettlementBatch? @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
-  receiptBatchId  Int?             @map("receipt_batch_id") // معرّف «معاملة» الاستلام من العميل — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
-  endorsedToId    Int?             @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
-  endorsedAt      DateTime?        @map("endorsed_at") // تاريخ تظهير الشيك للمورد (يُعرض بجانب «مظهّر»)
-  endorsedTo      Party?           @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
-  partyId         Int?             @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
-  party           Party?           @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
-  settlementTxns  TreasuryTxn[]    @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
-  settlesChequeId Int?             @map("settles_cheque_id") // شيك وارد استُخدم لتمويل تسوية شيك صادر
-  settlesCheque   Cheque?          @relation("ChequeSettlement", fields: [settlesChequeId], references: [id], onDelete: SetNull)
-  settledByCheques Cheque[]        @relation("ChequeSettlement") // الشيكات الواردة المستخدمة في تسوية هذا الشيك الصادر
-  allocations     ChequeInvoiceAllocation[] // توزيع قيمة الشيك على فواتير (المرحلة 4)
-  chequeBookId    Int?             @map("cheque_book_id") // دفتر/حافظة الشيك (المرحلة 5)
-  chequeBook      ChequeBook?      @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
-  bookLeafNo      Int?             @map("book_leaf_no") // رقم الورقة داخل الدفتر
-  accountingVersion Int            @default(2) @map("accounting_version") // 1=النموذج القديم، 2=نموذج خزنة الشيكات (الشيكات الجديدة)
-  isOpening       Boolean          @default(false) @map("is_opening") // شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي) — لا حركة عند الإدخال
-  openingBaseline ChequeStatus?    @map("opening_baseline") // حالة الشيك الافتتاحي وقت الإدخال (نقطة البداية المحسوبة مسبقاً)
-  openingAccountId Int?            @map("opening_account_id") // حساب الخزنة للحالة المُحقَّقة مسبقاً (مودع/محصّل) — لعكسها عند الارتداد
-  openingSubAccountId Int?         @map("opening_sub_account_id")
-  cancelReason    String?          @map("cancel_reason") // سبب الإلغاء (حالة ملغي)
-  cancelledAt     DateTime?        @map("cancelled_at")  // تاريخ الإلغاء
-  notes           String?          @map("notes")
-  imageData       Bytes?       @map("image_data") // مخزّنة في Postgres لتبقى على Railway
-  imageMime       String?      @map("image_mime")
-  ocrText         String?      @map("ocr_text")
+  id                   Int                       @id @default(autoincrement())
+  drawerName           String                    @map("drawer_name")
+  amount               Decimal                   @map("amount") @db.Decimal(18, 4)
+  direction            ChequeDirection           @default(INCOMING) @map("direction")
+  beneficiary          String?                   @map("beneficiary")
+  transferredFrom      String?                   @map("transferred_from")
+  bankName             String?                   @map("bank_name")
+  dueDate              DateTime                  @map("due_date") @db.Date
+  chequeNumber         String?                   @map("cheque_number")
+  status               ChequeStatus              @default(PENDING) @map("status")
+  collectedTxnId       Int?                      @unique @map("collected_txn_id") // حركة الخزنة عند التحصيل الفعلي (نقدي/بنك)
+  partyLedgerEntryId   Int?                      @map("party_ledger_entry_id") // قيد أثر الطرف (يُنشأ عند الاستلام/التسليم)
+  endorseLedgerEntryId Int?                      @map("endorse_ledger_entry_id") // قيد أثر التظهير على المورد (شيك وارد مُظهَّر)
+  endorseBatchId       Int?                      @map("endorse_batch_id") // معرّف «معاملة» التظهير — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
+  settlementBatchId    Int?                      @map("settlement_batch_id") // معاملة السداد المركّب (شيكات + نقدي/تحويلات معاً)
+  settlementBatch      SettlementBatch?          @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
+  receiptBatchId       Int?                      @map("receipt_batch_id") // معرّف «معاملة» الاستلام من العميل — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
+  endorsedToId         Int?                      @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
+  endorsedAt           DateTime?                 @map("endorsed_at") // تاريخ تظهير الشيك للمورد (يُعرض بجانب «مظهّر»)
+  endorsedTo           Party?                    @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
+  partyId              Int?                      @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
+  party                Party?                    @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
+  settlementTxns       TreasuryTxn[]             @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
+  settlesChequeId      Int?                      @map("settles_cheque_id") // شيك وارد استُخدم لتمويل تسوية شيك صادر
+  settlesCheque        Cheque?                   @relation("ChequeSettlement", fields: [settlesChequeId], references: [id], onDelete: SetNull)
+  settledByCheques     Cheque[]                  @relation("ChequeSettlement") // الشيكات الواردة المستخدمة في تسوية هذا الشيك الصادر
+  allocations          ChequeInvoiceAllocation[] // توزيع قيمة الشيك على فواتير (المرحلة 4)
+  chequeBookId         Int?                      @map("cheque_book_id") // دفتر/حافظة الشيك (المرحلة 5)
+  chequeBook           ChequeBook?               @relation("BookCheques", fields: [chequeBookId], references: [id], onDelete: SetNull)
+  bookLeafNo           Int?                      @map("book_leaf_no") // رقم الورقة داخل الدفتر
+  accountingVersion    Int                       @default(2) @map("accounting_version") // 1=النموذج القديم، 2=نموذج خزنة الشيكات (الشيكات الجديدة)
+  isOpening            Boolean                   @default(false) @map("is_opening") // شيك افتتاحي (محسوب ضمن الرصيد الافتتاحي) — لا حركة عند الإدخال
+  openingBaseline      ChequeStatus?             @map("opening_baseline") // حالة الشيك الافتتاحي وقت الإدخال (نقطة البداية المحسوبة مسبقاً)
+  openingAccountId     Int?                      @map("opening_account_id") // حساب الخزنة للحالة المُحقَّقة مسبقاً (مودع/محصّل) — لعكسها عند الارتداد
+  openingSubAccountId  Int?                      @map("opening_sub_account_id")
+  cancelReason         String?                   @map("cancel_reason") // سبب الإلغاء (حالة ملغي)
+  cancelledAt          DateTime?                 @map("cancelled_at") // تاريخ الإلغاء
+  notes                String?                   @map("notes")
+  imageData            Bytes?                    @map("image_data") // مخزّنة في Postgres لتبقى على Railway
+  imageMime            String?                   @map("image_mime")
+  ocrText              String?                   @map("ocr_text")
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("ChequeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -471,14 +498,14 @@ model ChequeInvoiceAllocation {
 // ==================== ChequeBook (دفتر/حافظة الشيكات — المرحلة 5) ====================
 // دفتر شيكات صادرة (بنك + مدى أرقام + أوراق) أو حافظة شيكات واردة (تجميع بالاسم).
 model ChequeBook {
-  id          Int             @id @default(autoincrement())
-  name        String          @map("name") // اسم الدفتر / الحافظة
-  direction   ChequeDirection @default(OUTGOING) @map("direction") // صادر = دفتر، وارد = حافظة
-  bankName    String?         @map("bank_name")
-  startNo     Int?            @map("start_no") // أول رقم ورقة (للدفاتر الصادرة)
-  endNo       Int?            @map("end_no")   // آخر رقم ورقة
-  notes       String?         @map("notes")
-  isActive    Boolean         @default(true) @map("is_active")
+  id        Int             @id @default(autoincrement())
+  name      String          @map("name") // اسم الدفتر / الحافظة
+  direction ChequeDirection @default(OUTGOING) @map("direction") // صادر = دفتر، وارد = حافظة
+  bankName  String?         @map("bank_name")
+  startNo   Int?            @map("start_no") // أول رقم ورقة (للدفاتر الصادرة)
+  endNo     Int?            @map("end_no") // آخر رقم ورقة
+  notes     String?         @map("notes")
+  isActive  Boolean         @default(true) @map("is_active")
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("ChequeBookCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -495,11 +522,11 @@ model ChequeBook {
 // البند نفسه (إيجار/كهربا/مرتبات…) بمبلغه المقرر الافتراضي. يتكرر تلقائياً كل شهر:
 // عند فتح شهر جديد يُولَّد له «بند شهر» بالمبلغ الافتراضي + فرق الشهر السابق (مرحَّل).
 model MonthlyExpenseItem {
-  id            Int      @id @default(autoincrement())
-  name          String   @map("name")
-  defaultAmount Decimal  @map("default_amount") @db.Decimal(18, 4) // المبلغ المقرر الافتراضي
-  active        Boolean  @default(true) @map("active")
-  notes         String?  @map("notes")
+  id            Int     @id @default(autoincrement())
+  name          String  @map("name")
+  defaultAmount Decimal @map("default_amount") @db.Decimal(18, 4) // المبلغ المقرر الافتراضي
+  active        Boolean @default(true) @map("active")
+  notes         String? @map("notes")
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("ExpenseItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -518,14 +545,14 @@ model MonthlyExpenseItem {
 // المقرر لهذا الشهر + المرحَّل من الشهر السابق (موجب = فائض لم يُصرَف، سالب = تجاوز).
 // المتاح = المقرر + المرحَّل، والمدفوع = مجموع حركات الخزنة المرتبطة بهذا البند.
 model MonthlyExpensePeriod {
-  id        Int     @id @default(autoincrement())
-  itemId    Int     @map("item_id")
+  id        Int                @id @default(autoincrement())
+  itemId    Int                @map("item_id")
   item      MonthlyExpenseItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  year      Int     @map("year")
-  month     Int     @map("month") // 1..12
-  amount    Decimal @map("amount") @db.Decimal(18, 4)                 // المقرر لهذا الشهر
-  carriedIn Decimal @default(0) @map("carried_in") @db.Decimal(18, 4) // المرحَّل من الشهر السابق (± )
-  notes     String? @map("notes")
+  year      Int                @map("year")
+  month     Int                @map("month") // 1..12
+  amount    Decimal            @map("amount") @db.Decimal(18, 4) // المقرر لهذا الشهر
+  carriedIn Decimal            @default(0) @map("carried_in") @db.Decimal(18, 4) // المرحَّل من الشهر السابق (± )
+  notes     String?            @map("notes")
 
   createdById Int      @map("created_by_id")
   createdBy   User     @relation("ExpensePeriodCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -537,6 +564,89 @@ model MonthlyExpensePeriod {
   @@unique([itemId, year, month])
   @@index([year, month])
   @@map("monthly_expense_periods")
+}
+
+// ==================== Lot (اللط: دفعة بضاعة داخل المخزن) ====================
+// وحدة الرصيد في المخزن = (الصنف × اللون × اللط). كل استلام من مورد ينشئ لطاً
+// جديداً برصيد كمية (شكاير) ووزن (كجم)، والصرف يخصم من لط بعينه.
+// الرصيد مخزَّن ويُعاد حسابه من الحركات (نفس نمط دفتر الأستاذ والخزنة).
+model Lot {
+  id         Int       @id @default(autoincrement())
+  lotNo      String    @map("lot_no") // رقم اللط (تلقائي أو من المورد)
+  category   String    @map("category") // الصنف
+  color      String    @map("color") // اللون
+  company    String?   @map("company") // الشركة/المصنع (معلومة)
+  qty        Decimal   @default(0) @map("qty") @db.Decimal(18, 4) // رصيد الكمية (شكاير)
+  weight     Decimal   @default(0) @map("weight") @db.Decimal(18, 4) // رصيد الوزن (كجم)
+  receivedAt DateTime  @map("received_at")
+  closedAt   DateTime? @map("closed_at") // أُقفل عند نفاد الكمية (للعرض والـ FIFO)
+  notes      String?   @map("notes")
+
+  supplierId Int?   @map("supplier_id")
+  supplier   Party? @relation("LotSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("LotCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  movements    StockMovement[]
+  invoiceLines InvoiceLine[]
+
+  @@unique([category, color, lotNo])
+  @@index([category, color])
+  @@index([receivedAt])
+  @@index([closedAt])
+  @@map("lots")
+}
+
+// ==================== StockMovement (حركة مخزن) ====================
+// سجل حركة لكل لط (append-only بحذف ناعم): كل شراء/بيع/مرتجع/تسوية.
+// الإشارة من النوع: الوارد موجب والصادر سالب، ونحفظ الرصيد بعد الحركة للكشف.
+model StockMovement {
+  id                 Int           @id @default(autoincrement())
+  lotId              Int           @map("lot_id")
+  lot                Lot           @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  kind               StockMoveKind @map("kind")
+  date               DateTime      @map("date")
+  qty                Decimal       @default(0) @map("qty") @db.Decimal(18, 4) // موجب دائماً؛ الاتجاه من النوع
+  weight             Decimal       @default(0) @map("weight") @db.Decimal(18, 4)
+  balanceAfterQty    Decimal       @default(0) @map("balance_after_qty") @db.Decimal(18, 4)
+  balanceAfterWeight Decimal       @default(0) @map("balance_after_weight") @db.Decimal(18, 4)
+  description        String?       @map("description")
+
+  invoiceId     Int?         @map("invoice_id")
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceLineId Int?         @map("invoice_line_id")
+  invoiceLine   InvoiceLine? @relation(fields: [invoiceLineId], references: [id], onDelete: SetNull)
+
+  createdById Int       @map("created_by_id")
+  createdBy   User      @relation("StockMoveCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([lotId, date])
+  @@index([invoiceId])
+  @@index([kind])
+  @@map("stock_movements")
+}
+
+// ==================== StockMinimum (الحد الأدنى للمخزون) ====================
+// حد أدنى لكل صنف، أو لصنف+لون بعينه (اللون null = الصنف كله).
+model StockMinimum {
+  id        Int     @id @default(autoincrement())
+  category  String  @map("category")
+  color     String? @map("color")
+  minQty    Decimal @default(0) @map("min_qty") @db.Decimal(18, 4)
+  minWeight Decimal @default(0) @map("min_weight") @db.Decimal(18, 4)
+
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("StockMinCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([category, color])
+  @@map("stock_minimums")
 }
 
 // ==================== ActivityLog (سجل العمليات) ====================
@@ -558,12 +668,12 @@ model ActivityLog {
 
 // ==================== Setting (الإعدادات) ====================
 model Setting {
-  id        Int      @id @default(autoincrement())
-  key       String   @unique @map("key")
-  value     String   @map("value")
-  updatedById Int?   @map("updated_by_id")
-  updatedBy User?    @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          Int      @id @default(autoincrement())
+  key         String   @unique @map("key")
+  value       String   @map("value")
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("settings")
 }
