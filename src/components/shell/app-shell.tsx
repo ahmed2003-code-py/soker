@@ -10,6 +10,8 @@ import { الشريط_العلوي } from "./topbar";
 import { عناصر_مرئية } from "./nav-items";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 
+export const حدث_تبديل_المخزن = "soker:inventory-toggle";
+
 export function هيكل_التطبيق({
   المستخدم,
   مخزن_مفعّل = false,
@@ -20,10 +22,18 @@ export function هيكل_التطبيق({
   children: React.ReactNode;
 }) {
   const [مطوي, تعيين_مطوي] = React.useState(false);
+  // تاب المخزن يظهر/يختفي فور الضغط على زر الإعدادات، من غير انتظار تحديث السيرفر
+  const [مخزن, تعيين_مخزن] = React.useState(مخزن_مفعّل);
+  React.useEffect(() => { تعيين_مخزن(مخزن_مفعّل); }, [مخزن_مفعّل]);
+  React.useEffect(() => {
+    const عند = (ح: Event) => تعيين_مخزن((ح as CustomEvent<boolean>).detail);
+    window.addEventListener(حدث_تبديل_المخزن, عند);
+    return () => window.removeEventListener(حدث_تبديل_المخزن, عند);
+  }, []);
   const [درج, تعيين_درج] = React.useState(false);
   const مسار = usePathname();
   const { t } = استخدام_اللغة();
-  const العناصر = عناصر_مرئية(المستخدم.role, مخزن_مفعّل);
+  const العناصر = عناصر_مرئية(المستخدم.role, مخزن);
   const الشريط_السفلي = العناصر.filter((ع) => ع.ضمن_الشريط_السفلي).slice(0, 5);
 
   // إغلاق الدرج عند تغيّر المسار (موبايل)

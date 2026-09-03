@@ -253,21 +253,29 @@ export async function اجلب_لطات_متاحة(التصنيف: string, ال�
   return اللطات_المتاحة(التصنيف.trim(), اللون.trim(), ش && ش !== "بدون شركة" ? ش : null);
 }
 
-export type لون_مخزن = { اللون: string; الكمية: number; الوزن: number };
+export type لط_مخزن = {
+  id: number; رقم_اللط: string; الكمية: number; الوزن: number;
+  تاريخ_الاستلام: string; المورد: string | null; الشركة: string | null;
+};
+export type لون_مخزن = { اللون: string; الكمية: number; الوزن: number; اللطات: لط_مخزن[] };
 export type صنف_مخزن = { التصنيف: string; الكمية: number; الوزن: number; الألوان: لون_مخزن[] };
 export type شركة_مخزن = { الشركة: string; الكمية: number; الوزن: number; الأصناف: صنف_مخزن[] };
 
 /**
- * كتالوج المخزن بترتيب الإدخال في الفاتورة: **الشركة ← الصنف ← اللون**.
- * كل مستوى بيعرض المتاح فيه، فالمستخدم ما يقدرش يختار حاجة مش موجودة عنده.
+ * كتالوج المخزن بترتيب الإدخال في الفاتورة: **الشركة ← الصنف ← اللون ← اللطات**.
+ * بيرجع كل حاجة في طلب واحد وقت فتح الفاتورة، فاختيار اللط فوري زي الباقي
+ * (بدل طلب جديد للسيرفر مع كل لون). اللطات مرتّبة FIFO (الأقدم أولاً).
  */
 export async function اجلب_أصناف_المخزن(): Promise<شركة_مخزن[]> {
   if (!(await المخزن_مفعّل())) return [];
   await اطلب_المستخدم();
   const لطات = await prisma.lot.findMany({
     where: { qty: { gt: 0 } },
-    orderBy: [{ company: "asc" }, { category: "asc" }, { color: "asc" }],
-    select: { category: true, color: true, company: true, qty: true, weight: true },
+    orderBy: [{ company: "asc" }, { category: "asc" }, { color: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true, lotNo: true, category: true, color: true, company: true,
+      qty: true, weight: true, receivedAt: true, supplier: { select: { name: true } },
+    },
   });
 
   const شركات = new Map<string, { الشركة: string; الكمية: number; الوزن: number; أصناف: Map<string, { التصنيف: string; الكمية: number; الوزن: number; ألوان: Map<string, لون_مخزن> }> }>();
@@ -281,9 +289,14 @@ export async function اجلب_أصناف_المخزن(): Promise<شركة_مخ�
     ص.الكمية += Number(ل.qty);
     ص.الوزن += Number(ل.weight);
 
-    const لون = ص.ألوان.get(ل.color) ?? { اللون: ل.color, الكمية: 0, الوزن: 0 };
+    const لون = ص.ألوان.get(ل.color) ?? { اللون: ل.color, الكمية: 0, الوزن: 0, اللطات: [] };
     لون.الكمية += Number(ل.qty);
     لون.الوزن += Number(ل.weight);
+    لون.اللطات.push({
+      id: ل.id, رقم_اللط: ل.lotNo, الكمية: Number(ل.qty), الوزن: Number(ل.weight),
+      تاريخ_الاستلام: ل.receivedAt.toISOString(), المورد: ل.supplier?.name ?? null,
+      الشركة: ل.company,
+    });
 
     ص.ألوان.set(ل.color, لون);
     ش.أصناف.set(ل.category, ص);

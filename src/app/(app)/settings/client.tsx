@@ -7,6 +7,7 @@ import { الحقل } from "@/components/ui/input";
 import { العنوان } from "@/components/ui/label";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
+import { حدث_تبديل_المخزن } from "@/components/shell/app-shell";
 import { حفظ_الإعدادات_العامة, حفظ_شعار_الشركة, حفظ_حدود_الخزنة , بدّل_تفعيل_المخزن } from "./actions";
 
 type قيم = {
@@ -44,6 +45,12 @@ function بطاقة_المخزن({ مفعّل }: { مفعّل: boolean }) {
   const router = useRouter();
   const إشعار = useإشعار();
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
+  // تبديل متفائل: الحالة تتقلب في الشاشة فوراً والحفظ بيكمّل في الخلفية،
+  // ولو فشل بترجع زي ما كانت. (تحديث القائمة الجانبية بيوصل بعدها بلحظة.)
+  const [محلي, تعيين_محلي] = React.useState(مفعّل);
+  const أبلغ_الهيكل = (قيمة: boolean) =>
+    window.dispatchEvent(new CustomEvent(حدث_تبديل_المخزن, { detail: قيمة }));
+  React.useEffect(() => { تعيين_محلي(مفعّل); }, [مفعّل]);
 
   return (
     <div className="card-soft space-y-4 p-5">
@@ -55,13 +62,13 @@ function بطاقة_المخزن({ مفعّل }: { مفعّل: boolean }) {
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-semibold ${
-            مفعّل
+          className={`shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+            محلي
               ? "border border-success/40 bg-success/10 text-success"
               : "border border-border bg-appgray text-muted-foreground"
           }`}
         >
-          {مفعّل ? "مفعّل" : "مقفول"}
+          {محلي ? "مفعّل" : "مقفول"}
         </span>
       </div>
 
@@ -73,24 +80,31 @@ function بطاقة_المخزن({ مفعّل }: { مفعّل: boolean }) {
       </ul>
 
       <p className="rounded-lg border border-border bg-appgray px-3 py-2 text-[12px] leading-6 text-muted-foreground">
-        {مفعّل
+        {محلي
           ? "لو قفلته: التاب هيختفي والفواتير هترجع تشتغل من غير لطات، وبيانات المخزن هتفضل محفوظة زي ما هي لحد ما تفتحه تاني."
           : "وهو مقفول النظام شغّال بالسلوك القديم بالظبط — مفيش تاب مخزن ولا خانات لطات في الفواتير ولا أي أثر مخزني."}
       </p>
 
       <الزر
-        variant={مفعّل ? "outline" : "success"}
+        variant={محلي ? "outline" : "success"}
         disabled={جارٍ}
         onClick={async () => {
+          const قبل = محلي;
+          تعيين_محلي(!قبل);   // انقلاب فوري
+          أبلغ_الهيكل(!قبل);  // التاب في القائمة الجانبية يتغيّر في نفس اللحظة
           تعيين_جارٍ(true);
           const r = await بدّل_تفعيل_المخزن();
           تعيين_جارٍ(false);
-          if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+          if (!r.نجاح) {
+            تعيين_محلي(قبل);  // رجّع الحالة لو فشل
+            أبلغ_الهيكل(قبل);
+            return إشعار.خطأ(r.رسالة);
+          }
           إشعار.نجاح(r.رسالة!);
           router.refresh();
         }}
       >
-        {جارٍ ? "لحظة…" : مفعّل ? "إقفال المخزن" : "تفعيل المخزن"}
+        {محلي ? "إقفال المخزن" : "تفعيل المخزن"}
       </الزر>
     </div>
   );

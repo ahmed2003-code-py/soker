@@ -139,10 +139,8 @@ export async function بدّل_تفعيل_المخزن(): Promise<نتيجة<{ �
     });
   });
 
+  // القائمة الجانبية في التخطيط + الصفحتين المتأثرتين (الفواتير بتقرا المفتاح وقت فتحها)
   revalidatePath("/", "layout");
-  revalidatePath("/settings");
-  revalidatePath("/inventory");
-  revalidatePath("/invoices");
   return نجح(
     { مفعّل: الجديد },
     الجديد ? "تم تفعيل المخزن — هتلاقي تابه في القائمة" : "تم إقفال المخزن — النظام رجع للسلوك القديم"
