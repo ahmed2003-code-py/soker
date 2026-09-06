@@ -62,10 +62,15 @@ const config: Config = {
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
+        "row-highlight": {
+          "0%, 100%": { backgroundColor: "transparent" },
+          "15%, 65%": { backgroundColor: "rgb(var(--warning-soft) / 1)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.2s ease-out",
         "fade-out": "fade-out 0.25s ease-in forwards",
+        "row-highlight": "row-highlight 2.4s ease-in-out",
       },
     },
   },

@@ -28,20 +28,25 @@ export function البحث_الموحد() {
       return;
     }
     setLoad(true);
+    let ألغيت = false;
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
+        if (ألغيت) return; // استعلام لاحق سبق ورد رده — تجاهل هذا الرد المتأخر
         setG(data.المجموعات ?? []);
         setOpen(true);
         setIdx(-1);
       } catch {
-        setG([]);
+        if (!ألغيت) setG([]);
       } finally {
-        setLoad(false);
+        if (!ألغيت) setLoad(false);
       }
     }, 300);
-    return () => clearTimeout(t);
+    return () => {
+      ألغيت = true;
+      clearTimeout(t);
+    };
   }, [q]);
 
   React.useEffect(() => {

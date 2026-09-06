@@ -93,6 +93,26 @@ export function شاشة_الخزنة({
   const [من, تعيين_من] = React.useState("");
   const [إلى, تعيين_إلى] = React.useState("");
   const [تفاصيل_حساب, تعيين_تفاصيل_حساب] = React.useState<حساب | null>(null);
+  const [حركة_مُبرزة, تعيين_حركة_مُبرزة] = React.useState<number | null>(null);
+  const طُبّق_إبراز_الحركة = React.useRef(false);
+
+  // وصول من نتيجة بحث بمعرّف حركة محدّد (?id=): أزل أي فلاتر تخفيها وأبرزها في الجدول
+  React.useEffect(() => {
+    if (طُبّق_إبراز_الحركة.current) return;
+    const مُعرّف = new URLSearchParams(window.location.search).get("id");
+    if (!مُعرّف) return;
+    const رقم = Number(مُعرّف);
+    if (!Number.isFinite(رقم)) return;
+    طُبّق_إبراز_الحركة.current = true;
+    تعيين_فلتر_حساب("");
+    تعيين_فلتر_نوع("");
+    تعيين_من("");
+    تعيين_إلى("");
+    تعيين_حركة_مُبرزة(رقم);
+    const t = setTimeout(() => تعيين_حركة_مُبرزة(null), 3000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // حسابات فرعية محلية — تتزامن مع الخادم بعد كل router.refresh()
   const [حسابات_فرعية_محلية, تعيين_حسابات_فرعية_محلية] = React.useState<خريطة_حسابات_فرعية>(حسابات_فرعية);
@@ -443,6 +463,7 @@ export function شاشة_الخزنة({
         البيانات={حركات_مصفّاة}
         مفتاح_الصف={(ص) => ص.id}
         رسالة_فراغ={t("treasury.empty")}
+        صف_مُبرز={حركة_مُبرزة}
         إجراءات_الصف={(ص) => (
           <div className="flex items-center justify-end gap-1">
             {ص.معرف_دفع_مباشر != null ? (

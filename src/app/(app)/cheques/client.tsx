@@ -189,6 +189,30 @@ export function شاشة_الشيكات({
     () => new Set([`${سنة_الآن}-${شهر_الآن}`])
   );
 
+  // وصول من نتيجة بحث بمعرّف شيك محدّد (?id=): افتح تفاصيله على طول بعد إزالة أي فلاتر تخفيه
+  const طُبّق_إبراز_الشيك = React.useRef(false);
+  React.useEffect(() => {
+    if (طُبّق_إبراز_الشيك.current) return;
+    const مُعرّف = new URLSearchParams(window.location.search).get("id");
+    if (!مُعرّف) return;
+    const رقم = Number(مُعرّف);
+    if (!Number.isFinite(رقم)) return;
+    const ش = البيانات.find((c) => c.id === رقم);
+    if (!ش) return;
+    طُبّق_إبراز_الشيك.current = true;
+    تعيين_تبويب(ش.الاتجاه);
+    تعيين_حالة_فلتر("");
+    تعيين_من("");
+    تعيين_إلى("");
+    const d = new Date(ش.تاريخ_الاستحقاق);
+    const سنة = d.getFullYear();
+    const مفتاح_شهر = `${سنة}-${d.getMonth()}`;
+    تعيين_سنوات_مفتوحة((prev) => (prev.has(سنة) ? prev : new Set(prev).add(سنة)));
+    تعيين_شهور_مفتوحة((prev) => (prev.has(مفتاح_شهر) ? prev : new Set(prev).add(مفتاح_شهر)));
+    تعيين_تفاصيل_شيك(ش);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function تبديل_سنة(s: number) {
     تعيين_سنوات_مفتوحة((prev) => {
       const n = new Set(prev);

@@ -33,6 +33,7 @@ export async function GET(req: Request) {
         OR: [
           ...(رقمي ? [{ number: Number(q) }] : []),
           { customer: { name: c } },
+          { externalRef: c },
         ],
       },
       select: { id: true, number: true, externalRef: true, totalAmount: true, customer: { select: { name: true } } },
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       orderBy: { dueDate: "asc" },
     }),
     prisma.treasuryTxn.findMany({
-      where: { OR: [{ description: c }, { party: { name: c } }] },
+      where: { deletedAt: null, OR: [{ description: c }, { party: { name: c } }] },
       include: { party: { select: { name: true } } },
       take: حد,
       orderBy: { date: "desc" },
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
         id: ch.id,
         عنوان: ch.drawerName,
         وصف: `${ch.bankName ?? ""} — ${تنسيق_مبلغ(ch.amount)}`,
-        رابط: `/cheques`,
+        رابط: `/cheques?id=${ch.id}`,
       })),
     });
   if (حركات.length)
@@ -92,7 +93,7 @@ export async function GET(req: Request) {
         id: t.id,
         عنوان: t.description,
         وصف: `${t.party?.name ?? ""} — ${تنسيق_مبلغ(t.amount)}`,
-        رابط: `/treasury`,
+        رابط: `/treasury?id=${t.id}`,
       })),
     });
 

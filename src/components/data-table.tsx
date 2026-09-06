@@ -33,6 +33,8 @@ type الخصائص<ت> = {
   رسالة_فراغ?: string;
   إجراءات_الصف?: (صف: ت) => React.ReactNode;
   عند_النقر?: (صف: ت) => void;
+  /** مفتاح صف يُقفز تلقائياً لصفحته ويُبرَز ويُمرَّر إليه (مثلاً عند الوصول من نتيجة بحث) */
+  صف_مُبرز?: string | number | null;
 };
 
 export function جدول_بيانات<ت>({
@@ -47,6 +49,7 @@ export function جدول_بيانات<ت>({
   رسالة_فراغ,
   إجراءات_الصف,
   عند_النقر,
+  صف_مُبرز,
 }: الخصائص<ت>) {
   const { t, اتجاه } = استخدام_اللغة();
   const نص_البحث_الفعلي = نص_البحث ?? t("dt.search");
@@ -99,6 +102,30 @@ export function جدول_بيانات<ت>({
     تعيين_صفحة(1);
   }, [استعلام, فرز]);
 
+  // اقفز لصفحة الترقيم التي تحوي الصف المطلوب إبرازه (قادم من نتيجة بحث مثلاً)
+  React.useEffect(() => {
+    if (صف_مُبرز == null) return;
+    const فهرس = مرتبة.findIndex((صف) => String(مفتاح_الصف(صف)) === String(صف_مُبرز));
+    if (فهرس === -1) return;
+    تعيين_صفحة(Math.floor(فهرس / لكل_صفحة) + 1);
+    // نعمل هذا مرة واحدة فقط عند تغيّر الصف المُبرز نفسه — لا نعيد القفز لو المستخدم بدّل الصفحة يدوياً بعدها
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [صف_مُبرز]);
+
+  const حاوية_الجدول = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (صف_مُبرز == null) return;
+    const t = setTimeout(() => {
+      const عناصر = حاوية_الجدول.current?.querySelectorAll<HTMLElement>(
+        `[data-row-key="${CSS.escape(String(صف_مُبرز))}"]`
+      );
+      عناصر?.forEach((el) => {
+        if (el.offsetParent !== null) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [صف_مُبرز, الصفحة_الحالية]);
+
   function بدّل_الفرز(مفتاح: string) {
     تعيين_فرز((س) =>
       s_eq(س, مفتاح) ? { مفتاح, تصاعدي: !س!.تصاعدي } : { مفتاح, تصاعدي: true }
@@ -109,7 +136,7 @@ export function جدول_بيانات<ت>({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={حاوية_الجدول}>
       {بحث && (
         <div className="relative max-w-sm">
           <Search className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-50" />
@@ -168,10 +195,12 @@ export function جدول_بيانات<ت>({
               مرئية.map((صف) => (
                 <tr
                   key={مفتاح_الصف(صف)}
+                  data-row-key={مفتاح_الصف(صف)}
                   onClick={() => عند_النقر?.(صف)}
                   className={cn(
                     "transition hover:bg-appgray/60",
-                    عند_النقر && "cursor-pointer"
+                    عند_النقر && "cursor-pointer",
+                    صف_مُبرز != null && String(مفتاح_الصف(صف)) === String(صف_مُبرز) && "animate-row-highlight"
                   )}
                 >
                   {الأعمدة.map((ع) => (
@@ -221,8 +250,13 @@ export function جدول_بيانات<ت>({
           مرئية.map((صف) => (
             <div
               key={مفتاح_الصف(صف)}
+              data-row-key={مفتاح_الصف(صف)}
               onClick={() => عند_النقر?.(صف)}
-              className={cn("card-soft space-y-2 p-4", عند_النقر && "cursor-pointer")}
+              className={cn(
+                "card-soft space-y-2 p-4",
+                عند_النقر && "cursor-pointer",
+                صف_مُبرز != null && String(مفتاح_الصف(صف)) === String(صف_مُبرز) && "animate-row-highlight"
+              )}
             >
               {الأعمدة
                 .filter((ع) => !ع.مخفي_موبايل)
