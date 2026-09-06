@@ -465,19 +465,22 @@ export async function رصيد_خزنة_الشيكات(
 }
 
 /**
- * إجمالي المُسدَّد على شيك صادر (تسوية على دفعات) = دفعات الخزنة + قيمة الشيكات الواردة المستخدمة.
- * الشيكات الواردة تموّل التسوية بلا أثر على دفتر الأستاذ (المورد اتخصم وقت الإصدار).
+ * إجمالي المُسدَّد على شيك صادر (تسوية على دفعات) = دفعات الخزنة + قيمة الشيكات الواردة المستخدمة
+ * + قيم التحويلات المباشرة من عملاء. الشيكات الواردة والتحويلات المباشرة تموّل التسوية بلا أثر
+ * على دفتر الأستاذ الخاص بالمورد (مستحقه اتخصم وقت الإصدار) — أثرها فقط على حساب العميل المحوِّل.
  */
 export async function مُسدَّد_تسوية(
   db: PrismaClient | Prisma.TransactionClient,
   معرف_الشيك_الصادر: number
 ): Promise<Prisma.Decimal> {
-  const [دفعات, شيكات] = await Promise.all([
+  const [دفعات, شيكات, تحويلات_عملاء] = await Promise.all([
     db.treasuryTxn.findMany({ where: { chequeId: معرف_الشيك_الصادر, deletedAt: null }, select: { amount: true } }),
     db.cheque.findMany({ where: { settlesChequeId: معرف_الشيك_الصادر }, select: { amount: true } }),
+    db.ledgerEntry.findMany({ where: { chequeSettlementId: معرف_الشيك_الصادر, deletedAt: null }, select: { credit: true } }),
   ]);
   let م = د(0);
   for (const د2 of دفعات) م = م.plus(د2.amount);
   for (const ش of شيكات) م = م.plus(ش.amount);
+  for (const ق of تحويلات_عملاء) م = م.plus(ق.credit);
   return م;
 }

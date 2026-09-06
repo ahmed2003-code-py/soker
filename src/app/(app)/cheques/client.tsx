@@ -25,7 +25,7 @@ import { سجل_التغييرات } from "@/components/record-history";
 import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { حقول_OCR_للشيك } from "./ocr-upload";
-import { إنشاء_شيك, أضف_شيكات_واردة_دفعة, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيكات, احذف_دفعة_شيك, حوّل_شيك_لعادي, حوّل_شيك_لافتتاحي } from "./actions";
+import { إنشاء_شيك, أضف_شيكات_واردة_دفعة, تعديل_شيك, تغيير_حالة_شيك, حذف_شيك, أضف_دفعة_تسوية, احذف_دفعة_تسوية, أضف_دفعة_تسوية_من_عميل, احذف_دفعة_تسوية_من_عميل, اجلب_دفعات_التسوية, سداد_مركب_لمورد, اجلب_فواتير_الطرف_للتوزيع, حدّد_توزيع_شيك, اجلب_شيكات_متاحة_للتسوية, سدّد_تسوية_بشيكات, احذف_دفعة_شيك, حوّل_شيك_لعادي, حوّل_شيك_لافتتاحي } from "./actions";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
 import { استخدم_تراجع_الحذف } from "@/hooks/use-undo-delete";
 import { أنشئ_حساب_فرعي, type خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
@@ -635,6 +635,7 @@ export function شاشة_الشيكات({
           الشيك={تسوية_شيك}
           حسابات_الخزنة={حسابات_الخزنة}
           حسابات_فرعية={حسابات_فرعية}
+          عملاء={الأطراف.filter((p) => p.النوع === "CUSTOMER")}
           عند_الإغلاق={() => { تعيين_تسوية_شيك(null); router.refresh(); }}
         />
       )}
@@ -1420,20 +1421,23 @@ function حوار_تسوية({
   الشيك,
   حسابات_الخزنة,
   حسابات_فرعية,
+  عملاء,
   عند_الإغلاق,
 }: {
   الشيك: شيك;
   حسابات_الخزنة: { id: number; النوع: TreasuryAccountType; التسمية: string }[];
   حسابات_فرعية: خريطة_حسابات_فرعية;
+  عملاء: طرف_شيك[];
   عند_الإغلاق: () => void;
 }) {
   const إشعار = useإشعار();
-  const [بيانات, تعيين_بيانات] = React.useState<{ الإجمالي: number; المُسدَّد: number; الدفعات: { نوع: "خزنة" | "شيك"; id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] } | null>(null);
+  const [بيانات, تعيين_بيانات] = React.useState<{ الإجمالي: number; المُسدَّد: number; الدفعات: { نوع: "خزنة" | "شيك" | "عميل"; id: number; المبلغ: number; الطريقة: string | null; التاريخ: string; البيان: string }[] } | null>(null);
   const [مبلغ, تعيين_مبلغ] = React.useState("");
   const [حساب, تعيين_حساب] = React.useState(String(حسابات_الخزنة[0]?.id ?? ""));
   const [حساب_فرعي, تعيين_حساب_فرعي] = React.useState("");
   const [جارٍ, تعيين_جارٍ] = React.useState(false);
-  const [وسيلة, تعيين_وسيلة] = React.useState<"خزنة" | "شيك">("خزنة");
+  const [وسيلة, تعيين_وسيلة] = React.useState<"خزنة" | "شيك" | "عميل">("خزنة");
+  const [معرف_عميل_تسوية, تعيين_معرف_عميل_تسوية] = React.useState("");
   const [شيكات_متاحة, تعيين_شيكات_متاحة] = React.useState<{ id: number; المبلغ: number; الاسم: string; رقم_الشيك: string | null; اسم_البنك: string | null; تاريخ_الاستحقاق: string }[]>([]);
   const [مختارة, تعيين_مختارة] = React.useState<Set<number>>(new Set());
   const [محمّل, تعيين_محمّل] = React.useState(false);
@@ -1511,6 +1515,29 @@ function حوار_تسوية({
     await حمّل();
   }
 
+  async function أضف_من_عميل() {
+    const م = Number(مبلغ.replace(/,/g, "")) || 0;
+    if (!معرف_عميل_تسوية) return إشعار.خطأ("اختر العميل");
+    if (م <= 0) return إشعار.خطأ("أدخل مبلغاً");
+    if (م > متبقٍ + 0.005) return إشعار.خطأ(`المبلغ أكبر من المتبقي (${متبقٍ.toLocaleString("en-US", { minimumFractionDigits: 2 })})`);
+    تعيين_جارٍ(true);
+    const r = await أضف_دفعة_تسوية_من_عميل(الشيك.id, {
+      المبلغ: مبلغ.replace(/,/g, ""),
+      معرف_العميل: Number(معرف_عميل_تسوية),
+    });
+    تعيين_جارٍ(false);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    تعيين_مبلغ("");
+    await حمّل();
+  }
+  async function احذف_عميل_دفعة(معرف_القيد: number) {
+    const r = await احذف_دفعة_تسوية_من_عميل(معرف_القيد);
+    if (!r.نجاح) return إشعار.خطأ(r.رسالة);
+    إشعار.نجاح(r.رسالة!);
+    await حمّل();
+  }
+
   async function احذف(txnId: number) {
     const r = await احذف_دفعة_تسوية(txnId);
     if (!r.نجاح) return إشعار.خطأ(r.رسالة);
@@ -1542,14 +1569,23 @@ function حوار_تسوية({
               <div key={`${د.نوع}-${د.id}`} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-sm">
                 <span className="flex items-center gap-2 min-w-0">
                   <نص_مبلغ القيمة={د.المبلغ} />
-                  {د.نوع === "شيك"
-                    ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary shrink-0">شيك وارد</span>
-                    : <span className="text-[11px] text-muted-foreground">{د.الطريقة ?? ""}</span>}
-                  {د.نوع === "شيك" && <span className="truncate text-[11px] text-muted-foreground">{د.البيان}</span>}
+                  {د.نوع === "شيك" ? (
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary shrink-0">شيك وارد</span>
+                  ) : د.نوع === "عميل" ? (
+                    <span className="rounded bg-primary-blue/10 px-1.5 py-0.5 text-[10px] text-primary-blue shrink-0">تحويل من عميل — {د.الطريقة}</span>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">{د.الطريقة ?? ""}</span>
+                  )}
+                  {د.نوع !== "خزنة" && <span className="truncate text-[11px] text-muted-foreground">{د.البيان}</span>}
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
                   <نص_تاريخ القيمة={د.التاريخ} className="text-[11px] text-muted-foreground" />
-                  <الزر size="sm" variant="ghost" onClick={() => (د.نوع === "شيك" ? احذف_شيك_دفعة(د.id) : احذف(د.id))} title={د.نوع === "شيك" ? "إرجاع الشيك" : "حذف الدفعة"}><Trash2 className="size-4 text-danger" /></الزر>
+                  <الزر
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => (د.نوع === "شيك" ? احذف_شيك_دفعة(د.id) : د.نوع === "عميل" ? احذف_عميل_دفعة(د.id) : احذف(د.id))}
+                    title={د.نوع === "شيك" ? "إرجاع الشيك" : "حذف الدفعة"}
+                  ><Trash2 className="size-4 text-danger" /></الزر>
                 </span>
               </div>
             ))}
@@ -1564,6 +1600,7 @@ function حوار_تسوية({
               <div className="flex rounded-lg border border-border overflow-hidden text-[12px]">
                 <button type="button" className={`px-3 py-1 transition ${وسيلة === "خزنة" ? "bg-primary text-white" : "bg-card hover:bg-appgray"}`} onClick={() => تعيين_وسيلة("خزنة")}>من الخزنة</button>
                 <button type="button" className={`px-3 py-1 transition ${وسيلة === "شيك" ? "bg-primary text-white" : "bg-card hover:bg-appgray"}`} onClick={() => تعيين_وسيلة("شيك")}>بشيك وارد</button>
+                <button type="button" className={`px-3 py-1 transition ${وسيلة === "عميل" ? "bg-primary text-white" : "bg-card hover:bg-appgray"}`} onClick={() => تعيين_وسيلة("عميل")}>تحويل من عميل</button>
               </div>
             </div>
 
@@ -1579,6 +1616,15 @@ function حوار_تسوية({
                   </div>
                 )}
                 <الزر variant="success" onClick={أضف} disabled={جارٍ}><Plus className="size-4" /> دفعة</الزر>
+              </div>
+            ) : وسيلة === "عميل" ? (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[160px] space-y-1"><span className="text-[11px] text-muted-foreground">العميل</span>
+                  <قائمة_اختيار الخيارات={عملاء.map((p) => ({ القيمة: String(p.id), التسمية: p.الاسم }))} القيمة={معرف_عميل_تسوية} عند_التغيير={تعيين_معرف_عميل_تسوية} نص_بديل="اختر العميل…" />
+                </div>
+                <div className="w-28 space-y-1"><span className="text-[11px] text-muted-foreground">المبلغ</span><الحقل selectOnFocus className="ltr-nums" value={مبلغ} onChange={(e) => تعيين_مبلغ(e.target.value)} placeholder="0.00" /></div>
+                <الزر variant="success" onClick={أضف_من_عميل} disabled={جارٍ}><Plus className="size-4" /> دفعة</الزر>
+                <p className="w-full text-[11px] text-muted-foreground">يقلّل دين العميل بقيمة الدفعة ويخصمها من المتبقّي على الشيك — بلا أي حركة خزنة.</p>
               </div>
             ) : (
               <div className="space-y-1.5">

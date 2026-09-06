@@ -255,6 +255,9 @@ model LedgerEntry {
   directPayment   DirectPayment? @relation(fields: [directPaymentId], references: [id], onDelete: SetNull)
   splitPaymentId  Int?           @map("split_payment_id")
   splitPayment    SplitPayment?  @relation(fields: [splitPaymentId], references: [id], onDelete: SetNull)
+  // دفعة تسوية شيك صادر عبر تحويل مباشر من عميل (بلا حركة خزنة) — قيد دائن على العميل يقلّل المتبقّي على الشيك
+  chequeSettlementId Int?    @map("cheque_settlement_id")
+  chequeSettlement   Cheque? @relation("ChequeSettlementLedger", fields: [chequeSettlementId], references: [id], onDelete: SetNull)
 
   createdById Int       @map("created_by_id")
   createdBy   User      @relation("LedgerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -268,6 +271,7 @@ model LedgerEntry {
   @@index([invoiceId])
   @@index([directPaymentId])
   @@index([splitPaymentId])
+  @@index([chequeSettlementId])
   @@map("ledger_entries")
 }
 
@@ -436,6 +440,7 @@ model Cheque {
   partyId              Int?                      @map("party_id") // ربط اختياري بعميل (وارد) أو مورد (صادر)
   party                Party?                    @relation("PartyCheques", fields: [partyId], references: [id], onDelete: SetNull)
   settlementTxns       TreasuryTxn[]             @relation("ChequeSettlementTxns") // دفعات تسوية الشيك الصادر
+  settlementLedgerEntries LedgerEntry[]          @relation("ChequeSettlementLedger") // دفعات تسوية الشيك الصادر عبر تحويل مباشر من عميل
   settlesChequeId      Int?                      @map("settles_cheque_id") // شيك وارد استُخدم لتمويل تسوية شيك صادر
   settlesCheque        Cheque?                   @relation("ChequeSettlement", fields: [settlesChequeId], references: [id], onDelete: SetNull)
   settledByCheques     Cheque[]                  @relation("ChequeSettlement") // الشيكات الواردة المستخدمة في تسوية هذا الشيك الصادر
