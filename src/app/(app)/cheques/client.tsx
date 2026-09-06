@@ -189,7 +189,9 @@ export function شاشة_الشيكات({
     () => new Set([`${سنة_الآن}-${شهر_الآن}`])
   );
 
-  // وصول من نتيجة بحث بمعرّف شيك محدّد (?id=): افتح تفاصيله على طول بعد إزالة أي فلاتر تخفيه
+  // وصول من نتيجة بحث بمعرّف شيك محدّد (?id=): وسّع سنته وشهره واعمل سكرول له مع إبرازه —
+  // بالظبط زي لو المستخدم فتح السنة بنفسه ونزل لحد ما وصل للشيك.
+  const [شيك_مُبرز, تعيين_شيك_مُبرز] = React.useState<number | null>(null);
   const طُبّق_إبراز_الشيك = React.useRef(false);
   React.useEffect(() => {
     if (طُبّق_إبراز_الشيك.current) return;
@@ -209,7 +211,9 @@ export function شاشة_الشيكات({
     const مفتاح_شهر = `${سنة}-${d.getMonth()}`;
     تعيين_سنوات_مفتوحة((prev) => (prev.has(سنة) ? prev : new Set(prev).add(سنة)));
     تعيين_شهور_مفتوحة((prev) => (prev.has(مفتاح_شهر) ? prev : new Set(prev).add(مفتاح_شهر)));
-    تعيين_تفاصيل_شيك(ش);
+    تعيين_شيك_مُبرز(رقم);
+    const مؤقت = setTimeout(() => تعيين_شيك_مُبرز(null), 3000);
+    return () => clearTimeout(مؤقت);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -319,6 +323,8 @@ export function شاشة_الشيكات({
       البيانات={بيانات}
       مفتاح_الصف={(ص) => ص.id}
       نص_البحث={t("cheque.search")}
+      صف_مُبرز={شيك_مُبرز}
+      عند_النقر={(ص) => تعيين_تفاصيل_شيك(ص)}
       رسالة_فراغ={t("cheque.empty")}
       إجراءات_الصف={(ص) => (
         <div className="flex justify-end gap-1">
