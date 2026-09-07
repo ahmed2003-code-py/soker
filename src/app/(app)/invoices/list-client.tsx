@@ -137,12 +137,32 @@ function جدول_فواتير({
 
 export function قائمة_الفواتير({ البيانات }: { البيانات: صف[] }) {
   const [التاب, تعيين_التاب] = React.useState<"customers" | "purchases">("customers");
+  const [فقط_غير_مسعّرة, تعيين_فقط_غير_مسعّرة] = React.useState(false);
 
-  const فواتير_العملاء = البيانات.filter((f) => f.النوع !== "PURCHASE");
-  const فواتير_الشراء = البيانات.filter((f) => f.النوع === "PURCHASE");
+  const عدد_غير_مسعّرة_الكل = البيانات.filter((f) => f.غير_مسعّرة).length;
+  const مُطبَّقة = فقط_غير_مسعّرة ? البيانات.filter((f) => f.غير_مسعّرة) : البيانات;
+  const فواتير_العملاء = مُطبَّقة.filter((f) => f.النوع !== "PURCHASE");
+  const فواتير_الشراء = مُطبَّقة.filter((f) => f.النوع === "PURCHASE");
 
   return (
     <div>
+      {/* فلتر: غير مسعّرة فقط */}
+      {عدد_غير_مسعّرة_الكل > 0 && (
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => تعيين_فقط_غير_مسعّرة((v) => !v)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
+              فقط_غير_مسعّرة
+                ? "border-amber-300 bg-amber-100 text-amber-800"
+                : "border-border bg-card hover:bg-appgray"
+            }`}
+          >
+            غير مسعّرة فقط ({عدد_غير_مسعّرة_الكل})
+          </button>
+        </div>
+      )}
+
       {/* تابات */}
       <div className="flex gap-1 border-b mb-4">
         {(
