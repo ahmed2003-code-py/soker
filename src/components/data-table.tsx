@@ -35,6 +35,8 @@ type الخصائص<ت> = {
   عند_النقر?: (صف: ت) => void;
   /** مفتاح صف يُقفز تلقائياً لصفحته ويُبرَز ويُمرَّر إليه (مثلاً عند الوصول من نتيجة بحث) */
   صف_مُبرز?: string | number | null;
+  /** عناصر إضافية (شرائح فلاتر مثلاً) تُعرض جنب حقل البحث في نفس الصف */
+  أدوات_إضافية?: React.ReactNode;
 };
 
 export function جدول_بيانات<ت>({
@@ -50,6 +52,7 @@ export function جدول_بيانات<ت>({
   إجراءات_الصف,
   عند_النقر,
   صف_مُبرز,
+  أدوات_إضافية,
 }: الخصائص<ت>) {
   const { t, اتجاه } = استخدام_اللغة();
   const نص_البحث_الفعلي = نص_البحث ?? t("dt.search");
@@ -137,15 +140,20 @@ export function جدول_بيانات<ت>({
 
   return (
     <div className="space-y-3" ref={حاوية_الجدول}>
-      {بحث && (
-        <div className="relative max-w-sm">
-          <Search className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-50" />
-          <الحقل
-            value={استعلام}
-            onChange={(e) => تعيين_استعلام(e.target.value)}
-            placeholder={نص_البحث_الفعلي}
-            className="pe-9"
-          />
+      {(بحث || أدوات_إضافية) && (
+        <div className="flex flex-wrap items-center gap-3">
+          {بحث && (
+            <div className="relative max-w-sm flex-1 min-w-[180px]">
+              <Search className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-50" />
+              <الحقل
+                value={استعلام}
+                onChange={(e) => تعيين_استعلام(e.target.value)}
+                placeholder={نص_البحث_الفعلي}
+                className="pe-9"
+              />
+            </div>
+          )}
+          {أدوات_إضافية}
         </div>
       )}
 

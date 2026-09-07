@@ -31,11 +31,17 @@ function جدول_فواتير({
   عنوان_الطرف,
   عنوان_الرقم,
   منقوص_الرقم,
+  فقط_غير_مسعّرة,
+  عدد_غير_مسعّرة,
+  تبديل_الفلتر,
 }: {
   البيانات: صف[];
   عنوان_الطرف: string;
   عنوان_الرقم: string;
   منقوص_الرقم?: boolean; // عرض externalRef بدل الرقم التسلسلي
+  فقط_غير_مسعّرة: boolean;
+  عدد_غير_مسعّرة: number;
+  تبديل_الفلتر: () => void;
 }) {
   const router = useRouter();
   const { t } = استخدام_اللغة();
@@ -113,6 +119,21 @@ function جدول_فواتير({
       نص_البحث={t("inv.search")}
       عند_النقر={(ص) => router.push(`/invoices/${ص.id}`)}
       رسالة_فراغ={t("inv.empty")}
+      أدوات_إضافية={
+        عدد_غير_مسعّرة > 0 && (
+          <button
+            type="button"
+            onClick={تبديل_الفلتر}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
+              فقط_غير_مسعّرة
+                ? "border-amber-300 bg-amber-100 text-amber-800"
+                : "border-border bg-card hover:bg-appgray"
+            }`}
+          >
+            غير مسعّرة فقط ({عدد_غير_مسعّرة})
+          </button>
+        )
+      }
       إجراءات_الصف={(ص) => (
         <div className="flex justify-end gap-1">
           <الزر size="sm" variant="ghost" onClick={() => router.push(`/invoices/${ص.id}`)}>
@@ -138,31 +159,17 @@ function جدول_فواتير({
 export function قائمة_الفواتير({ البيانات }: { البيانات: صف[] }) {
   const [التاب, تعيين_التاب] = React.useState<"customers" | "purchases">("customers");
   const [فقط_غير_مسعّرة, تعيين_فقط_غير_مسعّرة] = React.useState(false);
+  const تبديل_الفلتر = () => تعيين_فقط_غير_مسعّرة((v) => !v);
 
-  const عدد_غير_مسعّرة_الكل = البيانات.filter((f) => f.غير_مسعّرة).length;
-  const مُطبَّقة = فقط_غير_مسعّرة ? البيانات.filter((f) => f.غير_مسعّرة) : البيانات;
-  const فواتير_العملاء = مُطبَّقة.filter((f) => f.النوع !== "PURCHASE");
-  const فواتير_الشراء = مُطبَّقة.filter((f) => f.النوع === "PURCHASE");
+  const كل_فواتير_العملاء = البيانات.filter((f) => f.النوع !== "PURCHASE");
+  const كل_فواتير_الشراء = البيانات.filter((f) => f.النوع === "PURCHASE");
+  const عدد_غير_مسعّرة_عملاء = كل_فواتير_العملاء.filter((f) => f.غير_مسعّرة).length;
+  const عدد_غير_مسعّرة_شراء = كل_فواتير_الشراء.filter((f) => f.غير_مسعّرة).length;
+  const فواتير_العملاء = فقط_غير_مسعّرة ? كل_فواتير_العملاء.filter((f) => f.غير_مسعّرة) : كل_فواتير_العملاء;
+  const فواتير_الشراء = فقط_غير_مسعّرة ? كل_فواتير_الشراء.filter((f) => f.غير_مسعّرة) : كل_فواتير_الشراء;
 
   return (
     <div>
-      {/* فلتر: غير مسعّرة فقط */}
-      {عدد_غير_مسعّرة_الكل > 0 && (
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => تعيين_فقط_غير_مسعّرة((v) => !v)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
-              فقط_غير_مسعّرة
-                ? "border-amber-300 bg-amber-100 text-amber-800"
-                : "border-border bg-card hover:bg-appgray"
-            }`}
-          >
-            غير مسعّرة فقط ({عدد_غير_مسعّرة_الكل})
-          </button>
-        </div>
-      )}
-
       {/* تابات */}
       <div className="flex gap-1 border-b mb-4">
         {(
@@ -191,6 +198,9 @@ export function قائمة_الفواتير({ البيانات }: { البيان
           البيانات={فواتير_العملاء}
           عنوان_الطرف="العميل / المورد"
           عنوان_الرقم="رقم الفاتورة"
+          فقط_غير_مسعّرة={فقط_غير_مسعّرة}
+          عدد_غير_مسعّرة={عدد_غير_مسعّرة_عملاء}
+          تبديل_الفلتر={تبديل_الفلتر}
         />
       ) : (
         <جدول_فواتير
@@ -198,6 +208,9 @@ export function قائمة_الفواتير({ البيانات }: { البيان
           عنوان_الطرف="المورد"
           عنوان_الرقم="رقم فاتورة المورد"
           منقوص_الرقم
+          فقط_غير_مسعّرة={فقط_غير_مسعّرة}
+          عدد_غير_مسعّرة={عدد_غير_مسعّرة_شراء}
+          تبديل_الفلتر={تبديل_الفلتر}
         />
       )}
     </div>
