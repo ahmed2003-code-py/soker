@@ -20,6 +20,9 @@ export type مدخلات_تقرير_السداد = {
   معرف_معاملة?: number | null;
   معرفات_الشيكات?: number[];
   معرف_دفعة_موزعة?: number | null;
+  /** معاملة استلام/تظهير شيكات مع طرف (receiptBatchId عند العميل، endorseBatchId عند المورد) —
+   * الشيكات تُجلَب بمعرّف المعاملة نفسه لا بقائمة معرّفات جامدة، فأي شيك أُضيف للمعاملة بعدين يظهر تلقائياً. */
+  معرف_دفعة_طرف?: number | null;
   معرف_الطرف?: number | null;
   نوع_الطرف?: string | null;
 };
@@ -53,9 +56,15 @@ export async function اجلب_بيانات_تقرير_السداد(
     if (د?.settlementBatchId) معاملة = await اجلب_معاملة(د.settlementBatchId);
   }
 
-  // ── الشيكات: كل شيكات المعاملة، وإلا المعرفات المُمرَّرة ──
+  // ── الشيكات: كل شيكات المعاملة (سداد مركّب أو استلام/تظهير)، وإلا المعرفات المُمرَّرة ──
   const شيكات = معاملة
     ? await p.cheque.findMany({ where: { settlementBatchId: معاملة.id }, orderBy: { dueDate: "asc" }, select: حقول_الشيك })
+    : مدخلات.معرف_دفعة_طرف
+    ? await p.cheque.findMany({
+        where: { OR: [{ receiptBatchId: مدخلات.معرف_دفعة_طرف }, { endorseBatchId: مدخلات.معرف_دفعة_طرف }] },
+        orderBy: { dueDate: "asc" },
+        select: حقول_الشيك,
+      })
     : معرفات.length
     ? await p.cheque.findMany({ where: { id: { in: معرفات } }, orderBy: { dueDate: "asc" }, select: حقول_الشيك })
     : [];

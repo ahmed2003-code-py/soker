@@ -19,7 +19,7 @@ const نص_يوم = (d: Date | null) => (d ? new Intl.DateTimeFormat("en-GB", { 
 export default async function صفحة_تقرير_المعاملة({
   searchParams,
 }: {
-  searchParams: { ids?: string; party?: string; type?: string; batch?: string; split?: string };
+  searchParams: { ids?: string; party?: string; type?: string; batch?: string; split?: string; partyBatch?: string };
 }) {
   const م = await المستخدم_الحالي();
   if (!م) redirect("/login");
@@ -29,6 +29,7 @@ export default async function صفحة_تقرير_المعاملة({
       معرف_معاملة: Number(searchParams.batch) > 0 ? Number(searchParams.batch) : null,
       معرفات_الشيكات: (searchParams.ids ?? "").split(",").map((x) => Number(x.trim())).filter((n) => Number.isFinite(n) && n > 0),
       معرف_دفعة_موزعة: Number(searchParams.split) > 0 ? Number(searchParams.split) : null,
+      معرف_دفعة_طرف: Number(searchParams.partyBatch) > 0 ? Number(searchParams.partyBatch) : null,
       معرف_الطرف: searchParams.party ? Number(searchParams.party) : null,
       نوع_الطرف: searchParams.type ?? null,
     });
