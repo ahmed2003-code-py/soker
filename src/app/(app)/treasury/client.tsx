@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Wallet, Plus, Pencil, Trash2, AlertTriangle, ArrowUp, ArrowDown, ChevronDown, Check, X, ArrowLeftRight, Send, Layers } from "lucide-react";
 import { TreasuryAccountType, TxnKind } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
@@ -69,6 +69,23 @@ function تسمية_فرعي(النوع: TreasuryAccountType): string {
   return "الحساب الفرعي";
 }
 
+/**
+ * مراقب ?id= في الرابط — مبني على useSearchParams التفاعلي (لازم Suspense محلي) عشان يستجيب
+ * لتغيّر المعرّف حتى لو الصفحة كانت مفتوحة بالفعل (نتيجة بحث جديدة من غير مغادرة الصفحة).
+ */
+function مراقب_بحث_الحركة({ عند_معرف }: { عند_معرف: (رقم: number) => void }) {
+  const بحث = useSearchParams();
+  const خام = بحث.get("id");
+  const آخر_معرف_طُبِّق = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!خام || خام === آخر_معرف_طُبِّق.current) return;
+    آخر_معرف_طُبِّق.current = خام;
+    const رقم = Number(خام);
+    if (Number.isFinite(رقم)) عند_معرف(رقم);
+  }, [خام, عند_معرف]);
+  return null;
+}
+
 export function شاشة_الخزنة({
   الحسابات,
   الحركات,
@@ -94,24 +111,17 @@ export function شاشة_الخزنة({
   const [إلى, تعيين_إلى] = React.useState("");
   const [تفاصيل_حساب, تعيين_تفاصيل_حساب] = React.useState<حساب | null>(null);
   const [حركة_مُبرزة, تعيين_حركة_مُبرزة] = React.useState<number | null>(null);
-  const طُبّق_إبراز_الحركة = React.useRef(false);
 
-  // وصول من نتيجة بحث بمعرّف حركة محدّد (?id=): أزل أي فلاتر تخفيها وأبرزها في الجدول
-  React.useEffect(() => {
-    if (طُبّق_إبراز_الحركة.current) return;
-    const مُعرّف = new URLSearchParams(window.location.search).get("id");
-    if (!مُعرّف) return;
-    const رقم = Number(مُعرّف);
-    if (!Number.isFinite(رقم)) return;
-    طُبّق_إبراز_الحركة.current = true;
+  // وصول من نتيجة بحث بمعرّف حركة محدّد (?id=): أزل أي فلاتر تخفيها وأبرزها في الجدول.
+  // لازم يستجيب لتغيّر ?id= حتى لو الصفحة كانت مفتوحة بالفعل — عشان كده مُنفَّذ في مُراقب_بحث_الحركة
+  // تحت (مبني على useSearchParams التفاعلي) بدل قراءة window.location.search مرة واحدة عند التركيب.
+  const طبّق_إبراز_حركة = React.useCallback((رقم: number) => {
     تعيين_فلتر_حساب("");
     تعيين_فلتر_نوع("");
     تعيين_من("");
     تعيين_إلى("");
     تعيين_حركة_مُبرزة(رقم);
-    const t = setTimeout(() => تعيين_حركة_مُبرزة(null), 3000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setTimeout(() => تعيين_حركة_مُبرزة((حالي) => (حالي === رقم ? null : حالي)), 3000);
   }, []);
 
   // حسابات فرعية محلية — تتزامن مع الخادم بعد كل router.refresh()
@@ -351,6 +361,9 @@ export function شاشة_الخزنة({
 
   return (
     <div className="space-y-6">
+      <React.Suspense fallback={null}>
+        <مراقب_بحث_الحركة عند_معرف={طبّق_إبراز_حركة} />
+      </React.Suspense>
       {/* البطاقات */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {الحسابات.map((ح) => {

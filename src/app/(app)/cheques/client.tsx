@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock, ArrowLeftRight } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
@@ -138,6 +138,23 @@ function يدعم_الافتتاحي_ش(ص: شيك): boolean {
 export type طرف_شيك = { id: number; الاسم: string; النوع: "CUSTOMER" | "SUPPLIER" };
 export type خيار_دفتر = { id: number; الاسم: string; الاتجاه: "INCOMING" | "OUTGOING"; اسم_البنك: string | null };
 
+/**
+ * مراقب ?id= في الرابط — مبني على useSearchParams التفاعلي (لازم Suspense محلي) عشان يستجيب
+ * لتغيّر المعرّف حتى لو الصفحة كانت مفتوحة بالفعل (نتيجة بحث جديدة من غير مغادرة الصفحة).
+ */
+function مراقب_بحث_الشيك({ عند_معرف }: { عند_معرف: (رقم: number) => void }) {
+  const بحث = useSearchParams();
+  const خام = بحث.get("id");
+  const آخر_معرف_طُبِّق = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!خام || خام === آخر_معرف_طُبِّق.current) return;
+    آخر_معرف_طُبِّق.current = خام;
+    const رقم = Number(خام);
+    if (Number.isFinite(رقم)) عند_معرف(رقم);
+  }, [خام, عند_معرف]);
+  return null;
+}
+
 export function شاشة_الشيكات({
   البيانات,
   بنوك,
@@ -190,18 +207,13 @@ export function شاشة_الشيكات({
   );
 
   // وصول من نتيجة بحث بمعرّف شيك محدّد (?id=): وسّع سنته وشهره واعمل سكرول له مع إبرازه —
-  // بالظبط زي لو المستخدم فتح السنة بنفسه ونزل لحد ما وصل للشيك.
+  // بالظبط زي لو المستخدم فتح السنة بنفسه ونزل لحد ما وصل للشيك. لازم يستجيب لتغيّر ?id= حتى
+  // لو الصفحة كانت مفتوحة بالفعل (مش mount جديد) — عشان كده مبني على useSearchParams التفاعلي
+  // بدل قراءة window.location.search مرة واحدة عند التركيب.
   const [شيك_مُبرز, تعيين_شيك_مُبرز] = React.useState<number | null>(null);
-  const طُبّق_إبراز_الشيك = React.useRef(false);
-  React.useEffect(() => {
-    if (طُبّق_إبراز_الشيك.current) return;
-    const مُعرّف = new URLSearchParams(window.location.search).get("id");
-    if (!مُعرّف) return;
-    const رقم = Number(مُعرّف);
-    if (!Number.isFinite(رقم)) return;
+  const طبّق_إبراز_شيك = React.useCallback((رقم: number) => {
     const ش = البيانات.find((c) => c.id === رقم);
     if (!ش) return;
-    طُبّق_إبراز_الشيك.current = true;
     تعيين_تبويب(ش.الاتجاه);
     تعيين_حالة_فلتر("");
     تعيين_من("");
@@ -212,10 +224,9 @@ export function شاشة_الشيكات({
     تعيين_سنوات_مفتوحة((prev) => (prev.has(سنة) ? prev : new Set(prev).add(سنة)));
     تعيين_شهور_مفتوحة((prev) => (prev.has(مفتاح_شهر) ? prev : new Set(prev).add(مفتاح_شهر)));
     تعيين_شيك_مُبرز(رقم);
-    const مؤقت = setTimeout(() => تعيين_شيك_مُبرز(null), 3000);
-    return () => clearTimeout(مؤقت);
+    setTimeout(() => تعيين_شيك_مُبرز((حالي) => (حالي === رقم ? null : حالي)), 3000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [البيانات]);
 
   function تبديل_سنة(s: number) {
     تعيين_سنوات_مفتوحة((prev) => {
@@ -496,6 +507,9 @@ export function شاشة_الشيكات({
 
   return (
     <div className="space-y-4">
+      <React.Suspense fallback={null}>
+        <مراقب_بحث_الشيك عند_معرف={طبّق_إبراز_شيك} />
+      </React.Suspense>
       {مرتدة.length > 0 && (
         <div className="rounded-xl border border-danger/30 bg-danger-soft/40 p-4">
           <div className="mb-2.5 flex items-center gap-2">
