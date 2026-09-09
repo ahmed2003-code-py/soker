@@ -101,10 +101,8 @@ export default async function صفحة_تقرير_المعاملة({
           </p>
         </div>
         <div className="text-left text-xs text-gray-500">
-          <div>سُكر — نظام إدارة الأعمال</div>
           <div>تاريخ الإصدار: {نص_يوم(new Date())}</div>
           {معاملة && <div>تاريخ المعاملة: {نص_يوم(معاملة.date)}</div>}
-          <div>بواسطة: {م.name}</div>
         </div>
       </div>
 
