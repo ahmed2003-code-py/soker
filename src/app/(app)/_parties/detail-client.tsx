@@ -174,20 +174,30 @@ export function حركات_الطرف({
   const كل_محدد =
     صفوف_قابلة_للتحديد.length > 0 && محددة.size === صفوف_قابلة_للتحديد.length;
 
-  // إجمالي وزن الصفوف المحدَّدة — مجمَّع حسب التصنيف عبر كل الفواتير المحدَّدة سوياً
-  const ملخص_وزن_المحدد = React.useMemo(() => {
+  // ملخص الصفوف المحدَّدة: وزن مجمَّع حسب التصنيف + إجمالي «له» و«عليه» عبر كل الصفوف المحدَّدة سوياً
+  const ملخص_المحدد = React.useMemo(() => {
     if (محددة.size === 0) return null;
-    const خريطة = new Map<string, number>();
-    let إجمالي = 0;
+    const أوزان = new Map<string, number>();
+    let إجمالي_الوزن = 0;
+    let إجمالي_له = 0;
+    let إجمالي_عليه = 0;
     for (const ح of حركات_معروضة) {
-      if (!محددة.has(ح.id) || !ح.وزن_الفاتورة) continue;
-      إجمالي += ح.وزن_الفاتورة.الإجمالي;
-      for (const ت of ح.وزن_الفاتورة.حسب_التصنيف) {
-        خريطة.set(ت.تصنيف, (خريطة.get(ت.تصنيف) ?? 0) + ت.الوزن);
+      if (!محددة.has(ح.id)) continue;
+      إجمالي_له += ح.دائن;
+      إجمالي_عليه += ح.مدين;
+      if (ح.وزن_الفاتورة) {
+        إجمالي_الوزن += ح.وزن_الفاتورة.الإجمالي;
+        for (const ت of ح.وزن_الفاتورة.حسب_التصنيف) {
+          أوزان.set(ت.تصنيف, (أوزان.get(ت.تصنيف) ?? 0) + ت.الوزن);
+        }
       }
     }
-    if (خريطة.size === 0) return null;
-    return { حسب_التصنيف: [...خريطة.entries()].map(([تصنيف, الوزن]) => ({ تصنيف, الوزن })), الإجمالي: إجمالي };
+    return {
+      حسب_التصنيف: [...أوزان.entries()].map(([تصنيف, الوزن]) => ({ تصنيف, الوزن })),
+      إجمالي_الوزن,
+      إجمالي_له,
+      إجمالي_عليه,
+    };
   }, [محددة, حركات_معروضة]);
 
   const أعمدة: عمود<حركة>[] = [
@@ -370,10 +380,10 @@ export function حركات_الطرف({
         </div>
       </div>
 
-      {ملخص_وزن_المحدد && (
+      {ملخص_المحدد && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-appgray p-3 text-sm">
-          <span className="text-muted-foreground">وزن المحدد ({محددة.size}):</span>
-          {ملخص_وزن_المحدد.حسب_التصنيف.map((ت) => (
+          <span className="text-muted-foreground">المحدد ({محددة.size}):</span>
+          {ملخص_المحدد.حسب_التصنيف.map((ت) => (
             <span
               key={ت.تصنيف}
               className="whitespace-nowrap rounded-lg border border-border bg-card px-2 py-1 text-xs"
@@ -383,8 +393,22 @@ export function حركات_الطرف({
               <span className="ltr-nums">{ت.الوزن.toFixed(2)} كجم</span>
             </span>
           ))}
-          <span className="ms-auto whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-            الإجمالي الكلي: <span className="ltr-nums">{ملخص_وزن_المحدد.الإجمالي.toFixed(2)}</span> كجم
+          <span className="ms-auto flex flex-wrap items-center gap-2">
+            {ملخص_المحدد.إجمالي_عليه > 0 && (
+              <span className="whitespace-nowrap rounded-lg border border-danger/30 bg-danger-soft/40 px-2.5 py-1 text-xs font-semibold text-danger">
+                عليه: <نص_مبلغ القيمة={ملخص_المحدد.إجمالي_عليه} مع_العملة={false} />
+              </span>
+            )}
+            {ملخص_المحدد.إجمالي_له > 0 && (
+              <span className="whitespace-nowrap rounded-lg border border-success/30 bg-success-soft/40 px-2.5 py-1 text-xs font-semibold text-success">
+                له: <نص_مبلغ القيمة={ملخص_المحدد.إجمالي_له} مع_العملة={false} />
+              </span>
+            )}
+            {(ملخص_المحدد.حسب_التصنيف.length > 0 || ملخص_المحدد.إجمالي_الوزن !== 0) && (
+              <span className="whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                إجمالي الوزن: <span className="ltr-nums">{ملخص_المحدد.إجمالي_الوزن.toFixed(2)}</span> كجم
+              </span>
+            )}
           </span>
         </div>
       )}
