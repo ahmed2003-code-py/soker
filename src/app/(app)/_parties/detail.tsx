@@ -112,7 +112,8 @@ export async function تفاصيل_الطرف({
     if (c.partyLedgerEntryId != null && !خريطة_شيك_للقيد.has(c.partyLedgerEntryId)) خريطة_شيك_للقيد.set(c.partyLedgerEntryId, { ...أساس, معرف_معاملة: c.receiptBatchId ?? null });
   }
 
-  // خريطة وزن كل فاتورة مرتبطة بقيود هذا الطرف — الإجمالي الصافي + توزيعه حسب التصنيف (بيع ناقص مرتجع)
+  // خريطة وزن كل فاتورة مرتبطة بقيود هذا الطرف — بيع ومرتجع منفصلَين (بالظبط مثل ترحيل قيد البيع
+  // وقيد المرتجع كصفّين منفصلين في دفتر الأستاذ لو الفاتورة فيها الاثنان معاً؛ المرتجع بالسالب).
   const معرفات_فواتير = [...new Set(طرف.ledgerEntries.map((ح) => ح.invoiceId).filter((x): x is number => x != null))];
   const بنود_للتجميع = معرفات_فواتير.length
     ? await prisma.invoiceLine.groupBy({
@@ -121,22 +122,25 @@ export async function تفاصيل_الطرف({
         _sum: { weight: true },
       })
     : [];
-  const خريطة_وزن_فاتورة = new Map<number, { الإجمالي: number; حسب_التصنيف: { تصنيف: string; الوزن: number }[] }>();
+  type وزن_جانب = { الإجمالي: number; حسب_التصنيف: { تصنيف: string; الوزن: number }[] };
+  const خريطة_وزن_فاتورة = new Map<number, { بيع: وزن_جانب | null; مرتجع: وزن_جانب | null }>();
   {
-    const أوزان_مؤقتة = new Map<number, Map<string, number>>();
+    const مؤقتة = new Map<number, { بيع: Map<string, number>; مرتجع: Map<string, number> }>();
     for (const ب of بنود_للتجميع) {
-      const إشارة = ب.lineType === "RETURN" ? -1 : 1;
-      const وزن = إشارة * Number(ب._sum.weight ?? 0);
-      const تصنيفات_الفاتورة = أوزان_مؤقتة.get(ب.invoiceId) ?? new Map<string, number>();
-      تصنيفات_الفاتورة.set(ب.category, (تصنيفات_الفاتورة.get(ب.category) ?? 0) + وزن);
-      أوزان_مؤقتة.set(ب.invoiceId, تصنيفات_الفاتورة);
+      const سجل = مؤقتة.get(ب.invoiceId) ?? { بيع: new Map<string, number>(), مرتجع: new Map<string, number>() };
+      const خريطة_الجانب = ب.lineType === "RETURN" ? سجل.مرتجع : سجل.بيع;
+      خريطة_الجانب.set(ب.category, (خريطة_الجانب.get(ب.category) ?? 0) + Number(ب._sum.weight ?? 0));
+      مؤقتة.set(ب.invoiceId, سجل);
     }
-    for (const [معرف_الفاتورة, تصنيفات] of أوزان_مؤقتة) {
-      const حسب_التصنيف = [...تصنيفات.entries()]
+    const حوّل = (خريطة: Map<string, number>, إشارة: 1 | -1): وزن_جانب | null => {
+      const حسب_التصنيف = [...خريطة.entries()]
         .filter(([, وزن]) => Math.abs(وزن) > 0.001)
-        .map(([تصنيف, وزن]) => ({ تصنيف, الوزن: وزن }));
-      const الإجمالي = حسب_التصنيف.reduce((س, ت) => س + ت.الوزن, 0);
-      خريطة_وزن_فاتورة.set(معرف_الفاتورة, { الإجمالي, حسب_التصنيف });
+        .map(([تصنيف, وزن]) => ({ تصنيف, الوزن: إشارة * وزن }));
+      if (حسب_التصنيف.length === 0) return null;
+      return { حسب_التصنيف, الإجمالي: حسب_التصنيف.reduce((س, ت) => س + ت.الوزن, 0) };
+    };
+    for (const [معرف_الفاتورة, سجل] of مؤقتة) {
+      خريطة_وزن_فاتورة.set(معرف_الفاتورة, { بيع: حوّل(سجل.بيع, 1), مرتجع: حوّل(سجل.مرتجع, -1) });
     }
   }
 
@@ -152,7 +156,14 @@ export async function تفاصيل_الطرف({
     دائن: Number(ح.credit),
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
     معرف_الفاتورة: ح.invoiceId,
-    وزن_الفاتورة: ح.invoiceId != null ? (خريطة_وزن_فاتورة.get(ح.invoiceId) ?? null) : null,
+    // هذا القيد بعينه مدين (بيع) وإلا دائن (مرتجع)؟ نجيب وزن الجانب المطابق بس — مش الفاتورة كلها،
+    // عشان لو الفاتورة اترحّلت بقيدين منفصلين (بيع + مرتجع) كل قيد ياخد وزن نصيبه بالظبط.
+    وزن_الفاتورة:
+      ح.invoiceId != null
+        ? (Number(ح.credit) > 0
+            ? (خريطة_وزن_فاتورة.get(ح.invoiceId)?.مرتجع ?? null)
+            : (خريطة_وزن_فاتورة.get(ح.invoiceId)?.بيع ?? null))
+        : null,
     معرف_خزنة: ح.treasuryTxnId,
     معرف_حساب_خزنة: ح.treasuryTxn?.accountId ?? null,
     معرف_دفع_مباشر: ح.directPaymentId,
