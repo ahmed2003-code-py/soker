@@ -112,6 +112,34 @@ export async function تفاصيل_الطرف({
     if (c.partyLedgerEntryId != null && !خريطة_شيك_للقيد.has(c.partyLedgerEntryId)) خريطة_شيك_للقيد.set(c.partyLedgerEntryId, { ...أساس, معرف_معاملة: c.receiptBatchId ?? null });
   }
 
+  // خريطة وزن كل فاتورة مرتبطة بقيود هذا الطرف — الإجمالي الصافي + توزيعه حسب التصنيف (بيع ناقص مرتجع)
+  const معرفات_فواتير = [...new Set(طرف.ledgerEntries.map((ح) => ح.invoiceId).filter((x): x is number => x != null))];
+  const بنود_للتجميع = معرفات_فواتير.length
+    ? await prisma.invoiceLine.groupBy({
+        by: ["invoiceId", "category", "lineType"],
+        where: { invoiceId: { in: معرفات_فواتير } },
+        _sum: { weight: true },
+      })
+    : [];
+  const خريطة_وزن_فاتورة = new Map<number, { الإجمالي: number; حسب_التصنيف: { تصنيف: string; الوزن: number }[] }>();
+  {
+    const أوزان_مؤقتة = new Map<number, Map<string, number>>();
+    for (const ب of بنود_للتجميع) {
+      const إشارة = ب.lineType === "RETURN" ? -1 : 1;
+      const وزن = إشارة * Number(ب._sum.weight ?? 0);
+      const تصنيفات_الفاتورة = أوزان_مؤقتة.get(ب.invoiceId) ?? new Map<string, number>();
+      تصنيفات_الفاتورة.set(ب.category, (تصنيفات_الفاتورة.get(ب.category) ?? 0) + وزن);
+      أوزان_مؤقتة.set(ب.invoiceId, تصنيفات_الفاتورة);
+    }
+    for (const [معرف_الفاتورة, تصنيفات] of أوزان_مؤقتة) {
+      const حسب_التصنيف = [...تصنيفات.entries()]
+        .filter(([, وزن]) => Math.abs(وزن) > 0.001)
+        .map(([تصنيف, وزن]) => ({ تصنيف, الوزن: وزن }));
+      const الإجمالي = حسب_التصنيف.reduce((س, ت) => س + ت.الوزن, 0);
+      خريطة_وزن_فاتورة.set(معرف_الفاتورة, { الإجمالي, حسب_التصنيف });
+    }
+  }
+
   const حركات = طرف.ledgerEntries.map((ح) => ({
     id: ح.id,
     التاريخ: ح.date.toISOString(),
@@ -124,6 +152,7 @@ export async function تفاصيل_الطرف({
     دائن: Number(ح.credit),
     الرصيد_بعد_الحركة: Number(ح.balanceAfter),
     معرف_الفاتورة: ح.invoiceId,
+    وزن_الفاتورة: ح.invoiceId != null ? (خريطة_وزن_فاتورة.get(ح.invoiceId) ?? null) : null,
     معرف_خزنة: ح.treasuryTxnId,
     معرف_حساب_خزنة: ح.treasuryTxn?.accountId ?? null,
     معرف_دفع_مباشر: ح.directPaymentId,

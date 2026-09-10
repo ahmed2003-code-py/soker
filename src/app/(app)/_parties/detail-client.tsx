@@ -45,6 +45,8 @@ export type حركة = {
   دائن: number;
   الرصيد_بعد_الحركة: number;
   معرف_الفاتورة: number | null;
+  /** وزن فاتورة هذا القيد (لو مرتبط بفاتورة) — الإجمالي الصافي + توزيعه حسب التصنيف */
+  وزن_الفاتورة?: { الإجمالي: number; حسب_التصنيف: { تصنيف: string; الوزن: number }[] } | null;
   معرف_خزنة: number | null;
   معرف_حساب_خزنة: number | null;
   معرف_دفع_مباشر: number | null;
@@ -172,6 +174,22 @@ export function حركات_الطرف({
   const كل_محدد =
     صفوف_قابلة_للتحديد.length > 0 && محددة.size === صفوف_قابلة_للتحديد.length;
 
+  // إجمالي وزن الصفوف المحدَّدة — مجمَّع حسب التصنيف عبر كل الفواتير المحدَّدة سوياً
+  const ملخص_وزن_المحدد = React.useMemo(() => {
+    if (محددة.size === 0) return null;
+    const خريطة = new Map<string, number>();
+    let إجمالي = 0;
+    for (const ح of حركات_معروضة) {
+      if (!محددة.has(ح.id) || !ح.وزن_الفاتورة) continue;
+      إجمالي += ح.وزن_الفاتورة.الإجمالي;
+      for (const ت of ح.وزن_الفاتورة.حسب_التصنيف) {
+        خريطة.set(ت.تصنيف, (خريطة.get(ت.تصنيف) ?? 0) + ت.الوزن);
+      }
+    }
+    if (خريطة.size === 0) return null;
+    return { حسب_التصنيف: [...خريطة.entries()].map(([تصنيف, الوزن]) => ({ تصنيف, الوزن })), الإجمالي: إجمالي };
+  }, [محددة, حركات_معروضة]);
+
   const أعمدة: عمود<حركة>[] = [
     {
       المفتاح: "_select",
@@ -237,6 +255,28 @@ export function حركات_الطرف({
         ) : (
           <span>{ص.البيان}</span>
         ),
+    },
+    {
+      المفتاح: "الوزن",
+      العنوان: "الوزن (كجم)",
+      محاذاة: "end",
+      خلية: (ص) => {
+        if (!ص.وزن_الفاتورة || ص.وزن_الفاتورة.حسب_التصنيف.length === 0) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        const تلميح = ص.وزن_الفاتورة.حسب_التصنيف
+          .map((ت) => `${ت.تصنيف}: ${ت.الوزن.toFixed(2)} كجم`)
+          .join("\n");
+        return (
+          <span
+            className="ltr-nums cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-2"
+            title={تلميح}
+          >
+            {ص.وزن_الفاتورة.الإجمالي.toFixed(2)}
+          </span>
+        );
+      },
+      مخفي_موبايل: true,
     },
     {
       المفتاح: "المبلغ",
@@ -329,6 +369,25 @@ export function حركات_الطرف({
           </الزر>
         </div>
       </div>
+
+      {ملخص_وزن_المحدد && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-appgray p-3 text-sm">
+          <span className="text-muted-foreground">وزن المحدد ({محددة.size}):</span>
+          {ملخص_وزن_المحدد.حسب_التصنيف.map((ت) => (
+            <span
+              key={ت.تصنيف}
+              className="whitespace-nowrap rounded-lg border border-border bg-card px-2 py-1 text-xs"
+            >
+              <span className="font-medium">{ت.تصنيف}</span>
+              <span className="text-muted-foreground"> — </span>
+              <span className="ltr-nums">{ت.الوزن.toFixed(2)} كجم</span>
+            </span>
+          ))}
+          <span className="ms-auto whitespace-nowrap rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+            الإجمالي الكلي: <span className="ltr-nums">{ملخص_وزن_المحدد.الإجمالي.toFixed(2)}</span> كجم
+          </span>
+        </div>
+      )}
 
       <جدول_بيانات
         الأعمدة={أعمدة}
