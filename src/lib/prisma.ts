@@ -24,6 +24,12 @@ export const prisma =
   new PrismaClient({
     datasourceUrl: بناء_رابط_الاتصال(),
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    // قاعدة الإنتاج في مشروع Railway منفصل عن التطبيق (اتصال عبر TCP proxy عام لا شبكة
+    // داخلية) — زمن الاستجابة أعلى وأقل ثباتاً من الافتراضي (5 ثوانٍ timeout / 2 ثانية
+    // maxWait)، فأي $transaction فيه أكتر من استعلام أو حلقة كان بيتقفل قبل ما يخلص
+    // ويطلع "Transaction not found" عند أول استعلام بعدها. رفعناها هنا مركزياً بدل
+    // ما نصلّح كل $transaction على حدة (76 مكان في الكود).
+    transactionOptions: { maxWait: 10_000, timeout: 30_000 },
   });
 
 // احتفظ بنسخة واحدة في جميع البيئات لتجنب تعدد الاتصالات
