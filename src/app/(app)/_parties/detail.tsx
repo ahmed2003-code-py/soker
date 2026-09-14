@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Printer } from "lucide-react";
 import { PartyType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ترويسة_الصفحة } from "@/components/page-header";
+import { الزر } from "@/components/ui/button";
 import { بطاقة_مؤشر } from "@/components/kpi-card";
 import { نص_مبلغ } from "@/components/money-text";
 import { الشارة } from "@/components/ui/badge";
@@ -177,7 +179,16 @@ export async function تفاصيل_الطرف({
       <ترويسة_الصفحة
         العنوان={طرف.name}
         الوصف={عميل ? t("party.d.statement_customer") : t("party.d.statement_supplier")}
-        إجراء={<سجل_التغييرات النوع="الطرف" المعرف={طرف.id} />}
+        إجراء={
+          <>
+            <الزر variant="outline" asChild>
+              <Link href={`/reports?${new URLSearchParams({ نوع: عميل ? "كشف_عميل" : "كشف_مورد", طرف: String(طرف.id) }).toString()}`}>
+                <Printer className="size-4" /> طباعة كشف حساب
+              </Link>
+            </الزر>
+            <سجل_التغييرات النوع="الطرف" المعرف={طرف.id} />
+          </>
+        }
       />
 
       <div className="mb-4 card-soft p-4">

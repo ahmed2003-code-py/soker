@@ -1,7 +1,8 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Printer, FileSpreadsheet, Search } from "lucide-react";
+import { Printer, FileSpreadsheet, Search, ExternalLink } from "lucide-react";
 import { الزر } from "@/components/ui/button";
 import { العنوان } from "@/components/ui/label";
 import { قائمة_اختيار, type خيار } from "@/components/combobox";
@@ -383,6 +384,7 @@ type KashfData = {
     مدين: number;
     دائن: number;
     الرصيد: number;
+    معرف_الفاتورة: number | null;
   }[];
   مجموع_مدين: number;
   مجموع_دائن: number;
@@ -532,7 +534,19 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
           {ك.الصفوف.map((r, i) => (
             <tr key={i} className="border-t border-border">
               <td className="px-3 py-2"><نص_تاريخ القيمة={r.التاريخ} /></td>
-              <td className="px-3 py-2 ltr-nums">{r.رقم_المستند || "—"}</td>
+              <td className="px-3 py-2 ltr-nums">
+                {r.معرف_الفاتورة ? (
+                  <Link
+                    href={`/invoices/${r.معرف_الفاتورة}`}
+                    className="flex items-center gap-1 ltr-nums text-primary-blue hover:underline print:no-underline print:text-inherit"
+                  >
+                    {r.رقم_المستند || "—"}
+                    <ExternalLink className="size-3 opacity-60 print:hidden" />
+                  </Link>
+                ) : (
+                  r.رقم_المستند || "—"
+                )}
+              </td>
               <td className="px-3 py-2">{r.البيان}</td>
               <td className="px-3 py-2">{r.التصنيف || "—"}</td>
               <td className="px-3 py-2 text-end">
