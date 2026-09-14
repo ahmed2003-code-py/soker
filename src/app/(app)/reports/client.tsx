@@ -546,10 +546,10 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
                 {r.معرف_الفاتورة ? (
                   <Link
                     href={`/invoices/${r.معرف_الفاتورة}`}
-                    className="flex items-center gap-1 ltr-nums text-primary-blue hover:underline print:no-underline print:text-inherit"
+                    className="flex items-center gap-1 ltr-nums text-primary-blue underline underline-offset-2"
                   >
                     {r.رقم_المستند || "—"}
-                    <ExternalLink className="size-3 opacity-60 print:hidden" />
+                    <ExternalLink className="size-3 opacity-60" />
                   </Link>
                 ) : (
                   r.رقم_المستند || "—"
