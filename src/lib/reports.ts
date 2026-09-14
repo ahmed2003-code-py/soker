@@ -60,7 +60,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
 
   const نطاق = نطاق_تاريخ(من, إلى);
   const حركات = await prisma.ledgerEntry.findMany({
-    where: { partyId: معرف_الطرف, ...(نطاق ? { date: نطاق } : {}) },
+    where: { partyId: معرف_الطرف, deletedAt: null, ...(نطاق ? { date: نطاق } : {}) },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
   // نحسب الرصيد تصاعدياً ثم نعكس للعرض (الأحدث أولاً)
@@ -69,7 +69,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
   let رصيد_افتتاحي = 0;
   if (من) {
     const قبل = await prisma.ledgerEntry.aggregate({
-      where: { partyId: معرف_الطرف, date: { lt: من } },
+      where: { partyId: معرف_الطرف, deletedAt: null, date: { lt: من } },
       _sum: { debit: true, credit: true },
     });
     const م = Number(قبل._sum.debit ?? 0);
@@ -117,6 +117,7 @@ export async function تقرير_خزنة_حركات(النوع: TxnKind, ف: ف
   const حركات = await prisma.treasuryTxn.findMany({
     where: {
       kind: النوع,
+      deletedAt: null,
       ...(نطاق ? { date: نطاق } : {}),
       ...(ف.معرف_الحساب ? { accountId: ف.معرف_الحساب } : {}),
     },
