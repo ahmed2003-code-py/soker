@@ -61,6 +61,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
   const نطاق = نطاق_تاريخ(من, إلى);
   const حركات = await prisma.ledgerEntry.findMany({
     where: { partyId: معرف_الطرف, deletedAt: null, ...(نطاق ? { date: نطاق } : {}) },
+    include: { invoice: { select: { shareToken: true } } },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
   // نحسب الرصيد تصاعدياً ثم نعكس للعرض (الأحدث أولاً)
@@ -92,6 +93,8 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
       دائن: د,
       الرصيد: رصيد,
       معرف_الفاتورة: h.invoiceId,
+      // رابط مشاركة عام (بلا تسجيل دخول) — للاستخدام في تصدير Excel لأنه يفتح مباشرة بلا جلسة
+      رابط_مشاركة_الفاتورة: h.invoice?.shareToken ? `/share/${h.invoice.shareToken}` : null,
     };
   });
 

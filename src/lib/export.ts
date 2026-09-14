@@ -6,6 +6,8 @@ export type عمود_تصدير = {
   العنوان: string;
   /** تنسيق رقمي (مبالغ بمنزلتين عشريتين، فاصل آلاف) */
   مبلغ?: boolean;
+  /** رابط تشعبي (Hyperlink) لهذه الخلية — يرجع رابطًا مطلقًا لكل صف، أو undefined بلا رابط */
+  رابط?: (صف: Record<string, unknown>) => string | undefined | null;
 };
 
 /** أداة تصدير Excel موحّدة — تستخدمها كل التقارير + قابلة للاستدعاء من أي قائمة */
@@ -81,6 +83,18 @@ export function تصدير_إكسل({
       const عنوان = XLSX.utils.encode_cell({ r: بداية_بيانات + i, c: j });
       const خلية = ورقة[عنوان];
       if (خلية && typeof خلية.v === "number") خلية.z = "#,##0.00";
+    }
+  }
+
+  // روابط تشعبية (لصفوف البيانات فقط — لا صف الإجمالي)
+  for (let i = 0; i < الصفوف.length; i++) {
+    for (let j = 0; j < الأعمدة.length; j++) {
+      const ع = الأعمدة[j];
+      if (!ع.رابط) continue;
+      const رابط = ع.رابط(الصفوف[i]);
+      if (!رابط) continue;
+      const عنوان = XLSX.utils.encode_cell({ r: بداية_بيانات + i, c: j });
+      if (ورقة[عنوان]) ورقة[عنوان].l = { Target: رابط };
     }
   }
 
