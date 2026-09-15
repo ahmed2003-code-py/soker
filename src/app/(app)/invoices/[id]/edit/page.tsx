@@ -52,9 +52,11 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
   ) =>
     حركات.length
       ? {
-          المبلغ: حركات.reduce((س, ح) => س + Number(ح.amount), 0),
-          معرف_الحساب: حركات[0].accountId,
-          معرف_حساب_فرعي: حركات[0].subAccountId,
+          بنود: حركات.map((ح) => ({
+            المبلغ: Number(ح.amount),
+            معرف_الحساب: ح.accountId,
+            معرف_حساب_فرعي: ح.subAccountId,
+          })),
         }
       : null;
 
@@ -83,6 +85,8 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       }
       const دفعة_العميل = جمع_دفعات(ف_عميل.treasuryTxns);
       const دفعة_المورد = جمع_دفعات(ف_مورد.treasuryTxns);
+      const مبلغ_دفعة = (د: { بنود: { المبلغ: number }[] } | null) =>
+        د ? د.بنود.reduce((س, بند) => س + بند.المبلغ, 0) : 0;
       // رصيد ما قبل الفاتورة لكل جهة (للمعاينة داخل النموذج) — كل جهة بقيمتها
       const قيمة_العميل = Number(ف_عميل.totalAmount);
       const قيمة_المورد = Number(ف_مورد.totalAmount);
@@ -90,14 +94,14 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
         ...c,
         balance:
           c.id === ف_عميل.customerId
-            ? Number(c.balance) - قيمة_العميل + (دفعة_العميل?.المبلغ ?? 0)
+            ? Number(c.balance) - قيمة_العميل + مبلغ_دفعة(دفعة_العميل)
             : Number(c.balance),
       }));
       const موردون_مباشر = موردون.map((s) => ({
         ...s,
         balance:
           s.id === ف_مورد.customerId
-            ? Number(s.balance) - قيمة_المورد + (دفعة_المورد?.المبلغ ?? 0)
+            ? Number(s.balance) - قيمة_المورد + مبلغ_دفعة(دفعة_المورد)
             : Number(s.balance),
       }));
       return (
@@ -154,13 +158,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
 
   // حساب إجمالي دفعات الفاتورة الموجودة + تجهيزها لعرضها في النموذج (للمتابعة/الحفظ)
   const إجمالي_الدفعات_الموجودة = فاتورة.treasuryTxns.reduce((s, t) => s + Number(t.amount), 0);
-  const دفعة_موجودة = فاتورة.treasuryTxns.length > 0
-    ? {
-        المبلغ: إجمالي_الدفعات_الموجودة,
-        معرف_الحساب: فاتورة.treasuryTxns[0].accountId,
-        معرف_حساب_فرعي: فاتورة.treasuryTxns[0].subAccountId,
-      }
-    : null;
+  const دفعة_موجودة = جمع_دفعات(فاتورة.treasuryTxns);
 
   // totalAmount = صافي (مبيعات − مرتجعات). لاستعادة رصيد ما قبل الفاتورة:
   // balance_current = balance_before + totalAmount - payments

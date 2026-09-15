@@ -25,13 +25,18 @@ export const مخطط_بند = z.object({
   رقم_اللط: z.string().trim().optional().nullable(),            // الوارد: رقم اللط (تلقائي لو فاضي)
 });
 
-export const مخطط_دفعة_الفاتورة = z.object({
+export const مخطط_بند_دفعة_فاتورة = z.object({
   المبلغ: z
     .union([z.string(), z.number()])
     .transform((v) => تحليل_مبلغ(v))
-    .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ الدفعة يجب أن يكون أكبر من صفر" }),
+    .refine((v) => v !== null && Number(v) > 0, { message: "مبلغ وسيلة الدفع يجب أن يكون أكبر من صفر" }),
   معرف_الحساب: z.number().int().positive("اختر حساب الخزنة"),
   معرف_حساب_فرعي: z.number().int().positive().optional().nullable(),
+});
+
+/** دفعة فاتورة فورية — وسيلة دفع واحدة أو موزّعة على أكثر من وسيلة (بحد أقصى 4). */
+export const مخطط_دفعة_الفاتورة = z.object({
+  بنود: z.array(مخطط_بند_دفعة_فاتورة).min(1, "أضف وسيلة دفع واحدة على الأقل").max(4, "٤ وسائل دفع كحد أقصى لكل فاتورة"),
   ملاحظات: z.string().trim().optional().nullable(),
 });
 
