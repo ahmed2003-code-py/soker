@@ -64,42 +64,37 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
     include: { invoice: { select: { shareToken: true } } },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
-  // نحسب الرصيد تصاعدياً ثم نعكس للعرض (الأحدث أولاً)
+  // نستخدم الرصيد المخزَّن فعليًا على كل قيد (balanceAfter) — نفس المصدر اللي
+  // تعتمد عليه شاشة تفاصيل الطرف — بدل إعادة حسابه هنا، عشان يتضمّن الرصيد
+  // الابتدائي للطرف تلقائيًا ويطابق الشاشة بالضبط (كان بينساه هنا فيبان غلط).
 
-  // الرصيد الافتتاحي = حاصل ما قبل تاريخ "من"
-  let رصيد_افتتاحي = 0;
+  // الرصيد الافتتاحي المعروض = رصيد آخر قيد قبل "من" (أو الرصيد الابتدائي للطرف لو لا يوجد قيد سابق)
+  let رصيد_افتتاحي = Number(طرف.openingBalance);
   if (من) {
-    const قبل = await prisma.ledgerEntry.aggregate({
+    const قبل = await prisma.ledgerEntry.findFirst({
       where: { partyId: معرف_الطرف, deletedAt: null, date: { lt: من } },
-      _sum: { debit: true, credit: true },
+      orderBy: [{ date: "desc" }, { id: "desc" }],
+      select: { balanceAfter: true },
     });
-    const م = Number(قبل._sum.debit ?? 0);
-    const د = Number(قبل._sum.credit ?? 0);
-    رصيد_افتتاحي = طرف.type === "CUSTOMER" ? م - د : د - م;
+    if (قبل) رصيد_افتتاحي = Number(قبل.balanceAfter);
   }
 
-  let رصيد = رصيد_افتتاحي;
-  const الصفوف = حركات.map((h) => {
-    const م = Number(h.debit);
-    const د = Number(h.credit);
-    if (طرف.type === "CUSTOMER") رصيد += م - د;
-    else رصيد += د - م;
-    return {
-      التاريخ: h.date.toISOString(),
-      رقم_المستند: h.docNumber ?? "",
-      البيان: h.description,
-      التصنيف: h.category ?? "",
-      مدين: م,
-      دائن: د,
-      الرصيد: رصيد,
-      معرف_الفاتورة: h.invoiceId,
-      // رابط مشاركة عام (بلا تسجيل دخول) — للاستخدام في تصدير Excel لأنه يفتح مباشرة بلا جلسة
-      رابط_مشاركة_الفاتورة: h.invoice?.shareToken ? `/share/${h.invoice.shareToken}` : null,
-    };
-  });
+  const الصفوف = حركات.map((h) => ({
+    التاريخ: h.date.toISOString(),
+    رقم_المستند: h.docNumber ?? "",
+    البيان: h.description,
+    التصنيف: h.category ?? "",
+    مدين: Number(h.debit),
+    دائن: Number(h.credit),
+    الرصيد: Number(h.balanceAfter),
+    معرف_الفاتورة: h.invoiceId,
+    // رابط مشاركة عام (بلا تسجيل دخول) — للاستخدام في تصدير Excel لأنه يفتح مباشرة بلا جلسة
+    رابط_مشاركة_الفاتورة: h.invoice?.shareToken ? `/share/${h.invoice.shareToken}` : null,
+  }));
 
   const مجموع_مدين = الصفوف.reduce((س, r) => س + r.مدين, 0);
   const مجموع_دائن = الصفوف.reduce((س, r) => س + r.دائن, 0);
+  const الرصيد_الختامي = الصفوف.length ? الصفوف[الصفوف.length - 1].الرصيد : رصيد_افتتاحي;
 
   return {
     الطرف: { id: طرف.id, الاسم: طرف.name, النوع: طرف.type, الهاتف: طرف.phone ?? "" },
@@ -107,7 +102,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
     الصفوف: [...الصفوف].reverse(),
     مجموع_مدين,
     مجموع_دائن,
-    الرصيد_الختامي: رصيد,
+    الرصيد_الختامي,
     إجمالي_الفواتير: طرف.type === "CUSTOMER" ? مجموع_مدين : مجموع_دائن,
     إجمالي_المدفوعات: طرف.type === "CUSTOMER" ? مجموع_دائن : مجموع_مدين,
   };
