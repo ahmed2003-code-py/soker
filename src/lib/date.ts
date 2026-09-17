@@ -36,6 +36,23 @@ export function تنسيق_تاريخ_ووقت(التاريخ: Date | string | n
   return `${String(day).padStart(2, "0")}/${String(month + 1).padStart(2, "0")}/${year} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/** الوقت فقط HH:mm بتوقيت القاهرة (لتعبئة input[type=time] أو العرض الصغير تحت التاريخ) */
+export function وقت_فقط(التاريخ: Date | string | null | undefined): string {
+  if (!التاريخ) return "";
+  const د = typeof التاريخ === "string" ? new Date(التاريخ) : التاريخ;
+  if (!isValid(د)) return "";
+  const { hour, minute } = أجزاء_قاهرة(د);
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** دمج تاريخ "yyyy-MM-dd" ووقت "HH:mm" (بتوقيت القاهرة الثابت UTC+3) في Date صحيح */
+export function دمج_تاريخ_ووقت(تاريخ: string, وقت: string): Date | null {
+  if (!تاريخ) return null;
+  const و = /^\d{2}:\d{2}$/.test(وقت) ? وقت : "00:00";
+  const د = new Date(`${تاريخ}T${و}:00+03:00`);
+  return isValid(د) ? د : null;
+}
+
 /** اسم الشهر بالعربية + السنة بتوقيت القاهرة */
 const أشهر_عربية = [
   "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",

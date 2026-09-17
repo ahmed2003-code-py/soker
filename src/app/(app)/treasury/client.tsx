@@ -24,6 +24,7 @@ import { useإشعار } from "@/components/ui/toast";
 import { استخدام_اللغة } from "@/components/providers/i18n-provider";
 import { فلتر_فترة } from "@/components/date-filter";
 import { منتقي_تاريخ } from "@/components/date-picker";
+import { وقت_فقط, دمج_تاريخ_ووقت } from "@/lib/date";
 import { أيقونة_الحساب } from "@/components/account-icon";
 import { لقطة_الأرصدة } from "./balance-snapshot";
 import { اجلب_بنود_شهر_للاختيار, افحص_تجاوز_المصروف, عدّل_مبلغ_الشهر } from "@/app/(app)/monthly-expenses/actions";
@@ -60,6 +61,8 @@ type حركة = {
 };
 
 const اليوم = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+const الوقت_الآن = () =>
+  new Date().toLocaleTimeString("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" });
 
 /** تسمية الحساب الفرعي حسب نوع الحساب */
 function تسمية_فرعي(النوع: TreasuryAccountType): string {
@@ -234,7 +237,7 @@ export function شاشة_الخزنة({
     {
       المفتاح: "التاريخ",
       العنوان: t("common.date"),
-      خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} />,
+      خلية: (ص) => <نص_تاريخ القيمة={ص.التاريخ} مع_الوقت مكدّس />,
       قيمة: (ص) => ص.التاريخ,
       قابل_للفرز: true,
     },
@@ -1247,6 +1250,8 @@ function حوار_حركة({
 
   // للإضافة الجديدة: النوع والحساب فاضيان (يختارهما المستخدم). التعديل يحتفظ بقيمه.
   const [تاريخ, تعيين_تاريخ] = React.useState(الحركة ? الحركة.التاريخ.slice(0, 10) : اليوم());
+  // الوقت: عند التعديل نحمّل وقت الحركة الفعلي، وعند الإضافة الافتراضي هو الوقت الحالي فعليًا
+  const [وقت, تعيين_وقت] = React.useState(الحركة ? وقت_فقط(الحركة.التاريخ) : الوقت_الآن());
   // نوع العرض: إيراد / مصروف عادي / مصروف شهري (الأخير = مصروف + بند إجباري)
   const [نوع_العرض, تعيين_نوع_العرض] = React.useState<"INCOME" | "EXPENSE" | "MONTHLY" | "">(
     الحركة
@@ -1353,7 +1358,7 @@ function حوار_حركة({
   async function احفظ_فعلياً(أكّد_التجاوز: boolean) {
     تعيين_جارٍ(true);
     const payload = {
-      التاريخ: تاريخ,
+      التاريخ: دمج_تاريخ_ووقت(تاريخ, وقت)?.toISOString() ?? تاريخ,
       النوع: نوع,
       المبلغ: مبلغ,
       معرف_الحساب: Number(حساب),
@@ -1385,6 +1390,10 @@ function حوار_حركة({
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("common.date")}</العنوان>
             <منتقي_تاريخ القيمة={تاريخ} عند_التغيير={تعيين_تاريخ} />
+          </div>
+          <div className="space-y-1.5">
+            <العنوان مطلوب>الوقت</العنوان>
+            <الحقل type="time" value={وقت} onChange={(e) => تعيين_وقت(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <العنوان مطلوب>{t("treasury.col.type")}</العنوان>
