@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { المستخدم_الحالي } from "@/lib/session";
 import { تسمية_حالة_الشيك } from "@/lib/enums";
@@ -53,7 +54,13 @@ function جدول_دفعات({ عنوان, دفعات }: { عنوان: string; �
   );
 }
 
-export default async function صفحة_تقرير_تسوية_شيك({ params }: { params: { id: string } }) {
+export default async function صفحة_تقرير_تسوية_شيك({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { نطاق?: string };
+}) {
   const م = await المستخدم_الحالي();
   if (!م) redirect("/login");
 
@@ -62,6 +69,8 @@ export default async function صفحة_تقرير_تسوية_شيك({ params }: 
 
   const تقرير = await اجلب_تقرير_تسوية_شيك(معرف);
   if (!تقرير) notFound();
+
+  const اليوم_فقط = searchParams.نطاق === "اليوم";
 
   return (
     <div dir="rtl" className="report-sheet mx-auto max-w-4xl bg-white p-8 text-[#111827]">
@@ -89,7 +98,7 @@ export default async function صفحة_تقرير_تسوية_شيك({ params }: 
 
       <div className="report-head mb-6 flex items-start justify-between border-b-2 border-[#1F3864] pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#1F3864]">تقرير تسوية شيك صادر</h1>
+          <h1 className="text-2xl font-bold text-[#1F3864]">تقرير تسوية شيك صادر{اليوم_فقط ? " — دفعات اليوم فقط" : ""}</h1>
           <p className="mt-1 text-sm text-gray-600">
             {تقرير.شيك.اسم_المستفيد}
             {تقرير.شيك.رقم_الشيك ? ` — شيك رقم ${تقرير.شيك.رقم_الشيك}` : ""}
@@ -103,6 +112,21 @@ export default async function صفحة_تقرير_تسوية_شيك({ params }: 
         </div>
       </div>
 
+      <div className="no-print mb-4 flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-1 text-sm w-fit">
+        <Link
+          href={`/cheque-settlement-report/${تقرير.شيك.id}`}
+          className={`rounded-md px-3 py-1.5 transition ${!اليوم_فقط ? "bg-[#1F3864] text-white" : "text-gray-600 hover:bg-gray-100"}`}
+        >
+          كل الدفعات
+        </Link>
+        <Link
+          href={`/cheque-settlement-report/${تقرير.شيك.id}?نطاق=اليوم`}
+          className={`rounded-md px-3 py-1.5 transition ${اليوم_فقط ? "bg-[#1F3864] text-white" : "text-gray-600 hover:bg-gray-100"}`}
+        >
+          دفعات اليوم فقط
+        </Link>
+      </div>
+
       <div className="report-cards mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {بطاقة("قيمة الشيك", `${نص_مبلغ(تقرير.شيك.المبلغ)} ج.م`)}
         {بطاقة("خرج اليوم", `${نص_مبلغ(تقرير.إجمالي_اليوم)} ج.م`, "text-green-700")}
@@ -111,17 +135,17 @@ export default async function صفحة_تقرير_تسوية_شيك({ params }: 
       </div>
 
       <جدول_دفعات عنوان="دفعات اليوم" دفعات={تقرير.دفعات_اليوم} />
-      <جدول_دفعات عنوان="دفعات سابقة" دفعات={تقرير.دفعات_سابقة} />
+      {!اليوم_فقط && <جدول_دفعات عنوان="دفعات سابقة" دفعات={تقرير.دفعات_سابقة} />}
 
-      {تقرير.دفعات_اليوم.length === 0 && تقرير.دفعات_سابقة.length === 0 && (
+      {تقرير.دفعات_اليوم.length === 0 && (اليوم_فقط || تقرير.دفعات_سابقة.length === 0) && (
         <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-          لا توجد دفعات مسجّلة على هذا الشيك بعد.
+          {اليوم_فقط ? "لا توجد دفعات مسجّلة على هذا الشيك اليوم." : "لا توجد دفعات مسجّلة على هذا الشيك بعد."}
         </p>
       )}
 
       <div className="report-total mt-3 flex items-center justify-between rounded-lg border-2 border-[#1F3864] bg-gray-100 px-4 py-2.5 font-bold">
-        <span>إجمالي المُسدَّد</span>
-        <span className="ltr-nums">{نص_مبلغ(تقرير.المُسدَّد)} ج.م</span>
+        <span>{اليوم_فقط ? "إجمالي دفعات اليوم" : "إجمالي المُسدَّد"}</span>
+        <span className="ltr-nums">{نص_مبلغ(اليوم_فقط ? تقرير.إجمالي_اليوم : تقرير.المُسدَّد)} ج.م</span>
       </div>
 
       <div className="mt-6 flex justify-end">
