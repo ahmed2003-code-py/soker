@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock, ArrowLeftRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, Wallet, Layers, ListChecks, AlertTriangle, ArrowRight, CalendarClock, ArrowLeftRight, Printer } from "lucide-react";
 import { ChequeStatus, ChequeDirection, TreasuryAccountType } from "@prisma/client";
 import { الزر } from "@/components/ui/button";
 import { الحقل, منطقة_نص } from "@/components/ui/input";
@@ -1692,6 +1692,9 @@ function حوار_تسوية({
 
         <تذييل_الحوار>
           <الزر variant="outline" onClick={عند_الإغلاق}>إغلاق</الزر>
+          <a href={`/cheque-settlement-report/${الشيك.id}`} target="_blank" rel="noreferrer">
+            <الزر variant="outline"><Printer className="size-4" /> تقرير التسوية</الزر>
+          </a>
         </تذييل_الحوار>
       </محتوى_الحوار>
     </الحوار>
