@@ -90,10 +90,12 @@ export default async function صفحة_التقارير({
 
   return (
     <div>
-      <ترويسة_الصفحة
-        العنوان={t("rep.title")}
-        الوصف={t("rep.subtitle")}
-      />
+      <div className="no-print">
+        <ترويسة_الصفحة
+          العنوان={t("rep.title")}
+          الوصف={t("rep.subtitle")}
+        />
+      </div>
       <شاشة_التقارير
         النوع={النوع}
         القيم={{

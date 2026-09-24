@@ -42,7 +42,7 @@ export function هيكل_التطبيق({
   }, [مسار]);
 
   return (
-    <div className="flex min-h-screen bg-appgray">
+    <div className="flex min-h-screen bg-appgray print:bg-white">
       {/* الشريط الجانبي — سطح المكتب (يمين في RTL) */}
       <aside
         className={cn(
@@ -83,7 +83,7 @@ export function هيكل_التطبيق({
             عند_فتح_الدرج={() => تعيين_درج(true)}
           />
         </div>
-        <main className="flex-1 p-4 pb-24 sm:p-6 lg:pb-6">{children}</main>
+        <main className="flex-1 p-4 pb-24 sm:p-6 lg:pb-6 print:p-0">{children}</main>
 
         {/* شريط سفلي للموبايل */}
         <nav className="no-print fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-card lg:hidden">

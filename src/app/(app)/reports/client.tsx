@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Printer, FileSpreadsheet, Search, ExternalLink } from "lucide-react";
@@ -381,6 +382,7 @@ type KashfData = {
     رقم_المستند: string;
     البيان: string;
     التصنيف: string;
+    الوزن: number | null;
     مدين: number;
     دائن: number;
     الرصيد: number;
@@ -389,6 +391,7 @@ type KashfData = {
   }[];
   مجموع_مدين: number;
   مجموع_دائن: number;
+  مجموع_الوزن: number;
   الرصيد_الختامي: number;
   إجمالي_الفواتير: number;
   إجمالي_المدفوعات: number;
@@ -460,6 +463,10 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
   const ك = البيانات;
   const نوع_طرف = ك.الطرف.النوع === "CUSTOMER" ? "عميل" : "مورد";
   const تسمية_رصيد = ك.الطرف.النوع === "CUSTOMER" ? "المديونية الحالية" : "المستحق للمورد";
+  // عمود التصنيف غالباً فاضي في كل الصفوف — نخفيه وقتها عشان نوفّر مساحة (خصوصاً في الطباعة)
+  const بتصنيف = ك.الصفوف.some((r) => r.التصنيف);
+  const أعمدة_وصفية = بتصنيف ? 4 : 3;
+  const رقمي = "whitespace-nowrap px-3 py-2 text-end";
 
   const أعمدة: عمود_تصدير[] = [
     { المفتاح: "التاريخ", العنوان: "التاريخ" },
@@ -472,7 +479,8 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
       },
     },
     { المفتاح: "البيان", العنوان: "البيان" },
-    { المفتاح: "التصنيف", العنوان: "التصنيف" },
+    ...(بتصنيف ? [{ المفتاح: "التصنيف", العنوان: "التصنيف" }] : []),
+    { المفتاح: "الوزن", العنوان: "الوزن (كجم)", مبلغ: true },
     { المفتاح: "مدين", العنوان: "مدين", مبلغ: true },
     { المفتاح: "دائن", العنوان: "دائن", مبلغ: true },
     { المفتاح: "الرصيد", العنوان: "الرصيد", مبلغ: true },
@@ -494,12 +502,14 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
         رقم_المستند: "",
         البيان: "الإجمالي",
         التصنيف: "",
+        الوزن: ك.مجموع_الوزن,
         مدين: ك.مجموع_مدين,
         دائن: ك.مجموع_دائن,
         الرصيد: ك.الرصيد_الختامي,
       },
     });
   }
+  const نص_وزن = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="space-y-3">
@@ -514,10 +524,16 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
           <p className="text-sm text-muted-foreground">{فترة}</p>
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-2">
           <مؤشر_صغير العنوان={ك.الطرف.النوع === "CUSTOMER" ? "إجمالي الفواتير" : "إجمالي المشتريات"} قيمة={ك.إجمالي_الفواتير} />
           <مؤشر_صغير العنوان={ك.الطرف.النوع === "CUSTOMER" ? "إجمالي المدفوعات" : "إجمالي مدفوعاتنا"} قيمة={ك.إجمالي_المدفوعات} />
           <مؤشر_صغير العنوان={تسمية_رصيد} قيمة={ك.الرصيد_الختامي} لون_موجب />
+          <div className="rounded-xl border border-border bg-appgray/40 p-3">
+            <p className="text-xs text-muted-foreground">إجمالي الوزن</p>
+            <div className="mt-1 text-lg font-bold text-foreground">
+              <span className="ltr-nums">{نص_وزن(ك.مجموع_الوزن)}</span> <span className="text-xs font-normal text-muted-foreground">كجم</span>
+            </div>
+          </div>
         </div>
 
         <جدول_بسيط
@@ -525,7 +541,8 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
             { العنوان: "التاريخ" },
             { العنوان: "رقم المستند" },
             { العنوان: "البيان" },
-            { العنوان: "التصنيف" },
+            ...(بتصنيف ? [{ العنوان: "التصنيف" }] : []),
+            { العنوان: "الوزن (كجم)", رقم: true },
             { العنوان: "مدين", رقم: true },
             { العنوان: "دائن", رقم: true },
             { العنوان: "الرصيد", رقم: true },
@@ -533,16 +550,14 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
         >
           {ك.رصيد_افتتاحي !== 0 && (
             <tr className="bg-appgray/60">
-              <td className="px-3 py-2" colSpan={4}>رصيد افتتاحي</td>
-              <td className="px-3 py-2 text-end" />
-              <td className="px-3 py-2 text-end" />
-              <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ك.رصيد_افتتاحي} مع_العملة={false} /></td>
+              <td className="px-3 py-2" colSpan={أعمدة_وصفية + 3}>رصيد افتتاحي</td>
+              <td className={رقمي}><نص_مبلغ القيمة={ك.رصيد_افتتاحي} مع_العملة={false} /></td>
             </tr>
           )}
           {ك.الصفوف.map((r, i) => (
             <tr key={i} className="border-t border-border">
-              <td className="px-3 py-2"><نص_تاريخ القيمة={r.التاريخ} /></td>
-              <td className="px-3 py-2 ltr-nums">
+              <td className="whitespace-nowrap px-3 py-2"><نص_تاريخ القيمة={r.التاريخ} /></td>
+              <td className="whitespace-nowrap px-3 py-2 ltr-nums">
                 {r.معرف_الفاتورة ? (
                   <Link
                     href={`/invoices/${r.معرف_الفاتورة}`}
@@ -556,21 +571,23 @@ function كشف_حساب({ البيانات, فترة }: { البيانات: Kas
                 )}
               </td>
               <td className="px-3 py-2">{r.البيان}</td>
-              <td className="px-3 py-2">{r.التصنيف || "—"}</td>
-              <td className="px-3 py-2 text-end">
+              {بتصنيف && <td className="px-3 py-2">{r.التصنيف || "—"}</td>}
+              <td className={`${رقمي} ltr-nums`}>{r.الوزن != null ? نص_وزن(r.الوزن) : "—"}</td>
+              <td className={رقمي}>
                 {r.مدين ? <نص_مبلغ القيمة={r.مدين} مع_العملة={false} /> : "—"}
               </td>
-              <td className="px-3 py-2 text-end">
+              <td className={رقمي}>
                 {r.دائن ? <نص_مبلغ القيمة={r.دائن} مع_العملة={false} /> : "—"}
               </td>
-              <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={r.الرصيد} مع_العملة={false} /></td>
+              <td className={رقمي}><نص_مبلغ القيمة={r.الرصيد} مع_العملة={false} /></td>
             </tr>
           ))}
           <tr className="border-t-2 border-border bg-appgray/60 font-semibold">
-            <td className="px-3 py-2" colSpan={4}>الإجمالي</td>
-            <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ك.مجموع_مدين} مع_العملة={false} /></td>
-            <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ك.مجموع_دائن} مع_العملة={false} /></td>
-            <td className="px-3 py-2 text-end"><نص_مبلغ القيمة={ك.الرصيد_الختامي} مع_العملة={false} /></td>
+            <td className="px-3 py-2" colSpan={أعمدة_وصفية}>الإجمالي</td>
+            <td className={`${رقمي} ltr-nums`}>{نص_وزن(ك.مجموع_الوزن)}</td>
+            <td className={رقمي}><نص_مبلغ القيمة={ك.مجموع_مدين} مع_العملة={false} /></td>
+            <td className={رقمي}><نص_مبلغ القيمة={ك.مجموع_دائن} مع_العملة={false} /></td>
+            <td className={رقمي}><نص_مبلغ القيمة={ك.الرصيد_الختامي} مع_العملة={false} /></td>
           </tr>
         </جدول_بسيط>
 
@@ -1010,17 +1027,23 @@ function جدول_بسيط({
   const الإجمالي_صف = الكل.length ? الكل[الكل.length - 1] : null;
   const صفوف = الكل.slice(0, -1);
   const [حد, تعيين_حد] = React.useState(150);
+  // الطباعة لازم تطلع كل الصفوف — مش أول 150 بس
+  React.useEffect(() => {
+    const عند_الطباعة = () => flushSync(() => تعيين_حد(Infinity));
+    window.addEventListener("beforeprint", عند_الطباعة);
+    return () => window.removeEventListener("beforeprint", عند_الطباعة);
+  }, []);
   const مقصوص = صفوف.length > حد;
   const مرئية = مقصوص ? صفوف.slice(0, حد) : صفوف;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
+    <div className="overflow-hidden rounded-xl border border-border print:overflow-visible">
       <div className="max-h-[70vh] overflow-auto print:max-h-none print:overflow-visible">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm print:text-[10.5px] print:[&_td]:px-1.5 print:[&_td]:py-1 print:[&_th]:px-1.5 print:[&_th]:py-1.5">
           <thead className="sticky top-0 z-10 bg-appgray text-muted-foreground shadow-sm print:static">
             <tr>
               {أعمدة.map((ع, i) => (
-                <th key={i} className={`px-3 py-2.5 text-start font-semibold ${ع.رقم ? "text-end" : ""}`}>
+                <th key={i} className={`whitespace-nowrap px-3 py-2.5 text-start font-semibold ${ع.رقم ? "text-end" : ""}`}>
                   {ع.العنوان}
                 </th>
               ))}

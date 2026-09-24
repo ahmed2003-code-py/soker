@@ -3,6 +3,7 @@ import { ChequeStatus, TxnKind, type Prisma } from "@prisma/client";
 import { اليوم, مفتاح_الشهر, اسم_الشهر } from "@/lib/date";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { متأخر } from "@/lib/cheques";
+import { اجلب_أوزان_القيود } from "@/lib/invoice-weight";
 
 /** أنواع التقارير المدعومة */
 export type نوع_تقرير =
@@ -79,11 +80,14 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
     if (قبل) رصيد_افتتاحي = Number(قبل.balanceAfter);
   }
 
+  const أوزان = await اجلب_أوزان_القيود(حركات, طرف.type);
+
   const الصفوف = حركات.map((h) => ({
     التاريخ: h.date.toISOString(),
     رقم_المستند: h.docNumber ?? "",
     البيان: h.description,
     التصنيف: h.category ?? "",
+    الوزن: أوزان.get(h.id)?.الإجمالي ?? null,
     مدين: Number(h.debit),
     دائن: Number(h.credit),
     الرصيد: Number(h.balanceAfter),
@@ -94,6 +98,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
 
   const مجموع_مدين = الصفوف.reduce((س, r) => س + r.مدين, 0);
   const مجموع_دائن = الصفوف.reduce((س, r) => س + r.دائن, 0);
+  const مجموع_الوزن = الصفوف.reduce((س, r) => س + (r.الوزن ?? 0), 0);
   const الرصيد_الختامي = الصفوف.length ? الصفوف[الصفوف.length - 1].الرصيد : رصيد_افتتاحي;
 
   return {
@@ -102,6 +107,7 @@ export async function تقرير_كشف_حساب(معرف_الطرف: number, م
     الصفوف,
     مجموع_مدين,
     مجموع_دائن,
+    مجموع_الوزن,
     الرصيد_الختامي,
     إجمالي_الفواتير: طرف.type === "CUSTOMER" ? مجموع_مدين : مجموع_دائن,
     إجمالي_المدفوعات: طرف.type === "CUSTOMER" ? مجموع_دائن : مجموع_مدين,
