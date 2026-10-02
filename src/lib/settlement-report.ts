@@ -61,7 +61,14 @@ export async function اجلب_بيانات_تقرير_السداد(
     ? await p.cheque.findMany({ where: { settlementBatchId: معاملة.id }, orderBy: { dueDate: "asc" }, select: حقول_الشيك })
     : مدخلات.معرف_دفعة_طرف
     ? await p.cheque.findMany({
-        where: { OR: [{ receiptBatchId: مدخلات.معرف_دفعة_طرف }, { endorseBatchId: مدخلات.معرف_دفعة_طرف }] },
+        // معرّف المعاملة = أصغر معرّف شيك، فنفس الرقم ممكن يتكرر بين معاملة الاستلام (receiptBatchId)
+        // ومعاملة التظهير (endorseBatchId) لنفس الشيكات. لازم نحدد الجهة وإلا يظهر شيكات مستلمة لم تُظهَّر.
+        where:
+          مدخلات.نوع_الطرف === "SUPPLIER"
+            ? { endorseBatchId: مدخلات.معرف_دفعة_طرف, ...(مدخلات.معرف_الطرف ? { endorsedToId: مدخلات.معرف_الطرف } : {}) }
+            : مدخلات.نوع_الطرف === "CUSTOMER"
+            ? { receiptBatchId: مدخلات.معرف_دفعة_طرف, ...(مدخلات.معرف_الطرف ? { partyId: مدخلات.معرف_الطرف } : {}) }
+            : { OR: [{ receiptBatchId: مدخلات.معرف_دفعة_طرف }, { endorseBatchId: مدخلات.معرف_دفعة_طرف }] },
         orderBy: { dueDate: "asc" },
         select: حقول_الشيك,
       })
