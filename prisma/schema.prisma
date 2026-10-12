@@ -434,6 +434,7 @@ model Cheque {
   settlementBatchId    Int?                      @map("settlement_batch_id") // معاملة السداد المركّب (شيكات + نقدي/تحويلات معاً)
   settlementBatch      SettlementBatch?          @relation(fields: [settlementBatchId], references: [id], onDelete: SetNull)
   receiptBatchId       Int?                      @map("receipt_batch_id") // معرّف «معاملة» الاستلام من العميل — شيكات نفس المعاملة تُجمَّع سوياً (null = قديم)
+  issueBatchId         Int?                      @map("issue_batch_id") // معرّف «معاملة» التسليم لمورد (شيكات صادرة أُدخلت كدفعة واحدة) — تُجمَّع سوياً مثل receiptBatchId
   endorsedToId         Int?                      @map("endorsed_to_id") // المورد المُظهَّر له الشيك (وارد فقط)
   endorsedAt           DateTime?                 @map("endorsed_at") // تاريخ تظهير الشيك للمورد (يُعرض بجانب «مظهّر»)
   endorsedTo           Party?                    @relation("PartyEndorsedCheques", fields: [endorsedToId], references: [id], onDelete: SetNull)
