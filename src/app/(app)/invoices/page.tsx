@@ -12,7 +12,6 @@ export default async function صفحة_الفواتير() {
   const { t } = مترجم_الخادم();
   const فواتير = await prisma.invoice.findMany({
     orderBy: { id: "desc" },
-    take: 500,
     select: {
       id: true,
       number: true,
