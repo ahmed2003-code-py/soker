@@ -166,8 +166,22 @@ export default async function صفحة_عرض_فاتورة({
         </div>
       )}
 
+      {/* هامش الصفحة صفر عشان المتصفح ميطبعش التاريخ/العنوان/اللينك/رقم الصفحة،
+          والهامش الفعلي بييجي من فواصل الجدول (بتتكرر في كل صفحة) + padding جانبي */}
+      <style>{`@media print { @page { size: A4; margin: 0 } }`}</style>
+
+      <table className="w-full border-collapse">
+        <thead className="hidden print:table-header-group">
+          <tr><td className="h-[12mm] p-0" /></tr>
+        </thead>
+        <tfoot className="hidden print:table-footer-group">
+          <tr><td className="h-[12mm] p-0" /></tr>
+        </tfoot>
+        <tbody>
+          <tr>
+            <td className="p-0 align-top">
       {/* ورقة الفاتورة (قابلة للطباعة) */}
-      <div className="mx-auto max-w-3xl card-soft p-8 text-foreground print:max-w-none print:border-0 print:p-0 print:text-black print:shadow-none">
+      <div className="mx-auto max-w-3xl card-soft p-8 text-foreground print:max-w-none print:border-0 print:px-[12mm] print:py-0 print:text-black print:shadow-none">
 
         {/* الرأس */}
         <div className="flex items-start justify-between gap-4 border-b-2 border-foreground/80 pb-4 print:border-black">
@@ -506,6 +520,10 @@ export default async function صفحة_عرض_فاتورة({
           />
         </div>
       </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
