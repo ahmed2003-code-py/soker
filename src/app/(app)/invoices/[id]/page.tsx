@@ -8,6 +8,11 @@ import { تفقيط } from "@/lib/tafqit";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { شريط_إجراءات_الفاتورة } from "./actions-bar";
 import { مبدّل_رصيد_الفاتورة } from "./balance-toggle";
+import { زر_تحصيل_فاتورة } from "./collect-dialog";
+import { د, طرح } from "@/lib/decimal";
+import { فاتورة_زائر, حالة_دفع_الزائر } from "@/lib/invoice";
+import { تسمية_حساب_الخزنة } from "@/lib/enums";
+import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 
 export const metadata = { title: "عرض فاتورة — سُكر" };
 
@@ -24,11 +29,12 @@ export default async function صفحة_عرض_فاتورة({
       include: {
         customer: true,
         lines: { orderBy: [{ category: "asc" }, { id: "asc" }] },
+        expenses: { orderBy: { id: "asc" } },
         createdBy: { select: { name: true } },
         updatedBy: { select: { name: true } },
         treasuryTxns: {
           where: { deletedAt: null },
-          select: { amount: true },
+          select: { amount: true, kind: true },
         },
         ledgerEntries: {
           where: { treasuryTxnId: null },
@@ -65,6 +71,32 @@ export default async function صفحة_عرض_فاتورة({
       })
     : null;
   const عميل_زائر = !فاتورة.customerId;
+
+  // حالة دفع فاتورة الزائر (مشتقة من حركات الخزنة) — للعرض وزر التحصيل
+  const زائر_قابل_للتحصيل = فاتورة_زائر(فاتورة);
+  const المحصّل = فاتورة.treasuryTxns.reduce(
+    (س, ح) => (ح.kind === "EXPENSE" ? س.minus(ح.amount) : ح.kind === "INCOME" ? س.plus(ح.amount) : س),
+    د(0)
+  );
+  const المتبقي = طرح(فاتورة.totalAmount, المحصّل);
+  const حالة_الدفع = زائر_قابل_للتحصيل ? حالة_دفع_الزائر(فاتورة.totalAmount, المحصّل) : null;
+  const يحتاج_تحصيل = !!حالة_الدفع && حالة_الدفع !== "مدفوعة";
+  const [حسابات_الخزنة, حسابات_فرعية] = يحتاج_تحصيل
+    ? await Promise.all([prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }), اجلب_خريطة_حسابات_فرعية()])
+    : [[], null];
+  const صفوف_المصروفات = فاتورة.expenses.map((م) => (
+    <tr key={`e-${م.id}`} className="border-b border-foreground/10 print:border-black/10">
+      <td colSpan={4} className="px-2 py-1.5">
+        <span className="ml-1.5 inline-block rounded border border-foreground/25 px-1 text-[10px] font-semibold text-foreground/70 print:border-black/40 print:text-black">
+          مصروف إضافي
+        </span>
+        {م.description}
+      </td>
+      <td className="px-2 py-1.5 text-end ltr-nums">
+        {Number(م.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+      </td>
+    </tr>
+  ));
   const اسم_الطرف = فاتورة.customer?.name ?? فاتورة.guestName ?? "عميل نقدي";
 
   // إجماليات المبيعات والمرتجعات من البنود
@@ -419,6 +451,7 @@ export default async function صفحة_عرض_فاتورة({
                         ({إجمالي_مرتجعات_الفاتورة.toLocaleString("en-US", { minimumFractionDigits: 2 })})
                       </td>
                     </tr>
+                    {صفوف_المصروفات}
                     <tr className="border-t-2 border-foreground/80 print:border-black">
                       <td colSpan={4} className="px-2 py-2.5 text-base font-bold">صافي الفاتورة</td>
                       <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
@@ -443,6 +476,17 @@ export default async function صفحة_عرض_فاتورة({
                         </tr>
                       );
                     })}
+                    {صفوف_المصروفات.length > 0 && (
+                      <>
+                        <tr className="border-t border-foreground/40 print:border-black/40">
+                          <td colSpan={4} className="px-2 py-1.5 text-sm text-muted-foreground">إجمالي البنود</td>
+                          <td className="px-2 py-1.5 text-end ltr-nums">
+                            {طرح(فاتورة.totalAmount, فاتورة.expensesTotal).toNumber().toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                        {صفوف_المصروفات}
+                      </>
+                    )}
                     <tr className="border-t-2 border-foreground/80 print:border-black">
                       <td colSpan={4} className="px-2 py-2.5 text-base font-bold">{t("inv.col.total")}</td>
                       <td className="px-2 py-2.5 text-end ltr-nums text-base font-bold">
@@ -467,6 +511,42 @@ export default async function صفحة_عرض_فاتورة({
             <span className="font-semibold">{t("inv.v.notes_label")} </span>
             {فاتورة.notes}
           </p>
+        )}
+
+        {/* حالة دفع فاتورة الزائر + تحصيل المتبقي */}
+        {حالة_الدفع && (
+          <div
+            className={`mt-5 rounded-xl border p-3 text-sm space-y-1.5 ${
+              يحتاج_تحصيل ? "border-amber-300 bg-amber-50/60 dark:bg-amber-900/10" : "border-border"
+            } print:border-black/30 print:bg-transparent`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">
+                حالة الدفع:{" "}
+                <span className={يحتاج_تحصيل ? "text-amber-700" : "text-success"}>
+                  {حالة_الدفع === "مدفوعة" ? "مدفوعة" : حالة_الدفع === "جزئية" ? "مدفوعة جزئياً — معلّقة" : "معلّقة (غير محصّلة)"}
+                </span>
+              </span>
+              {يحتاج_تحصيل && حسابات_فرعية && (
+                <div className="no-print">
+                  <زر_تحصيل_فاتورة
+                    المعرف={فاتورة.id}
+                    المتبقي={المتبقي.toString()}
+                    حسابات_الخزنة={حسابات_الخزنة.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}
+                    حسابات_فرعية={حسابات_فرعية}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>المحصّل</span>
+              <نص_مبلغ القيمة={المحصّل} النوع="إيراد" />
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>المتبقي</span>
+              <نص_مبلغ القيمة={المتبقي.greaterThan(0) ? المتبقي : 0} النوع={يحتاج_تحصيل ? "مصروف" : "محايد"} />
+            </div>
+          </div>
         )}
 
         {/* مبدّل الرصيد — للعملاء المسجّلين */}

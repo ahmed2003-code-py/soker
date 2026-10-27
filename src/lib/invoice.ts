@@ -74,6 +74,69 @@ export function احسب_إجماليات(بنود: بند_إدخال[]) {
   };
 }
 
+export type مصروف_إدخال = { البيان: string; المبلغ: Prisma.Decimal.Value | null };
+
+/**
+ * المصروفات الإضافية للفاتورة (مشتركة بين كل أنواع الفواتير والمباشرة).
+ * الإجمالي النهائي = صافي البنود + إجمالي_المصروفات — يُحسب على الخادم دائماً.
+ */
+export function احسب_المصروفات(مصروفات: مصروف_إدخال[] | null | undefined) {
+  const صفوف = (مصروفات ?? []).map((م) => ({ البيان: م.البيان.trim(), المبلغ: د(م.المبلغ ?? 0) }));
+  const إجمالي_المصروفات = صفوف.reduce((س, م) => جمع(س, م.المبلغ), د(0));
+  return { إجمالي_المصروفات, صفوف };
+}
+
+/** صفوف المصروفات بصيغة الإنشاء المتداخل في Prisma (invoice.create/update → expenses.create). */
+export function صفوف_المصروفات_للإنشاء(صفوف: ReturnType<typeof احسب_المصروفات>["صفوف"], أنشأ: number) {
+  return صفوف.map((م) => ({ description: م.البيان, amount: م.المبلغ, createdById: أنشأ }));
+}
+
+/**
+ * قفل صف الفاتورة حتى نهاية المعاملة (SELECT … FOR UPDATE) — يُسلسِل التحصيل والتعديل
+ * والحذف على نفس الفاتورة فلا يُحصَّل مبلغ مرتين ولا تبقى حركة يتيمة. يُرجع false لو غير موجودة.
+ */
+export async function اقفل_الفاتورة(tx: عميل_معاملة, معرف_الفاتورة: number): Promise<boolean> {
+  const صفوف = await tx.$queryRaw<{ id: number }[]>`
+    SELECT id FROM invoices WHERE id = ${معرف_الفاتورة} FOR UPDATE
+  `;
+  return صفوف.length > 0;
+}
+
+/** صافي ما دخل الخزنة على الفاتورة (إيراد − مصروف) من الحركات غير المحذوفة — بالـ Decimal. */
+export async function المحصّل_على_الفاتورة(
+  tx: عميل_معاملة,
+  معرف_الفاتورة: number
+): Promise<Prisma.Decimal> {
+  const [إيراد, مصروف] = await Promise.all([
+    tx.treasuryTxn.aggregate({
+      where: { invoiceId: معرف_الفاتورة, deletedAt: null, kind: "INCOME" },
+      _sum: { amount: true },
+    }),
+    tx.treasuryTxn.aggregate({
+      where: { invoiceId: معرف_الفاتورة, deletedAt: null, kind: "EXPENSE" },
+      _sum: { amount: true },
+    }),
+  ]);
+  return طرح(إيراد._sum.amount ?? 0, مصروف._sum.amount ?? 0);
+}
+
+export type حالة_دفع = "مدفوعة" | "جزئية" | "معلّقة";
+
+/**
+ * حالة دفع فاتورة الزائر (بيع بلا حساب) — مشتقّة من حركات الخزنة، لا تُخزَّن.
+ * فواتير العملاء المسجّلين تُتابَع على رصيد الحساب لا على الفاتورة، فلا حالة لها هنا.
+ */
+export function حالة_دفع_الزائر(الإجمالي: Prisma.Decimal.Value, المحصّل: Prisma.Decimal.Value): حالة_دفع {
+  const متبقي = طرح(الإجمالي, المحصّل);
+  if (!متبقي.greaterThan(0)) return "مدفوعة";
+  return د(المحصّل).greaterThan(0) ? "جزئية" : "معلّقة";
+}
+
+/** هل الفاتورة فاتورة زائر (بيع بلا حساب، غير مباشرة)؟ — وحدها تقبل الحفظ معلّقة والتحصيل لاحقاً. */
+export function فاتورة_زائر(ف: { customerId: number | null; invoiceType: string; directInvoiceId?: number | null }) {
+  return ف.customerId == null && ف.invoiceType === "SALE" && !ف.directInvoiceId;
+}
+
 /** تجميع البنود حسب التصنيف (للملخص أسفل الفاتورة). */
 export function جمّع_حسب_التصنيف(
   بنود: { التصنيف: string; الكمية: Prisma.Decimal.Value; الوزن: Prisma.Decimal.Value }[]

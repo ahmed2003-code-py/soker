@@ -97,6 +97,8 @@ model User {
   invoicesUpdated     Invoice[]                 @relation("InvoiceUpdatedBy")
   invoiceLinesCreated InvoiceLine[]             @relation("InvoiceLineCreatedBy")
   invoiceLinesUpdated InvoiceLine[]             @relation("InvoiceLineUpdatedBy")
+  invoiceExpensesCreated InvoiceExpense[]       @relation("InvoiceExpenseCreatedBy")
+  invoiceExpensesUpdated InvoiceExpense[]       @relation("InvoiceExpenseUpdatedBy")
   ledgerCreated       LedgerEntry[]             @relation("LedgerCreatedBy")
   ledgerUpdated       LedgerEntry[]             @relation("LedgerUpdatedBy")
   treasuryCreated     TreasuryTxn[]             @relation("TreasuryCreatedBy")
@@ -168,7 +170,8 @@ model Invoice {
   date             DateTime          @map("date") @db.Date
   totalQty         Decimal           @default(0) @map("total_qty") @db.Decimal(18, 4)
   totalWeight      Decimal           @default(0) @map("total_weight") @db.Decimal(18, 4)
-  totalAmount      Decimal           @default(0) @map("total_amount") @db.Decimal(18, 4)
+  totalAmount      Decimal           @default(0) @map("total_amount") @db.Decimal(18, 4) // الإجمالي النهائي = صافي البنود + المصروفات الإضافية
+  expensesTotal    Decimal           @default(0) @map("expenses_total") @db.Decimal(18, 4) // مجموع المصروفات الإضافية (داخل totalAmount)
   invoiceType      String            @default("SALE") @map("invoice_type") // SALE | PURCHASE | SUPPLIER_RETURN
   unpriced         Boolean           @default(false) @map("unpriced") // فاتورة غير مسعّرة — محفوظة بلا أثر مالي حتى تُسعَّر
   externalRef      String?           @map("external_ref") // رقم فاتورة المورد (للجاية)
@@ -190,6 +193,7 @@ model Invoice {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   lines             InvoiceLine[]
+  expenses          InvoiceExpense[]
   ledgerEntries     LedgerEntry[]
   treasuryTxns      TreasuryTxn[]
   chequeAllocations ChequeInvoiceAllocation[]
@@ -230,6 +234,27 @@ model InvoiceLine {
   @@index([category])
   @@index([lotId])
   @@map("invoice_lines")
+}
+
+// ==================== InvoiceExpense (مصروف_إضافي) ====================
+// مصروفات إضافية على الفاتورة (نقل، تحميل، …) — تُضاف للإجمالي النهائي وتُرحَّل معه
+// في نفس قيد الفاتورة، فلا أثر محاسبي مستقل لها.
+model InvoiceExpense {
+  id          Int     @id @default(autoincrement())
+  invoiceId   Int     @map("invoice_id")
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String  @map("description")
+  amount      Decimal @map("amount") @db.Decimal(18, 4)
+
+  createdById Int?     @map("created_by_id")
+  createdBy   User?    @relation("InvoiceExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("InvoiceExpenseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([invoiceId])
+  @@map("invoice_expenses")
 }
 
 // ==================== LedgerEntry (حركة الحساب — دفتر الأستاذ) ====================

@@ -19,6 +19,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       where: { id },
       include: {
         lines: { include: { lot: { select: { lotNo: true } } } },
+        expenses: { orderBy: { id: "asc" } },
         treasuryTxns: {
           where: { deletedAt: null },
           select: { amount: true, accountId: true, subAccountId: true },
@@ -59,6 +60,8 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           })),
         }
       : null;
+  const مصروفات_للنموذج = (مصروفات: { description: string; amount: unknown }[]) =>
+    مصروفات.map((م) => ({ البيان: م.description, المبلغ: String(م.amount) }));
 
   // ── فاتورة مباشرة (مورد ← عميل): تُحرَّر بجهتيها معاً في نموذج واحد ──
   if (فاتورة.directInvoiceId) {
@@ -66,6 +69,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
       where: { directInvoiceId: فاتورة.directInvoiceId },
       include: {
         lines: true,
+        expenses: { orderBy: { id: "asc" } },
         treasuryTxns: {
           where: { deletedAt: null },
           select: { amount: true, accountId: true, subAccountId: true },
@@ -135,6 +139,8 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
               غير_مسعّرة: ف_عميل.unpriced,
               دفعة: دفعة_العميل,
               دفعة_المورد,
+              المصروفات_الإضافية: مصروفات_للنموذج(ف_عميل.expenses),
+              مصروفات_المورد: مصروفات_للنموذج(ف_مورد.expenses),
               البنود: ف_عميل.lines.map((l) => ({
                 نوع_البند: "SALE" as const,
                 اللون: l.color,
@@ -207,6 +213,7 @@ export default async function صفحة_تعديل_فاتورة({ params }: { par
           ملاحظات: فاتورة.notes,
           غير_مسعّرة: فاتورة.unpriced,
           دفعة: دفعة_موجودة,
+          المصروفات_الإضافية: مصروفات_للنموذج(فاتورة.expenses),
           البنود: فاتورة.lines.map((l) => ({
             نوع_البند: (l.lineType === "RETURN" ? "RETURN" : "SALE") as "SALE" | "RETURN",
             معرف_اللط: l.lotId ? String(l.lotId) : "",

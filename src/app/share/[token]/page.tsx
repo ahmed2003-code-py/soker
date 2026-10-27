@@ -18,6 +18,7 @@ export default async function صفحة_مشاركة_فاتورة({
     include: {
       customer: true,
       lines: { orderBy: [{ category: "asc" }, { id: "asc" }] },
+      expenses: { orderBy: { id: "asc" } },
       treasuryTxns: مع_رصيد ? { select: { amount: true } } : false,
     },
   });
@@ -191,6 +192,12 @@ export default async function صفحة_مشاركة_فاتورة({
               <span>إجمالي الوزن</span>
               <span className="ltr-nums font-medium">{Number(فاتورة.totalWeight).toFixed(2)} كجم</span>
             </div>
+            {فاتورة.expenses.map((م) => (
+              <div key={م.id} className="flex justify-between py-1 text-sm">
+                <span>+ {م.description}</span>
+                <نص_مبلغ القيمة={م.amount} />
+              </div>
+            ))}
             <div className="mt-1 flex items-center justify-between border-t-2 border-gray-800 pt-2 text-lg font-bold">
               <span>الإجمالي</span>
               <نص_مبلغ القيمة={فاتورة.totalAmount} />

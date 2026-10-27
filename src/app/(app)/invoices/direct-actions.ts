@@ -6,10 +6,13 @@ import { تحقق_الصلاحية } from "@/lib/authz";
 import { تسجيل_عملية } from "@/lib/activity";
 import { نجح, فشل, type نتيجة } from "@/lib/result";
 import { تحليل_تاريخ } from "@/lib/date";
-import { د } from "@/lib/decimal";
+import { د, جمع } from "@/lib/decimal";
 import {
   احصل_رقم_فاتورة_جديد,
   احسب_إجماليات,
+  احسب_المصروفات,
+  صفوف_المصروفات_للإنشاء,
+  اقفل_الفاتورة,
   رحّل_فاتورة_مباشرة,
   اعكس_قيود_الفاتورة,
 } from "@/lib/invoice";
@@ -69,13 +72,18 @@ async function جهّز(مدخلات: unknown) {
   }
 
   const تاريخ = تحليل_تاريخ(ب.التاريخ) ?? new Date();
+  // المصروفات الإضافية لكل جهة على فاتورتها: تُضاف لقيمتها وتُرحَّل معها
+  const مصروفات_المورد = احسب_المصروفات(ب.مصروفات_المورد);
+  const مصروفات_العميل = احسب_المصروفات(ب.مصروفات_العميل);
   // الكمية/الوزن واحدة للجهتين (نفس البضاعة) — بناخدها من جهة العميل
   return {
     سليم: true, ب, مورد, عميل, تاريخ, غير_مسعّرة,
     إجمالي_الكمية: إجماليات_العميل.إجمالي_الكمية,
     إجمالي_الوزن: إجماليات_العميل.إجمالي_الوزن,
-    قيمة_المورد: إجماليات_المورد.الإجمالي_المالي,
-    قيمة_العميل: إجماليات_العميل.الإجمالي_المالي,
+    قيمة_المورد: جمع(إجماليات_المورد.الإجمالي_المالي, مصروفات_المورد.إجمالي_المصروفات),
+    قيمة_العميل: جمع(إجماليات_العميل.الإجمالي_المالي, مصروفات_العميل.إجمالي_المصروفات),
+    مصروفات_المورد,
+    مصروفات_العميل,
     بنود_المورد: إجماليات_المورد.بنود_محسوبة,
     بنود_العميل: إجماليات_العميل.بنود_محسوبة,
   } as const;
@@ -124,11 +132,13 @@ export async function إنشاء_فاتورة_مباشرة(
         totalQty: ج.إجمالي_الكمية,
         totalWeight: ج.إجمالي_الوزن,
         totalAmount: ج.قيمة_المورد,
+        expensesTotal: ج.مصروفات_المورد.إجمالي_المصروفات,
         notes: ب.ملاحظات || null,
         shareToken: crypto.randomUUID(),
         directInvoiceId: مجموعة.id,
         createdById: فاعل.id,
         lines: { create: بنود_للإنشاء(ج.بنود_المورد, فاعل.id) },
+        expenses: { create: صفوف_المصروفات_للإنشاء(ج.مصروفات_المورد.صفوف, فاعل.id) },
       },
     });
 
@@ -144,11 +154,13 @@ export async function إنشاء_فاتورة_مباشرة(
         totalQty: ج.إجمالي_الكمية,
         totalWeight: ج.إجمالي_الوزن,
         totalAmount: ج.قيمة_العميل,
+        expensesTotal: ج.مصروفات_العميل.إجمالي_المصروفات,
         notes: ب.ملاحظات || null,
         shareToken: crypto.randomUUID(),
         directInvoiceId: مجموعة.id,
         createdById: فاعل.id,
         lines: { create: بنود_للإنشاء(ج.بنود_العميل, فاعل.id) },
+        expenses: { create: صفوف_المصروفات_للإنشاء(ج.مصروفات_العميل.صفوف, فاعل.id) },
       },
     });
 
@@ -250,9 +262,11 @@ export async function تعديل_فاتورة_مباشرة(id: number, مدخل�
   await prisma.$transaction(async (tx) => {
     // ── عكس الجهتين بالكامل (دفعات + قيود) ثم إعادة التطبيق ──
     for (const ف of [ف_مورد, ف_عميل]) {
+      if (!(await اقفل_الفاتورة(tx, ف.id))) throw new Error("الفاتورة غير موجودة");
       await اعكس_دفعات_الفاتورة(tx, ف.id);
       await اعكس_قيود_الفاتورة(tx, ف.id, ف.customerId);
       await tx.invoiceLine.deleteMany({ where: { invoiceId: ف.id } });
+      await tx.invoiceExpense.deleteMany({ where: { invoiceId: ف.id } });
     }
 
     await tx.invoice.update({
@@ -268,9 +282,11 @@ export async function تعديل_فاتورة_مباشرة(id: number, مدخل�
         totalQty: ج.إجمالي_الكمية,
         totalWeight: ج.إجمالي_الوزن,
         totalAmount: ج.قيمة_المورد,
+        expensesTotal: ج.مصروفات_المورد.إجمالي_المصروفات,
         notes: ب.ملاحظات || null,
         updatedById: فاعل.id,
         lines: { create: بنود_للإنشاء(ج.بنود_المورد, فاعل.id) },
+        expenses: { create: صفوف_المصروفات_للإنشاء(ج.مصروفات_المورد.صفوف, فاعل.id) },
       },
     });
     await tx.invoice.update({
@@ -285,9 +301,11 @@ export async function تعديل_فاتورة_مباشرة(id: number, مدخل�
         totalQty: ج.إجمالي_الكمية,
         totalWeight: ج.إجمالي_الوزن,
         totalAmount: ج.قيمة_العميل,
+        expensesTotal: ج.مصروفات_العميل.إجمالي_المصروفات,
         notes: ب.ملاحظات || null,
         updatedById: فاعل.id,
         lines: { create: بنود_للإنشاء(ج.بنود_العميل, فاعل.id) },
+        expenses: { create: صفوف_المصروفات_للإنشاء(ج.مصروفات_العميل.صفوف, فاعل.id) },
       },
     });
     if (رقم_الجديد !== ف_عميل.number) {

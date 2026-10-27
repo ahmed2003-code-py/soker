@@ -22,6 +22,8 @@ type صف = {
   التاريخ: string;
   الإجمالي: number;
   إجمالي_الوزن: number;
+  معلّقة?: boolean; // فاتورة زائر لم تُحصَّل بالكامل
+  المتبقي?: number;
 };
 
 const رقم_مصفّر = (n: number) => String(n).padStart(7, "0");
@@ -34,6 +36,9 @@ function جدول_فواتير({
   فقط_غير_مسعّرة,
   عدد_غير_مسعّرة,
   تبديل_الفلتر,
+  فقط_معلّقة = false,
+  عدد_معلّقة = 0,
+  تبديل_فلتر_المعلّقة,
 }: {
   البيانات: صف[];
   عنوان_الطرف: string;
@@ -42,6 +47,9 @@ function جدول_فواتير({
   فقط_غير_مسعّرة: boolean;
   عدد_غير_مسعّرة: number;
   تبديل_الفلتر: () => void;
+  فقط_معلّقة?: boolean;
+  عدد_معلّقة?: number;
+  تبديل_فلتر_المعلّقة?: () => void;
 }) {
   const router = useRouter();
   const { t } = استخدام_اللغة();
@@ -103,6 +111,13 @@ function جدول_فواتير({
       خلية: (ص) =>
         ص.غير_مسعّرة ? (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 border border-amber-300">غير مسعّرة</span>
+        ) : ص.معلّقة ? (
+          <span className="inline-flex flex-col items-end gap-0.5">
+            <نص_مبلغ القيمة={ص.الإجمالي} />
+            <span className="rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+              معلّقة — متبقي <نص_مبلغ القيمة={ص.المتبقي ?? 0} مع_العملة={false} />
+            </span>
+          </span>
         ) : (
           <نص_مبلغ القيمة={ص.الإجمالي} />
         ),
@@ -120,18 +135,35 @@ function جدول_فواتير({
       عند_النقر={(ص) => router.push(`/invoices/${ص.id}`)}
       رسالة_فراغ={t("inv.empty")}
       أدوات_إضافية={
-        عدد_غير_مسعّرة > 0 && (
-          <button
-            type="button"
-            onClick={تبديل_الفلتر}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
-              فقط_غير_مسعّرة
-                ? "border-amber-300 bg-amber-100 text-amber-800"
-                : "border-border bg-card hover:bg-appgray"
-            }`}
-          >
-            غير مسعّرة فقط ({عدد_غير_مسعّرة})
-          </button>
+        (عدد_غير_مسعّرة > 0 || عدد_معلّقة > 0) && (
+          <div className="flex flex-wrap gap-1.5">
+            {عدد_غير_مسعّرة > 0 && (
+              <button
+                type="button"
+                onClick={تبديل_الفلتر}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
+                  فقط_غير_مسعّرة
+                    ? "border-amber-300 bg-amber-100 text-amber-800"
+                    : "border-border bg-card hover:bg-appgray"
+                }`}
+              >
+                غير مسعّرة فقط ({عدد_غير_مسعّرة})
+              </button>
+            )}
+            {عدد_معلّقة > 0 && تبديل_فلتر_المعلّقة && (
+              <button
+                type="button"
+                onClick={تبديل_فلتر_المعلّقة}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition active:scale-95 ${
+                  فقط_معلّقة
+                    ? "border-amber-300 bg-amber-100 text-amber-800"
+                    : "border-border bg-card hover:bg-appgray"
+                }`}
+              >
+                معلّقة (غير محصّلة) فقط ({عدد_معلّقة})
+              </button>
+            )}
+          </div>
         )
       }
       إجراءات_الصف={(ص) => (
@@ -160,12 +192,17 @@ export function قائمة_الفواتير({ البيانات }: { البيان
   const [التاب, تعيين_التاب] = React.useState<"customers" | "purchases">("customers");
   const [فقط_غير_مسعّرة, تعيين_فقط_غير_مسعّرة] = React.useState(false);
   const تبديل_الفلتر = () => تعيين_فقط_غير_مسعّرة((v) => !v);
+  const [فقط_معلّقة, تعيين_فقط_معلّقة] = React.useState(false);
+  const تبديل_فلتر_المعلّقة = () => تعيين_فقط_معلّقة((v) => !v);
 
   const كل_فواتير_العملاء = البيانات.filter((f) => f.النوع !== "PURCHASE");
   const كل_فواتير_الشراء = البيانات.filter((f) => f.النوع === "PURCHASE");
   const عدد_غير_مسعّرة_عملاء = كل_فواتير_العملاء.filter((f) => f.غير_مسعّرة).length;
   const عدد_غير_مسعّرة_شراء = كل_فواتير_الشراء.filter((f) => f.غير_مسعّرة).length;
-  const فواتير_العملاء = فقط_غير_مسعّرة ? كل_فواتير_العملاء.filter((f) => f.غير_مسعّرة) : كل_فواتير_العملاء;
+  const عدد_معلّقة = كل_فواتير_العملاء.filter((f) => f.معلّقة).length;
+  const فواتير_العملاء = كل_فواتير_العملاء.filter(
+    (f) => (!فقط_غير_مسعّرة || f.غير_مسعّرة) && (!فقط_معلّقة || f.معلّقة)
+  );
   const فواتير_الشراء = فقط_غير_مسعّرة ? كل_فواتير_الشراء.filter((f) => f.غير_مسعّرة) : كل_فواتير_الشراء;
 
   return (
@@ -201,6 +238,9 @@ export function قائمة_الفواتير({ البيانات }: { البيان
           فقط_غير_مسعّرة={فقط_غير_مسعّرة}
           عدد_غير_مسعّرة={عدد_غير_مسعّرة_عملاء}
           تبديل_الفلتر={تبديل_الفلتر}
+          فقط_معلّقة={فقط_معلّقة}
+          عدد_معلّقة={عدد_معلّقة}
+          تبديل_فلتر_المعلّقة={تبديل_فلتر_المعلّقة}
         />
       ) : (
         <جدول_فواتير
