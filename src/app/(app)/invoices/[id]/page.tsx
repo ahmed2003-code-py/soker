@@ -558,6 +558,11 @@ export default async function صفحة_عرض_فاتورة({
                   أُنهيت بواسطة {فاتورة.settledBy?.name ?? "—"} — <نص_تاريخ القيمة={فاتورة.settledAt!} />
                 </p>
               </>
+            ) : المتبقي.lessThan(0) ? (
+              <div className="flex justify-between font-semibold text-primary-blue">
+                <span>زيادة محصّلة (دخلت الخزنة)</span>
+                <نص_مبلغ القيمة={المتبقي.negated()} />
+              </div>
             ) : (
               <div className="flex justify-between font-semibold">
                 <span>المتبقي</span>
