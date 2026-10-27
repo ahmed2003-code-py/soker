@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { د, جمع, طرح, ضرب } from "@/lib/decimal";
 import { أضف_قيد, أعد_حساب_سلسلة_الطرف } from "@/lib/ledger";
 
@@ -72,6 +72,30 @@ export function احسب_إجماليات(بنود: بند_إدخال[]) {
     إجمالي_المرتجعات,
     بنود_محسوبة,
   };
+}
+
+/**
+ * رسالة خطأ حفظ الفاتورة للمستخدم: تعارض رقم الفاتورة (قيد unique على number) يُترجَم
+ * لرسالة عربية واضحة بدل نص Prisma الخام. باقي الأخطاء رسالتها كما هي.
+ */
+export function رسالة_خطأ_الفاتورة(e: unknown, بديل: string): string {
+  if (
+    e instanceof Prisma.PrismaClientKnownRequestError &&
+    e.code === "P2002" &&
+    String(e.meta?.target ?? "").includes("number")
+  ) {
+    return "رقم الفاتورة اتسجّل لفاتورة تانية في نفس اللحظة — احفظ تاني (هياخد الرقم المتاح التالي) أو غيّر الرقم";
+  }
+  return e instanceof Error ? e.message : بديل;
+}
+
+/** يرمي خطأ واضحاً لو الرقم المحدد يدوياً مستخدم في فاتورة أخرى (داخل المعاملة). */
+export async function امنع_رقم_مكرر(tx: عميل_معاملة, رقم: number, استثناء?: number) {
+  const مكرر = await tx.invoice.findFirst({
+    where: { number: رقم, ...(استثناء ? { id: { not: استثناء } } : {}) },
+    select: { id: true },
+  });
+  if (مكرر) throw new Error(`رقم الفاتورة ${رقم} مستخدم بالفعل — امسح الرقم ليتحدد تلقائياً أو اكتب رقماً آخر`);
 }
 
 export type مصروف_إدخال = { البيان: string; المبلغ: Prisma.Decimal.Value | null };

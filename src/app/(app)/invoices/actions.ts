@@ -17,6 +17,8 @@ import {
   اقفل_الفاتورة,
   المحصّل_على_الفاتورة,
   فاتورة_زائر,
+  رسالة_خطأ_الفاتورة,
+  امنع_رقم_مكرر,
   رحّل_فاتورة_للعميل,
   رحّل_مرتجع_للعميل,
   رحّل_فاتورة_للمورد,
@@ -108,6 +110,7 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
     if (ب.نوع_الفاتورة !== "PURCHASE") {
       if (ب.رقم_الفاتورة_المحدد) {
         رقم = ب.رقم_الفاتورة_المحدد;
+        await امنع_رقم_مكرر(tx, رقم);
         await tx.$executeRaw`
           UPDATE settings SET value = ${String(رقم)}
           WHERE key = 'عداد_الفواتير' AND value::int < ${رقم}
@@ -261,7 +264,7 @@ export async function إنشاء_فاتورة(مدخلات: unknown): Promise<ن
     return f;
   });
   } catch (e) {
-    return فشل(e instanceof Error ? e.message : "خطأ أثناء إنشاء الفاتورة");
+    return فشل(رسالة_خطأ_الفاتورة(e, "خطأ أثناء إنشاء الفاتورة"));
   }
 
   revalidatePath("/invoices");
@@ -512,7 +515,7 @@ export async function تعديل_فاتورة(id: number, مدخلات: unknown)
     });
   });
   } catch (e) {
-    return فشل(e instanceof Error ? e.message : "خطأ أثناء تعديل الفاتورة");
+    return فشل(رسالة_خطأ_الفاتورة(e, "خطأ أثناء تعديل الفاتورة"));
   }
 
   revalidatePath("/invoices");
