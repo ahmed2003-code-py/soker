@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { مترجم_الخادم } from "@/lib/i18n/server";
 import { قائمة_الفواتير } from "./list-client";
 import { د, طرح } from "@/lib/decimal";
-import { فاتورة_زائر, حالة_دفع_الزائر } from "@/lib/invoice";
+import { متابَعة_التحصيل, حالة_دفع_الزائر } from "@/lib/invoice";
 
 export const metadata = { title: "الفواتير — سُكر" };
 
@@ -22,6 +22,8 @@ export default async function صفحة_الفواتير() {
       unpriced: true,
       directInvoiceId: true,
       customerId: true,
+      paymentTracked: true,
+      settledAt: true,
       customer: { select: { name: true } },
       guestName: true,
       date: true,
@@ -31,12 +33,14 @@ export default async function صفحة_الفواتير() {
   });
   // فواتير الزوار: المحصّل من حركات الخزنة (استعلام تجميعي واحد) ⇒ حالة الدفع والمتبقي
   // (فلتر بالعلاقة بدل IN بكل المعرفات — لا حد لعدد المعاملات مهما كثرت الفواتير)
-  const مجاميع = فواتير.some((f) => فاتورة_زائر(f))
+  const مجاميع = فواتير.some((f) => متابَعة_التحصيل(f) && !f.settledAt)
     ? await prisma.treasuryTxn.groupBy({
         by: ["invoiceId", "kind"],
         where: {
           deletedAt: null,
-          invoice: { is: { customerId: null, invoiceType: "SALE", directInvoiceId: null } },
+          invoice: {
+            is: { customerId: null, invoiceType: "SALE", directInvoiceId: null, paymentTracked: true, settledAt: null },
+          },
         },
         _sum: { amount: true },
       })
@@ -60,7 +64,7 @@ export default async function صفحة_الفواتير() {
     التاريخ: f.date.toISOString(),
     الإجمالي: Number(f.totalAmount),
     إجمالي_الوزن: Number(f.totalWeight),
-    ...(فاتورة_زائر(f)
+    ...(متابَعة_التحصيل(f) && !f.settledAt
       ? (() => {
           const محصّل = المحصّل.get(f.id) ?? د(0);
           const حالة = حالة_دفع_الزائر(f.totalAmount, محصّل);

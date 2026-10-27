@@ -55,6 +55,9 @@
 | `totalWeight` | `total_weight` | `إجمالي_الوزن` |
 | `totalAmount` | `total_amount` | `الإجمالي_النهائي` (= `الإجمالي_المالي` صافي البنود + `إجمالي_المصروفات`) |
 | `expensesTotal` | `expenses_total` | `إجمالي_المصروفات` |
+| `paymentTracked` | `payment_tracked` | `متابَعة_التحصيل` (فواتير الزائر الجديدة فقط) |
+| `settledAt` / `settledById` | `settled_at` / `settled_by_id` | `أُنهيت` / `أنهاها` (تحصيل وإنهاء) |
+| `writeOffAmount` | `write_off_amount` | `المسامح` (لا يدخل الخزنة) |
 | `color` | `color` | `اللون` |
 | `qty` | `qty` | `الكمية` |
 | `weight` | `weight` | `الوزن` |

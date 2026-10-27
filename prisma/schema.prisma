@@ -99,6 +99,7 @@ model User {
   invoiceLinesUpdated InvoiceLine[]             @relation("InvoiceLineUpdatedBy")
   invoiceExpensesCreated InvoiceExpense[]       @relation("InvoiceExpenseCreatedBy")
   invoiceExpensesUpdated InvoiceExpense[]       @relation("InvoiceExpenseUpdatedBy")
+  invoicesSettled     Invoice[]                 @relation("InvoiceSettledBy")
   ledgerCreated       LedgerEntry[]             @relation("LedgerCreatedBy")
   ledgerUpdated       LedgerEntry[]             @relation("LedgerUpdatedBy")
   treasuryCreated     TreasuryTxn[]             @relation("TreasuryCreatedBy")
@@ -172,6 +173,12 @@ model Invoice {
   totalWeight      Decimal           @default(0) @map("total_weight") @db.Decimal(18, 4)
   totalAmount      Decimal           @default(0) @map("total_amount") @db.Decimal(18, 4) // الإجمالي النهائي = صافي البنود + المصروفات الإضافية
   expensesTotal    Decimal           @default(0) @map("expenses_total") @db.Decimal(18, 4) // مجموع المصروفات الإضافية (داخل totalAmount)
+  // ── متابعة تحصيل فاتورة الزائر (الفواتير الجديدة فقط — القديمة محصّلة خارج النظام) ──
+  paymentTracked   Boolean           @default(false) @map("payment_tracked") // تدخل نظام «معلّقة/تحصيل لاحق»؟
+  settledAt        DateTime?         @map("settled_at") // أُنهيت يدوياً (تحصيل وإنهاء) — لا متبقي بعدها
+  settledById      Int?              @map("settled_by_id")
+  settledBy        User?             @relation("InvoiceSettledBy", fields: [settledById], references: [id], onDelete: SetNull)
+  writeOffAmount   Decimal           @default(0) @map("write_off_amount") @db.Decimal(18, 4) // المسامَح فيه عند الإنهاء (لا يدخل الخزنة)
   invoiceType      String            @default("SALE") @map("invoice_type") // SALE | PURCHASE | SUPPLIER_RETURN
   unpriced         Boolean           @default(false) @map("unpriced") // فاتورة غير مسعّرة — محفوظة بلا أثر مالي حتى تُسعَّر
   externalRef      String?           @map("external_ref") // رقم فاتورة المورد (للجاية)

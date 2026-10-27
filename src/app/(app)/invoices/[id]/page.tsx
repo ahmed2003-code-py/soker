@@ -10,7 +10,7 @@ import { شريط_إجراءات_الفاتورة } from "./actions-bar";
 import { مبدّل_رصيد_الفاتورة } from "./balance-toggle";
 import { زر_تحصيل_فاتورة } from "./collect-dialog";
 import { د, طرح } from "@/lib/decimal";
-import { فاتورة_زائر, حالة_دفع_الزائر } from "@/lib/invoice";
+import { متابَعة_التحصيل, حالة_دفع_الزائر } from "@/lib/invoice";
 import { تسمية_حساب_الخزنة } from "@/lib/enums";
 import { اجلب_خريطة_حسابات_فرعية } from "@/app/(app)/treasury/sub-account-actions";
 
@@ -32,6 +32,7 @@ export default async function صفحة_عرض_فاتورة({
         expenses: { orderBy: { id: "asc" } },
         createdBy: { select: { name: true } },
         updatedBy: { select: { name: true } },
+        settledBy: { select: { name: true } },
         treasuryTxns: {
           where: { deletedAt: null },
           select: { amount: true, kind: true },
@@ -73,13 +74,15 @@ export default async function صفحة_عرض_فاتورة({
   const عميل_زائر = !فاتورة.customerId;
 
   // حالة دفع فاتورة الزائر (مشتقة من حركات الخزنة) — للعرض وزر التحصيل
-  const زائر_قابل_للتحصيل = فاتورة_زائر(فاتورة);
+  // الفواتير الجديدة فقط — القديمة محصّلة خارج النظام فلا حالة لها
+  const زائر_قابل_للتحصيل = متابَعة_التحصيل(فاتورة);
+  const مُنهاة = !!فاتورة.settledAt;
   const المحصّل = فاتورة.treasuryTxns.reduce(
     (س, ح) => (ح.kind === "EXPENSE" ? س.minus(ح.amount) : ح.kind === "INCOME" ? س.plus(ح.amount) : س),
     د(0)
   );
   const المتبقي = طرح(فاتورة.totalAmount, المحصّل);
-  const حالة_الدفع = زائر_قابل_للتحصيل ? حالة_دفع_الزائر(فاتورة.totalAmount, المحصّل) : null;
+  const حالة_الدفع = زائر_قابل_للتحصيل ? حالة_دفع_الزائر(فاتورة.totalAmount, المحصّل, مُنهاة) : null;
   const يحتاج_تحصيل = !!حالة_الدفع && حالة_الدفع !== "مدفوعة";
   const [حسابات_الخزنة, حسابات_فرعية] = يحتاج_تحصيل
     ? await Promise.all([prisma.treasuryAccount.findMany({ orderBy: { id: "asc" } }), اجلب_خريطة_حسابات_فرعية()])
@@ -524,7 +527,9 @@ export default async function صفحة_عرض_فاتورة({
               <span className="font-semibold">
                 حالة الدفع:{" "}
                 <span className={يحتاج_تحصيل ? "text-amber-700" : "text-success"}>
-                  {حالة_الدفع === "مدفوعة" ? "مدفوعة" : حالة_الدفع === "جزئية" ? "مدفوعة جزئياً — معلّقة" : "معلّقة (غير محصّلة)"}
+                  {مُنهاة
+                    ? (فاتورة.writeOffAmount.greaterThan(0) ? "منتهية (تحصيل وإنهاء)" : "مدفوعة")
+                    : حالة_الدفع === "مدفوعة" ? "مدفوعة" : حالة_الدفع === "جزئية" ? "مدفوعة جزئياً — معلّقة" : "معلّقة (غير محصّلة)"}
                 </span>
               </span>
               {يحتاج_تحصيل && حسابات_فرعية && (
@@ -532,6 +537,7 @@ export default async function صفحة_عرض_فاتورة({
                   <زر_تحصيل_فاتورة
                     المعرف={فاتورة.id}
                     المتبقي={المتبقي.toString()}
+                    المحصّل_سابقاً={المحصّل.toString()}
                     حسابات_الخزنة={حسابات_الخزنة.map((h) => ({ id: h.id, النوع: h.type, التسمية: تسمية_حساب_الخزنة[h.type] }))}
                     حسابات_فرعية={حسابات_فرعية}
                   />
@@ -542,10 +548,22 @@ export default async function صفحة_عرض_فاتورة({
               <span>المحصّل</span>
               <نص_مبلغ القيمة={المحصّل} النوع="إيراد" />
             </div>
-            <div className="flex justify-between font-semibold">
-              <span>المتبقي</span>
-              <نص_مبلغ القيمة={المتبقي.greaterThan(0) ? المتبقي : 0} النوع={يحتاج_تحصيل ? "مصروف" : "محايد"} />
-            </div>
+            {مُنهاة && فاتورة.writeOffAmount.greaterThan(0) ? (
+              <>
+                <div className="flex justify-between text-amber-700">
+                  <span>مسامحة (لم تدخل الخزنة)</span>
+                  <نص_مبلغ القيمة={فاتورة.writeOffAmount} />
+                </div>
+                <p className="text-[12px] text-muted-foreground no-print">
+                  أُنهيت بواسطة {فاتورة.settledBy?.name ?? "—"} — <نص_تاريخ القيمة={فاتورة.settledAt!} />
+                </p>
+              </>
+            ) : (
+              <div className="flex justify-between font-semibold">
+                <span>المتبقي</span>
+                <نص_مبلغ القيمة={المتبقي.greaterThan(0) && !مُنهاة ? المتبقي : 0} النوع={يحتاج_تحصيل ? "مصروف" : "محايد"} />
+              </div>
+            )}
           </div>
         )}
 

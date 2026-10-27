@@ -148,17 +148,36 @@ export type حالة_دفع = "مدفوعة" | "جزئية" | "معلّقة";
 
 /**
  * حالة دفع فاتورة الزائر (بيع بلا حساب) — مشتقّة من حركات الخزنة، لا تُخزَّن.
+ * المُنهاة يدوياً (تحصيل وإنهاء) = مدفوعة مهما كان الباقي (الباقي مسامَح فيه).
  * فواتير العملاء المسجّلين تُتابَع على رصيد الحساب لا على الفاتورة، فلا حالة لها هنا.
  */
-export function حالة_دفع_الزائر(الإجمالي: Prisma.Decimal.Value, المحصّل: Prisma.Decimal.Value): حالة_دفع {
+export function حالة_دفع_الزائر(
+  الإجمالي: Prisma.Decimal.Value,
+  المحصّل: Prisma.Decimal.Value,
+  أُنهيت = false
+): حالة_دفع {
+  if (أُنهيت) return "مدفوعة";
   const متبقي = طرح(الإجمالي, المحصّل);
   if (!متبقي.greaterThan(0)) return "مدفوعة";
   return د(المحصّل).greaterThan(0) ? "جزئية" : "معلّقة";
 }
 
-/** هل الفاتورة فاتورة زائر (بيع بلا حساب، غير مباشرة)؟ — وحدها تقبل الحفظ معلّقة والتحصيل لاحقاً. */
+/** هل الفاتورة فاتورة زائر (بيع بلا حساب، غير مباشرة)؟ */
 export function فاتورة_زائر(ف: { customerId: number | null; invoiceType: string; directInvoiceId?: number | null }) {
   return ف.customerId == null && ف.invoiceType === "SALE" && !ف.directInvoiceId;
+}
+
+/**
+ * هل الفاتورة داخل متابعة التحصيل (معلّقة/تحصيل لاحق/إنهاء)؟ فاتورة زائر جديدة فقط —
+ * فواتير الزائر القديمة (قبل الميزة) محصّلة خارج النظام فلا حالة ولا تحصيل لها.
+ */
+export function متابَعة_التحصيل(ف: {
+  customerId: number | null;
+  invoiceType: string;
+  directInvoiceId?: number | null;
+  paymentTracked: boolean;
+}) {
+  return ف.paymentTracked && فاتورة_زائر(ف);
 }
 
 /** تجميع البنود حسب التصنيف (للملخص أسفل الفاتورة). */
