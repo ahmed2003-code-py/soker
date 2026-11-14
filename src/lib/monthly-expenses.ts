@@ -68,53 +68,81 @@ async function مدفوعات_البنود(
   return خريطة;
 }
 
+/** ترقيم الشهر كرقم متصل (سنة×12 + شهر−1) لتسهيل المقارنة والتكرار */
+const رقم_الشهر = (س: شهر) => س.سنة * 12 + (س.شهر - 1);
+const شهر_من_رقم = (ر: number): شهر => ({ سنة: Math.floor(ر / 12), شهر: (ر % 12) + 1 });
+
+/** شهر تاريخ معيّن بتوقيت القاهرة */
+function شهر_التاريخ(ت: Date): شهر {
+  const ق = new Date(ت.toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
+  return { سنة: ق.getFullYear(), شهر: ق.getMonth() + 1 };
+}
+
+/** أقصى مدى للتوليد في المستقبل (حماية من توليد آلاف الشهور لو اتفتح رابط لسنة بعيدة) */
+const أقصى_شهور_مستقبلية = 12;
+
 /**
- * يضمن وجود بنود الشهر المطلوب:
- *  - يولّد بند شهر لكل بند نشط ليس له بند في هذا الشهر (بالمبلغ الافتراضي)
- *  - يحدّث «المرحَّل» من متبقي الشهر السابق (يعاد حسابه دائماً ليظل مطابقاً للواقع)
+ * يضمن وجود بنود الشهر المطلوب ويعيد بناء سلسلة «المرحَّل» لكل بند.
+ *
+ * قواعد:
+ *  - بداية البند = أول شهر اتعمل له (بند الشهر اللي اتولّد مع إضافة البند).
+ *    **ممنوع** توليد بند شهر قبل بداية البند — فتح شهر قديم في الواجهة ما يعملش
+ *    شهور وهمية غير مدفوعة تترحّل بعدين كمديونية (ده كان سبب باج الترحيل الكبير).
+ *  - البند النشط يتولّد له كل شهر من بعد آخر شهر موجود لحد الشهر المطلوب
+ *    (فتح شهر بعد فجوة ما يضيّعش مقرر الشهور اللي في النص).
+ *  - المرحَّل لكل شهر = متبقي آخر شهر قبله لنفس البند، ويُعاد حسابه للسلسلة كلها
+ *    بالترتيب الزمني (مش الشهر السابق بس) ⇒ أي تعديل قديم يوصل لآخر السلسلة.
  * آمن للتكرار (idempotent).
  */
 export async function اضمن_بنود_الشهر(س: شهر, أنشأ: number, p: PrismaClient = عميل_افتراضي) {
-  const [بنود, حالية, سابقة] = await Promise.all([
-    p.monthlyExpenseItem.findMany({ where: { active: true }, select: { id: true, defaultAmount: true } }),
-    p.monthlyExpensePeriod.findMany({ where: { year: س.سنة, month: س.شهر } }),
-    (async () => {
-      const ق = الشهر_السابق(س);
-      return p.monthlyExpensePeriod.findMany({ where: { year: ق.سنة, month: ق.شهر } });
-    })(),
-  ]);
+  const الهدف = Math.min(رقم_الشهر(س), رقم_الشهر(شهر_اليوم()) + أقصى_شهور_مستقبلية);
+  const بنود = await p.monthlyExpenseItem.findMany({
+    select: {
+      id: true, defaultAmount: true, active: true, createdAt: true,
+      periods: { select: { id: true, year: true, month: true, amount: true, carriedIn: true } },
+    },
+  });
+  const مدفوعات = await مدفوعات_البنود(p, بنود.flatMap((ب) => ب.periods.map((x) => x.id)));
 
-  const مدفوع_السابق = await مدفوعات_البنود(p, سابقة.map((x) => x.id));
-  // متبقي الشهر السابق لكل بند = (المقرر + المرحَّل) − المدفوع
-  const مرحَّل = new Map<number, Prisma.Decimal>();
-  for (const ق of سابقة) {
-    const مدفوع = مدفوع_السابق.get(ق.id)?.مدفوع ?? د(0);
-    مرحَّل.set(ق.itemId, طرح(جمع(ق.amount, ق.carriedIn), مدفوع));
-  }
+  const جديدة: Prisma.MonthlyExpensePeriodCreateManyInput[] = [];
+  const تحديثات: Prisma.PrismaPromise<unknown>[] = [];
 
-  const موجود = new Map(حالية.map((x) => [x.itemId, x]));
-  const عمليات: Prisma.PrismaPromise<unknown>[] = [];
   for (const بند of بنود) {
-    const مرحَّل_البند = مرحَّل.get(بند.id) ?? د(0);
-    const ح = موجود.get(بند.id);
-    if (!ح) {
-      عمليات.push(
-        p.monthlyExpensePeriod.create({
-          data: {
-            itemId: بند.id, year: س.سنة, month: س.شهر,
-            amount: بند.defaultAmount, carriedIn: مرحَّل_البند, createdById: أنشأ,
-          },
-        })
-      );
-    } else if (!د(ح.carriedIn).equals(مرحَّل_البند)) {
-      // الشهر السابق اتعدّل بعد التوليد ⇒ حدّث المرحَّل ليظل مطابقاً
-      عمليات.push(
-        p.monthlyExpensePeriod.update({ where: { id: ح.id }, data: { carriedIn: مرحَّل_البند } })
-      );
+    const شهور = [...بند.periods].sort((أ, ب) => رقم_الشهر({ سنة: أ.year, شهر: أ.month }) - رقم_الشهر({ سنة: ب.year, شهر: ب.month }));
+    const موجود = new Map(شهور.map((x) => [رقم_الشهر({ سنة: x.year, شهر: x.month }), x]));
+    const البداية = شهور.length
+      ? رقم_الشهر({ سنة: شهور[0].year, شهر: شهور[0].month })
+      : رقم_الشهر(شهر_التاريخ(بند.createdAt));
+    const آخر_موجود = شهور.length ? رقم_الشهر({ سنة: شهور[شهور.length - 1].year, شهر: شهور[شهور.length - 1].month }) : -1;
+    const النهاية = Math.max(آخر_موجود, بند.active ? الهدف : -1);
+    if (النهاية < البداية) continue; // الشهر المطلوب قبل بداية البند ⇒ لا توليد
+
+    let متبقي_السابق = د(0);
+    for (let ر = البداية; ر <= النهاية; ر++) {
+      const ح = موجود.get(ر);
+      if (ح) {
+        if (!د(ح.carriedIn).equals(متبقي_السابق)) {
+          تحديثات.push(p.monthlyExpensePeriod.update({ where: { id: ح.id }, data: { carriedIn: متبقي_السابق } }));
+        }
+        const مدفوع = مدفوعات.get(ح.id)?.مدفوع ?? د(0);
+        متبقي_السابق = طرح(جمع(ح.amount, متبقي_السابق), مدفوع);
+      } else if (بند.active && ر > آخر_موجود && ر <= الهدف) {
+        const س_ر = شهر_من_رقم(ر);
+        جديدة.push({
+          itemId: بند.id, year: س_ر.سنة, month: س_ر.شهر,
+          amount: بند.defaultAmount, carriedIn: متبقي_السابق, createdById: أنشأ,
+        });
+        متبقي_السابق = جمع(بند.defaultAmount, متبقي_السابق);
+      }
+      // فجوة لبند كان موقوف: ما تتولّدش، والمتبقي يفضل يترحّل لأول شهر بعدها
     }
   }
-  // كذلك بنود شهر لبنود اتوقفت لاحقاً: تفضل كما هي (تاريخية) بلا تغيير
-  if (عمليات.length) await p.$transaction(عمليات);
+
+  if (!جديدة.length && !تحديثات.length) return;
+  await p.$transaction([
+    ...(جديدة.length ? [p.monthlyExpensePeriod.createMany({ data: جديدة, skipDuplicates: true })] : []),
+    ...تحديثات,
+  ]);
 }
 
 export type بند_شهر_محسوب = {
